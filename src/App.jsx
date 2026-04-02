@@ -789,7 +789,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><p style={{...S.sub,marginTop:8}}>{t.uploadDesc}</p></div>
       {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:100}}>
         <div style={{position:"absolute",animation:"logoTumble 3.5s linear infinite",top:10}}>
-          <img src={import.meta.env.BASE_URL+"monday-logo.svg"} alt="MONday" style={{width:60,height:60,animation:"logoSpin 1.2s linear infinite"}}/>
+          <img src={import.meta.env.BASE_URL+"monday-logo.png"} alt="MONday" style={{width:60,height:60,animation:"logoSpin 1.2s linear infinite"}}/>
         </div>
         <style>{`@keyframes logoTumble{0%{left:-80px}100%{left:calc(100% + 80px)}}@keyframes logoSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
         <div style={{position:"absolute",bottom:0,width:"100%",fontSize:14,color:TH.gold,fontWeight:600}}>{t.sheetLoading}</div>
