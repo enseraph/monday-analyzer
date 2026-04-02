@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.14";
+const APP_VERSION="1.15";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -277,7 +277,7 @@ function decodeBuffer(buf){
   return{text:new TextDecoder("utf-8",{fatal:false}).decode(b),encoding:"UTF-8 (lossy)"}
 }
 
-function dlChart(id,fn,title){const el=document.getElementById(id);if(!el)return;const svg=el.querySelector("svg");if(!svg)return;const bbox=svg.getBoundingClientRect();const c=svg.cloneNode(true);c.setAttribute("xmlns","http://www.w3.org/2000/svg");c.setAttribute("width",bbox.width);c.setAttribute("height",bbox.height);const d=new XMLSerializer().serializeToString(c);const cv=document.createElement("canvas");const ctx=cv.getContext("2d");const img=new Image();const titleH=title?48:0;const u=URL.createObjectURL(new Blob([d],{type:"image/svg+xml;charset=utf-8"}));img.onload=()=>{const w=img.width||bbox.width;const h=img.height||bbox.height;cv.width=w*2;cv.height=(h+titleH)*2;ctx.scale(2,2);if(title){ctx.fillStyle="#1a1a2e";ctx.font="bold 14px 'DM Sans',sans-serif";ctx.fillText(title,12,titleH-14)}ctx.drawImage(img,0,titleH,w,h);const a=document.createElement("a");a.download=fn+".png";a.href=cv.toDataURL("image/png");a.click();URL.revokeObjectURL(u)};img.src=u}
+function dlChart(id,fn,title){const el=document.getElementById(id);if(!el)return;const svg=el.querySelector("svg");if(!svg)return;const bbox=svg.getBoundingClientRect();const w=Math.round(bbox.width),h=Math.round(bbox.height);if(w<10||h<10)return;const c=svg.cloneNode(true);c.setAttribute("xmlns","http://www.w3.org/2000/svg");c.setAttribute("width",w);c.setAttribute("height",h);c.setAttribute("viewBox",`0 0 ${w} ${h}`);c.style.width=w+"px";c.style.height=h+"px";const d=new XMLSerializer().serializeToString(c);const cv=document.createElement("canvas");const ctx=cv.getContext("2d");const img=new Image();const titleH=title?48:0;const u=URL.createObjectURL(new Blob([d],{type:"image/svg+xml;charset=utf-8"}));img.onload=()=>{cv.width=w*2;cv.height=(h+titleH)*2;ctx.scale(2,2);if(title){ctx.fillStyle="#1a1a2e";ctx.font="bold 14px 'DM Sans',sans-serif";ctx.fillText(title,12,titleH-14)}ctx.drawImage(img,0,titleH,w,h);const a=document.createElement("a");a.download=fn+".png";a.href=cv.toDataURL("image/png");a.click();URL.revokeObjectURL(u)};img.src=u}
 
 function dlTable(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v.toLocaleString();const s=String(v);return tr?tr(s):s};const pad=14,rowH=28,headH=36,titleH=44,font="12px 'DM Sans',sans-serif",headFont="bold 11px 'JetBrains Mono',monospace",titleFont="bold 14px 'DM Sans',sans-serif";const cv=document.createElement("canvas");const ctx=cv.getContext("2d");ctx.font=font;const colW=keys.map(k=>{const hdr=tKey(k).toUpperCase();ctx.font=headFont;let mx=ctx.measureText(hdr).width;ctx.font=font;data.forEach(r=>{const w=ctx.measureText(tVal(r[k])).width;if(w>mx)mx=w});return mx+pad*2});const totalW=colW.reduce((a,b)=>a+b,0)+2;const totalH=titleH+headH+data.length*rowH+2;cv.width=totalW*2;cv.height=totalH*2;ctx.scale(2,2);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,totalW,totalH);ctx.fillStyle="#1a1a2e";ctx.font=titleFont;ctx.fillText(title,pad,titleH-14);ctx.fillStyle="#f0f0f4";ctx.fillRect(0,titleH,totalW,headH);ctx.fillStyle="#4a4a6a";ctx.font=headFont;let x=1;keys.forEach((k,i)=>{ctx.fillText(tKey(k).toUpperCase(),x+pad,titleH+headH-10);x+=colW[i]});data.forEach((row,ri)=>{const y=titleH+headH+ri*rowH;if(ri%2===0){ctx.fillStyle="#fafaff";ctx.fillRect(0,y,totalW,rowH)}ctx.fillStyle="#333";ctx.font=font;let x2=1;keys.forEach((k,i)=>{ctx.fillText(tVal(row[k]),x2+pad,y+rowH-8);x2+=colW[i]})});ctx.strokeStyle="#e0e0e8";ctx.lineWidth=0.5;let lx=1;keys.forEach((_,i)=>{lx+=colW[i];ctx.beginPath();ctx.moveTo(lx,titleH);ctx.lineTo(lx,totalH);ctx.stroke()});const a=document.createElement("a");a.download=fn+"_table.png";a.href=cv.toDataURL("image/png");a.click()}
 
@@ -639,7 +639,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       prevByCountry[r.country].rev+=r.totalRev||0;
     });
     // Aggregate Europe for YoY
-    const euroCountries=Object.keys(byCountry).filter(c=>GEO_REGION(c)==="Europe");
+    const euroCountries=[...new Set([...Object.keys(byCountry),...Object.keys(prevByCountry)].filter(c=>GEO_REGION(c)==="Europe"))];
     const euroCurRev=euroCountries.reduce((a,c)=>a+(byCountry[c]?.rev||0),0);
     const euroCurCount=euroCountries.reduce((a,c)=>a+(byCountry[c]?.count||0),0);
     const euroPrevRev=euroCountries.reduce((a,c)=>a+(prevByCountry[c]?.rev||0),0);
@@ -714,7 +714,16 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     <div style={{...S.inner,maxWidth:700,paddingTop:60}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><LT/></div>
       <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><p style={{...S.sub,marginTop:8}}>{t.uploadDesc}</p></div>
-      {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24}}><div style={{fontSize:32,marginBottom:12,animation:"spin 1.5s linear infinite"}}>⟳</div><div style={{fontSize:14,color:"#c9a84c",fontWeight:600}}>{t.sheetLoading}</div><style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style></div>}
+      {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:80}}>
+        <div style={{position:"absolute",animation:"duckWalk 3s linear infinite",fontSize:40,top:10}}>
+          <span style={{display:"inline-block",animation:"duckBob 0.4s ease-in-out infinite alternate"}}>🐥</span>
+        </div>
+        <style>{`
+          @keyframes duckWalk{0%{left:-50px}100%{left:calc(100% + 50px)}}
+          @keyframes duckBob{0%{transform:translateY(0) scaleX(1)}100%{transform:translateY(-6px) scaleX(1)}}
+        `}</style>
+        <div style={{position:"absolute",bottom:0,width:"100%",fontSize:14,color:TH.gold,fontWeight:600}}>{t.sheetLoading}</div>
+      </div>}
       {sheetStatus==="error"&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:14,marginBottom:16,textAlign:"center"}}><div style={{fontSize:12,color:"#ef4444"}}>⚠ {t.sheetError}</div></div>}
       {sheetStatus!=="loading"&&(<><div style={{textAlign:"center",fontSize:12,color:TH.textMuted,marginBottom:12}}>{sheetStatus==="error"?"":t.orUpload}</div>
       <label style={S.upl} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#c9a84c"}} onDragLeave={e=>{e.currentTarget.style.borderColor="#1e3150"}} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#1e3150";handleFiles(e)}}>
