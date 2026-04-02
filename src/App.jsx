@@ -20,17 +20,15 @@ const DL={
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
 };
-const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical"};
+const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
 function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle}){
   const saved=loadLayouts(tabId);const layouts=saved||DL[tabId];const{containerRef,width}=useContainerWidth();
-  // Filter to only valid React elements with keys
   const validChildren=Array.isArray(children)?children.flat().filter(c=>c&&c.key):children?[children]:[];
   const validKeys=new Set(validChildren.map(c=>c.key));
-  // Only include layout items that have matching children
   const safeLayouts={};
   Object.entries(layouts).forEach(([bp,items])=>{safeLayouts[bp]=items.filter(item=>validKeys.has(item.i))});
-  return(<div ref={containerRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>{saved&&<button style={btnStyle} onClick={onReset}>{resetLabel}</button>}</div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer} width={width} {...RGL_PROPS} layouts={safeLayouts} onLayoutChange={(_,all)=>saveLayouts(tabId,all)}>{validChildren}</Responsive>}</div>);
+  return(<div ref={containerRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}><button style={btnStyle} onClick={onReset}>{resetLabel}</button></div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer} width={width} {...RGL_PROPS} layouts={safeLayouts} onLayoutChange={(_,all)=>saveLayouts(tabId,all)}>{validChildren}</Responsive>}</div>);
 }
 
 // ─── Google Sheets Backend ───
