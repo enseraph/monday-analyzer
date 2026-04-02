@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.13";
+const APP_VERSION="1.14";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -109,6 +109,8 @@ const T = {
     drRevYoY:"Revenue YoY",drCountYoY:"Reservation Count YoY",
     drCurrent:"Current",drPrevYear:"Previous Year",
     drNoData:"No reservations for this date.",
+    drDisclaimer:"予約番入れ込みデータ",
+    geoArea:"Geo Area",allGeoAreas:"All areas",
     darkMode:"Dark",lightMode:"Light",
   },
   ja: {
@@ -183,6 +185,8 @@ const T = {
     drRevYoY:"売上YoY",drCountYoY:"件数YoY",
     drCurrent:"当年",drPrevYear:"前年",
     drNoData:"この日付のデータはありません。",
+    drDisclaimer:"予約番入れ込みデータ",
+    geoArea:"地理エリア",allGeoAreas:"全エリア",
     darkMode:"ダーク",lightMode:"ライト",
   }
 };
@@ -293,6 +297,7 @@ export default function App(){
   const[fCancel,setFCancel]=useState("confirmed"); // "confirmed" | "cancelled" | "all"
   const[fHType,setFHType]=useState("All"); // "All" | "Hotel" | "Apart"
   const[fBrands,setFBrands]=useState([]);
+const[fGeo,setFGeo]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
@@ -323,14 +328,15 @@ export default function App(){
 
   const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(nd);setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
 
-  const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("confirmed");setFHType("All");setFBrands([])};
+  const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("confirmed");setFHType("All");setFBrands([]);setFGeo([])};
 
-  const filtered=useMemo(()=>{let d=allData;if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));if(fR!=="All")d=d.filter(r=>r.region===fR);if(fC.length)d=d.filter(r=>fC.includes(r.country));if(fS.length)d=d.filter(r=>fS.includes(r.segment));if(fP.length)d=d.filter(r=>fP.includes(r.facility));if(fDF||fDTo){const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;d=d.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}return d},[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands]);
+  const filtered=useMemo(()=>{let d=allData;if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));if(fR!=="All")d=d.filter(r=>r.region===fR);if(fC.length)d=d.filter(r=>fC.includes(r.country));if(fS.length)d=d.filter(r=>fS.includes(r.segment));if(fP.length)d=d.filter(r=>fP.includes(r.facility));if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));if(fDF||fDTo){const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;d=d.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}return d},[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo]);
 
   const uC=useMemo(()=>[...new Set(allData.map(r=>r.country))].sort(),[allData]);
   const uP=useMemo(()=>[...new Set(allData.map(r=>r.facility))].sort(),[allData]);
   const uS=useMemo(()=>[...new Set(allData.map(r=>r.segment))].filter(s=>s!=="Unknown").sort(),[allData]);
   const uB=useMemo(()=>[...new Set(allData.map(r=>r.brand))].sort(),[allData]);
+const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(),[allData]);
 
   // ─── AGGREGATIONS ───
   const agg=useMemo(()=>{
@@ -632,9 +638,20 @@ export default function App(){
       prevByCountry[r.country].count++;
       prevByCountry[r.country].rev+=r.totalRev||0;
     });
-    const topCountries=countryRows.slice(0,10).map(r=>r.country);
-    const yoyRev=topCountries.map(c=>({country:c,current:byCountry[c]?.rev||0,prev:prevByCountry[c]?.rev||0}));
-    const yoyCount=topCountries.map(c=>({country:c,current:byCountry[c]?.count||0,prev:prevByCountry[c]?.count||0}));
+    // Aggregate Europe for YoY
+    const euroCountries=Object.keys(byCountry).filter(c=>GEO_REGION(c)==="Europe");
+    const euroCurRev=euroCountries.reduce((a,c)=>a+(byCountry[c]?.rev||0),0);
+    const euroCurCount=euroCountries.reduce((a,c)=>a+(byCountry[c]?.count||0),0);
+    const euroPrevRev=euroCountries.reduce((a,c)=>a+(prevByCountry[c]?.rev||0),0);
+    const euroPrevCount=euroCountries.reduce((a,c)=>a+(prevByCountry[c]?.count||0),0);
+    // Build YoY with top 10 non-Europe countries + Europe aggregate, sorted by current desc
+    const nonEuroTop=countryRows.filter(r=>GEO_REGION(r.country)!=="Europe").slice(0,10).map(r=>r.country);
+    const yoyRevRaw=[...nonEuroTop.map(c=>({country:c,current:byCountry[c]?.rev||0,prev:prevByCountry[c]?.rev||0}))];
+    if(euroCurRev>0||euroPrevRev>0)yoyRevRaw.push({country:"Europe (合計)",current:euroCurRev,prev:euroPrevRev});
+    const yoyRev=yoyRevRaw.sort((a,b)=>b.current-a.current);
+    const yoyCountRaw=[...nonEuroTop.map(c=>({country:c,current:byCountry[c]?.count||0,prev:prevByCountry[c]?.count||0}))];
+    if(euroCurCount>0||euroPrevCount>0)yoyCountRaw.push({country:"Europe (合計)",current:euroCurCount,prev:euroPrevCount});
+    const yoyCount=yoyCountRaw.sort((a,b)=>b.current-a.current);
     const curLabel=from===to?fmtDate(from):`${fmtDate(from)} – ${fmtDate(to)}`;
     const prevLabel=prevFrom===prevTo?fmtDate(prevFrom):`${fmtDate(prevFrom)} – ${fmtDate(prevTo)}`;
     return{countryRows,regionRows,yoyRev,yoyCount,totalRev,totalCount,
@@ -725,11 +742,12 @@ export default function App(){
         <div><div style={S.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={S} cl={t.clear}/></div>
         <div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>
         <div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>
+<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear}/></div>
         <div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></select></div>
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
         <div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
-        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("stay");setFCancel("confirmed");setFHType("All");setFBrands([])}}>{t.reset}</button>
+        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("stay");setFCancel("confirmed");setFHType("All");setFBrands([]);setFGeo([])}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
@@ -747,7 +765,7 @@ export default function App(){
       {/* DAILY REPORT */}
       {tab==="daily"&&<div>
         <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
-          <div><div style={S.fl}>{t.drDate}</div></div>
+          <div><div style={S.fl}>{t.drDate}</div><div style={{fontSize:9,color:TH.textMuted,fontStyle:"italic"}}>{t.drDisclaimer}</div></div>
           <div><div style={S.fl}>{t.drFrom}</div><input type="date" style={S.inp} value={drFrom} onChange={e=>setDrFrom(e.target.value)}/></div>
           <div><div style={S.fl}>{t.drTo}</div><input type="date" style={S.inp} value={drTo} onChange={e=>setDrTo(e.target.value)}/></div>
         </div>
@@ -759,7 +777,7 @@ export default function App(){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
             <div style={S.card}>
-              <div style={S.ct}>{t.drCountryTable}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCountryTable}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.countryRows.map(r=>({Country:r.country,Res:r.count,Revenue:r.rev,ADR:r.adr,Share:r.share})),["Country","Res","Revenue","ADR","Share"],"daily_country.csv")}>⬇ CSV</button></div>
               <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
                 {[t.drCountry,t.drCount,t.drRevenue,t.drADR,t.drShare].map(h=><th key={h} style={S.th}>{h}</th>)}
               </tr></thead><tbody>
@@ -780,8 +798,8 @@ export default function App(){
               </tbody></table></div>
             </div>
             <div style={S.card}>
-              <div style={S.ct}>{t.drRevYoY}</div>
-              <ResponsiveContainer width="100%" height={280}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drRevYoY}</div><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart("dr-rev-yoy","rev_yoy",t.drRevYoY)}>{t.exportImg}</button><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(dailyRpt.yoyRev,t.drRevYoY,"rev_yoy",v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋</button></div></div>
+              <div id="dr-rev-yoy"><ResponsiveContainer width="100%" height={280}>
                 <BarChart data={dailyRpt.yoyRev}>
                   <CartesianGrid {...gl}/>
                   <XAxis dataKey="country" tick={<TlTickV2/>} interval={0}/>
@@ -791,10 +809,10 @@ export default function App(){
                   <Bar dataKey="current" fill={dk?"#c8c3b8":"#1a1a2e"} name={dailyRpt.curLabel} radius={[4,4,0,0]}/>
                   <Bar dataKey="prev" fill={TH.gold} name={dailyRpt.prevLabel} radius={[4,4,0,0]}/>
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             </div>
             <div style={S.card}>
-              <div style={S.ct}>{t.drRegionTable}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drRegionTable}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.regionRows.map(r=>({Region:r.region,Res:r.count,Revenue:r.rev,ADR:r.adr,Share:r.share})),["Region","Res","Revenue","ADR","Share"],"daily_region.csv")}>⬇ CSV</button></div>
               <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
                 {[t.drRegion,t.drCount,t.drRevenue,t.drADR,t.drShare].map(h=><th key={h} style={S.th}>{h}</th>)}
               </tr></thead><tbody>
@@ -815,8 +833,8 @@ export default function App(){
               </tbody></table></div>
             </div>
             <div style={S.card}>
-              <div style={S.ct}>{t.drCountYoY}</div>
-              <ResponsiveContainer width="100%" height={280}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCountYoY}</div><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart("dr-count-yoy","count_yoy",t.drCountYoY)}>{t.exportImg}</button><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(dailyRpt.yoyCount,t.drCountYoY,"count_yoy",v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋</button></div></div>
+              <div id="dr-count-yoy"><ResponsiveContainer width="100%" height={280}>
                 <BarChart data={dailyRpt.yoyCount}>
                   <CartesianGrid {...gl}/>
                   <XAxis dataKey="country" tick={<TlTickV2/>} interval={0}/>
@@ -826,7 +844,7 @@ export default function App(){
                   <Bar dataKey="current" fill={dk?"#c8c3b8":"#1a1a2e"} name={dailyRpt.curLabel} radius={[4,4,0,0]}/>
                   <Bar dataKey="prev" fill={TH.gold} name={dailyRpt.prevLabel} radius={[4,4,0,0]}/>
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             </div>
           </div>
         </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.drNoData}</div>}
