@@ -22,8 +22,8 @@ const DL={
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:2,sm:1},rowHeight:140,draggableHandle:".rgl-drag",margin:[14,14],containerPadding:[0,0]};
 
 function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle}){
-  const saved=loadLayouts(tabId);const layouts=saved||DL[tabId];const[cRef,width]=useContainerWidth();
-  return(<div ref={cRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>{saved&&<button style={btnStyle} onClick={onReset}>{resetLabel}</button>}</div>{width>0&&<Responsive key={tabId+layoutVer} width={width} {...RGL_PROPS} layouts={layouts} onLayoutChange={(_,all)=>saveLayouts(tabId,all)}>{children}</Responsive>}</div>);
+  const saved=loadLayouts(tabId);const layouts=saved||DL[tabId];const{containerRef,width}=useContainerWidth();
+  return(<div ref={containerRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}>{saved&&<button style={btnStyle} onClick={onReset}>{resetLabel}</button>}</div>{width>0&&<Responsive key={tabId+layoutVer} width={width} {...RGL_PROPS} layouts={layouts} onLayoutChange={(_,all)=>saveLayouts(tabId,all)}>{children}</Responsive>}</div>);
 }
 
 // ─── Google Sheets Backend ───
