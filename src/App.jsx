@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.18";
+const APP_VERSION="1.19";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -317,8 +317,8 @@ export default function App(){
   // Translate data-level labels (region, segment, type, rank, country)
   const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
   const[allData,setAllData]=useState([]);const[allH,setAllH]=useState([]);const[fL,setFL]=useState([]);const[errs,setErrs]=useState([]);const[proc,setProc]=useState(false);
-  const[fR,setFR]=useState("All");const[fC,setFC]=useState([]);const[fDT,setFDT]=useState("checkin");const[fDF,setFDF]=useState("");const[fDTo,setFDTo]=useState("");const[fS,setFS]=useState([]);const[fP,setFP]=useState([]);
-  const[fCancel,setFCancel]=useState("confirmed"); // "confirmed" | "cancelled" | "all"
+  const[fR,setFR]=useState("All");const[fC,setFC]=useState([]);const[fDT,setFDT]=useState("booking");const[fDF,setFDF]=useState("");const[fDTo,setFDTo]=useState("");const[fS,setFS]=useState([]);const[fP,setFP]=useState([]);
+  const[fCancel,setFCancel]=useState("all"); // "confirmed" | "cancelled" | "all"
   const[fHType,setFHType]=useState("All"); // "All" | "Hotel" | "Apart"
   const[fBrands,setFBrands]=useState([]);
 const[fGeo,setFGeo]=useState([]);
@@ -326,7 +326,7 @@ const[fGeo,setFGeo]=useState([]);
   const[filtersOpen,setFiltersOpen]=useState(true);
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
 const[drSingle,setDrSingle]=useState("");
-  const[monthMode,setMonthMode]=useState("stay"); // "stay" or "booking"
+  const[monthMode,setMonthMode]=useState("booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?r.month:r.bookMonth;
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
 
@@ -353,7 +353,7 @@ const[drSingle,setDrSingle]=useState("");
 
   const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(nd);setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
 
-  const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("confirmed");setFHType("All");setFBrands([]);setFGeo([])};
+  const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("all");setFHType("All");setFBrands([]);setFGeo([])};
 
   const filtered=useMemo(()=>{let d=allData;if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));if(fR!=="All")d=d.filter(r=>r.region===fR);if(fC.length)d=d.filter(r=>fC.includes(r.country));if(fS.length)d=d.filter(r=>fS.includes(r.segment));if(fP.length)d=d.filter(r=>fP.includes(r.facility));if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));if(fDF||fDTo){const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;d=d.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}return d},[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo]);
 
@@ -786,7 +786,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <div style={{...S.inner,maxWidth:700,paddingTop:60}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><LT/></div>
-      <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><p style={{...S.sub,marginTop:8}}>{t.uploadDesc}</p></div>
+      <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1></div>
       {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:100}}>
         <div style={{position:"absolute",animation:"logoTumble 3.5s linear infinite",top:10}}>
           <img src={import.meta.env.BASE_URL+"monday-logo.png"} alt="MONday" style={{width:60,height:60,animation:"logoSpin 1.2s linear infinite"}}/>
@@ -826,7 +826,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
         <div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
-        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("stay");setFCancel("confirmed");setFHType("All");setFBrands([]);setFGeo([])}}>{t.reset}</button>
+        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([])}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
