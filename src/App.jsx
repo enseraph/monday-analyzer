@@ -195,9 +195,26 @@ function pct(n,d){return d>0?((n/d)*100).toFixed(1)+"%":"—"}
 function avg(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:0}
 function med(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
 
+function shortFac(n){
+  if(!n)return n;
+  return n
+    .replace(/^Premium hotel MONday\s*/,"PH ")
+    .replace(/^hotel MONday Premium\s*/,"HP ")
+    .replace(/^hotel MONday\s*/,"H ")
+    .replace(/^GRAND MONday\s*/,"G ")
+    .replace(/^MONday Apart Premium\s*/,"MAP ")
+    .replace(/^Premium Apart MONday\s*/,"PAM ")
+    .replace(/^MONday Apart\s*/,"MA ")
+    .replace(/^イチホテル\s*/,"イチ ")
+    .replace(/^TABI\s*/,"T ");
+}
+
 function processRow(row,headers){
   const g=c=>row[headers.indexOf(c)]??"";
-  const facility=g("施設名"),a1=parseInt(g("大人1(人数)"))||0,a2=parseInt(g("大人2(人数)"))||0,adults=a1+a2;
+  let facility=g("施設名");
+  // Normalize garbled encoding variants of 舞浜ビューⅠ
+  if(facility.includes("舞浜ビュー")&&!facility.includes("舞浜ビューⅠ"))facility=facility.replace(/舞浜ビュー.*$/,"舞浜ビューⅠ");
+  const a1=parseInt(g("大人1(人数)"))||0,a2=parseInt(g("大人2(人数)"))||0,adults=a1+a2;
   let kids=0;
   const childCountCols=["子供1(人数)","子供2(人数)","子供3(人数)","子供4(人数)","子供5(人数)","子供6(人数)","子供7(人数)","子供8(人数)","子供9(人数)"];
   for(const cc of childCountCols){const idx=headers.indexOf(cc);if(idx>=0)kids+=parseInt(row[idx]||"0")||0}
@@ -348,7 +365,7 @@ export default function App(){
   const moD=useMemo(()=>!agg?[]:Object.entries(agg.byM).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const dowD=useMemo(()=>!agg?[]:DOW_FULL.map((d,i)=>({day:dL[i],checkin:agg.byD[d]?.ci||0,checkout:agg.byD[d]?.co||0})),[agg,dL]);
   const rmD=useMemo(()=>!agg?[]:Object.entries(agg.byRm).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([r,c])=>({room:r,count:c})),[agg]);
-  const facD=useMemo(()=>!agg?[]:Object.entries(agg.byF).sort((a,b)=>b[1].n-a[1].n).map(([nm,f])=>({name:nm,region:f.region,n:f.n,avgRev:f.n>0?Math.round(f.rev/f.n):0,intlPct:f.n>0?+((f.intl/f.n)*100).toFixed(1):0,avgLOS:f.nights.length?+(avg(f.nights)).toFixed(1):0,topSeg:Object.entries(f.segs).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"})),[agg]);
+  const facD=useMemo(()=>!agg?[]:Object.entries(agg.byF).sort((a,b)=>b[1].n-a[1].n).map(([nm,f])=>({name:shortFac(nm),fullName:nm,region:f.region,n:f.n,avgRev:f.n>0?Math.round(f.rev/f.n):0,intlPct:f.n>0?+((f.intl/f.n)*100).toFixed(1):0,avgLOS:f.nights.length?+(avg(f.nights)).toFixed(1):0,topSeg:Object.entries(f.segs).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"})),[agg]);
 
   // Daily aggregation
   const dailyD=useMemo(()=>{
@@ -724,7 +741,7 @@ export default function App(){
             <div key="fac-kvk"><CC grid title={t.facKvKCompare} id="fac-kvk" nm="fac_kvk" data={kvkFac}><BarChart data={kvkFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Kanto")}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={tl("Kansai")}/></BarChart></CC></div>
             <div key="fac-hva"><CC grid title={t.facHvACompare} id="fac-hva" nm="fac_hva" data={hvaFac}><BarChart data={hvaFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Hotel" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Hotel")}/><Bar dataKey="Apart" fill="#c9a84c" radius={[4,4,0,0]} name={tl("Apart")}/></BarChart></CC></div>
           </DG>
-          <div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.facilityPerf}</div><button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.name,Region:f.region,Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.thFacility,t.thRegion,t.reservations,t.thAvgRev,t.thIntlPct,t.thAvgLOS,t.thTopSeg].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>{facD.map(f=><tr key={f.name}><td style={{...S.td,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</td><td style={S.td}><span style={S.tag(f.region==="Kanto"?"#4ea8de":"#e07b54")}>{tl(f.region)}</span></td><td style={{...S.td,...S.m}}>{fmtN(f.n)}</td><td style={{...S.td,...S.m}}>{fmtY(f.avgRev)}</td><td style={{...S.td,...S.m,color:f.intlPct>50?"#c9a84c":"#c8c3b8"}}>{f.intlPct}%</td><td style={{...S.td,...S.m}}>{f.avgLOS}{t.nu}</td><td style={S.td}><span style={S.tag(SEG_COLORS[f.topSeg]||"#64748b")}>{tl(f.topSeg)}</span></td></tr>)}</tbody></table></div></div></div>}
+          <div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.facilityPerf}</div><button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.fullName,Region:f.region,Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.thFacility,t.thRegion,t.reservations,t.thAvgRev,t.thIntlPct,t.thAvgLOS,t.thTopSeg].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>{facD.map(f=><tr key={f.fullName}><td style={{...S.td,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={f.fullName}>{f.fullName}</td><td style={S.td}><span style={S.tag(f.region==="Kanto"?"#4ea8de":"#e07b54")}>{tl(f.region)}</span></td><td style={{...S.td,...S.m}}>{fmtN(f.n)}</td><td style={{...S.td,...S.m}}>{fmtY(f.avgRev)}</td><td style={{...S.td,...S.m,color:f.intlPct>50?"#c9a84c":"#c8c3b8"}}>{f.intlPct}%</td><td style={{...S.td,...S.m}}>{f.avgLOS}{t.nu}</td><td style={S.td}><span style={S.tag(SEG_COLORS[f.topSeg]||"#64748b")}>{tl(f.topSeg)}</span></td></tr>)}</tbody></table></div></div></div>}
 
         {/* RAW DATA */}
         {tab==="data"&&<div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.rowsFiltered(fmtN(filtered.length))}</div><button style={S.bg} onClick={expFilt}>⬇ {t.exportFiltered}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{tH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tC[i],asc:p.col===tC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead><tbody>{paged.map((r,ri)=><tr key={ri}>{tC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","leadTime","totalRev","partySize"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="region"?<span style={S.tag(r[c]==="Kanto"?"#4ea8de":"#e07b54")}>{tl(r[c])}</span>:c==="isCancelled"?<span style={S.tag(r[c]?"#ef4444":"#34d399")}>{r[c]?t.statusCancelled:t.statusConfirmed}</span>:["segment","hotelType"].includes(c)?tl(String(r[c]??"")):String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>{totPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12}}><button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button><span style={{fontSize:12,color:"#a0977f"}}>{t.pageOf(tPage+1,totPg)}</span><button style={S.btn} onClick={()=>setTPage(p=>Math.min(totPg-1,p+1))} disabled={tPage>=totPg-1}>{t.next}</button></div>}</div>}
