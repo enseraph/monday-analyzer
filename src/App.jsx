@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.12";
+const APP_VERSION="1.13";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -585,7 +585,7 @@ export default function App(){
   // ─── DAILY REPORT ───
   useEffect(()=>{
     if(allData.length&&!drFrom){
-      const y=new Date();y.setDate(y.getDate()-1);const yd=y.toISOString().slice(0,10);
+      const y=new Date();y.setDate(y.getDate()-1);const yd=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0");
       setDrFrom(yd);setDrTo(yd);
     }
   },[allData]);
@@ -596,8 +596,9 @@ export default function App(){
     // Shift range back 1 year for YoY
     const prevFrom=`${parseInt(from.slice(0,4))-1}${from.slice(4)}`;
     const prevTo=`${parseInt(to.slice(0,4))-1}${to.slice(4)}`;
-    // Filter by BOOKING DATE (予約受付日時), not check-in
-    const inRange=(r,f,t2)=>{if(!r.bookingDate)return false;const d=r.bookingDate.toISOString().slice(0,10);return d>=f&&d<=t2};
+    // Filter by BOOKING DATE (予約受付日時) using LOCAL date (not UTC)
+    const localDate=dt=>{if(!dt)return null;const y=dt.getFullYear(),m=String(dt.getMonth()+1).padStart(2,"0"),d=String(dt.getDate()).padStart(2,"0");return`${y}-${m}-${d}`};
+    const inRange=(r,f,t2)=>{const d=localDate(r.bookingDate);if(!d)return false;return d>=f&&d<=t2};
     const curData=allData.filter(r=>inRange(r,from,to));
     const prevData=allData.filter(r=>inRange(r,prevFrom,prevTo));
     if(!curData.length)return{empty:true};
