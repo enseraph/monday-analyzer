@@ -1,8 +1,9 @@
 .react-grid-item {
-  overflow: hidden;
+  overflow: visible;
 }
 .react-grid-item > div {
   height: 100%;
+  box-sizing: border-box;
 }
 .react-grid-item.react-grid-placeholder {
   background: rgba(201, 168, 76, 0.15) !important;
