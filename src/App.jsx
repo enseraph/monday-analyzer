@@ -9,17 +9,17 @@ const APP_VERSION="1.04";
 function loadLayouts(tabId){try{return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
 function saveLayouts(tabId,layouts){localStorage.setItem(`rgl_${tabId}`,JSON.stringify(layouts))}
 function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
-function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||1,h:h||2,minW:1,minH:1})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:1,h:h||2,minW:1,minH:1}))}}
+function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||1,h:h||3,minW:1,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:1,h:h||3,minW:1,minH:2}))}}
 const DL={
-  overview:mkL([["ch-mo",0,0,1,2],["ch-sp",1,0,1,2],["ch-mk",0,2,1,3],["ch-dw",1,2,1,3],["ch-mo-rev",0,5,1,2],["ch-res-day",1,5,1,2],["ch-rev-day",0,7,1,2]]),
-  markets:mkL([["ch-mf",0,0,1,3],["ch-mr",1,0,1,3],["ch-ml",0,3,1,3],["ch-mld",1,3,1,3],["ch-msc",0,6,1,3]]),
-  segments:mkL([["ch-sb",0,0],["ch-sr",1,0],["ch-sl",0,2],["ch-slt",1,2],["sg-seg-mo",0,4],["sg-seg-co",1,4,1,3],["sg-ld-sg",0,6],["sg-ld-mo",1,7],["sg-adr",0,8]]),
-  booking:mkL([["ch-bd",0,0,1,3],["ch-bt",1,0,1,3],["ch-bv",0,3]]),
-  revenue:mkL([["ch-rm",0,0,1,3],["ch-rv",1,0,1,2],["ch-rmm",0,3,1,2],["ch-drev",1,2,1,2]]),
-  rooms:mkL([["ch-rt",0,0,2,3]]),
-  facilities:mkL([["fac-res",0,0,1,3],["fac-rev",1,0,1,3],["fac-intl",0,3,1,3],["fac-los",1,3,1,3],["fac-kvk",0,6],["fac-hva",1,6]]),
+  overview:mkL([["ch-mo",0,0,1,3],["ch-sp",1,0,1,3],["ch-mk",0,3,1,3],["ch-dw",1,3,1,3],["ch-mo-rev",0,6,1,3],["ch-res-day",1,6,1,3],["ch-rev-day",0,9,1,3]]),
+  markets:mkL([["ch-mf",0,0,1,4],["ch-mr",1,0,1,4],["ch-ml",0,4,1,4],["ch-mld",1,4,1,4],["ch-msc",0,8,1,4]]),
+  segments:mkL([["ch-sb",0,0,1,3],["ch-sr",1,0,1,3],["ch-sl",0,3,1,3],["ch-slt",1,3,1,3],["sg-seg-mo",0,6,1,3],["sg-seg-co",1,6,1,4],["sg-ld-sg",0,9,1,3],["sg-ld-mo",1,10,1,3],["sg-adr",0,12,1,3]]),
+  booking:mkL([["ch-bd",0,0,1,3],["ch-bt",1,0,1,3],["ch-bv",0,3,1,3]]),
+  revenue:mkL([["ch-rm",0,0,1,4],["ch-rv",1,0,1,3],["ch-rmm",0,4,1,3],["ch-drev",1,3,1,3]]),
+  rooms:mkL([["ch-rt",0,0,2,4]]),
+  facilities:mkL([["fac-res",0,0,1,7],["fac-rev",1,0,1,7],["fac-intl",0,7,1,7],["fac-los",1,7,1,7],["fac-kvk",0,14,1,3],["fac-hva",1,14,1,3]]),
 };
-const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:2,sm:1},rowHeight:140,draggableHandle:".rgl-drag",margin:[14,14],containerPadding:[0,0]};
+const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:2,sm:1},rowHeight:120,draggableHandle:".rgl-drag",margin:[14,14],containerPadding:[0,0],resizeHandles:["se","s","e"]};
 
 function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle}){
   const saved=loadLayouts(tabId);const layouts=saved||DL[tabId];const{containerRef,width}=useContainerWidth();
