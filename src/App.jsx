@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.16";
+const APP_VERSION="1.17";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -1034,15 +1034,37 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
                 </div>;
               };
 
+              // Cancellation data (same month breakdown format)
+              const cancelDayData=dayData.filter(r=>r.isCancelled);
+              const cancelFacMonthRows=buildRows(cancelDayData,"facility");
+              const cancelCountryMonthRows=buildRows(cancelDayData,"country");
+
               return<>
                 <div style={S.ct}>{t.drByFacility}</div>
-                <FacTable title={t.drHotel} rows={hotelRows}/>
-                <FacTable title={t.drApart} rows={apartRows}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                  <FacTable title={t.drHotel} rows={hotelRows}/>
+                  <FacTable title={t.drApart} rows={apartRows}/>
+                </div>
                 <FacTable title="直販" rows={directRows}/>
                 <div style={{marginTop:14}}><div style={S.ct}>{t.drByPlan}</div></div>
                 {planTable(t.drTotal,dayData)}
-                {planTable(t.drHotel,hotelData)}
-                {planTable(t.drApart,apartData)}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                  {planTable(t.drHotel,hotelData)}
+                  {planTable(t.drApart,apartData)}
+                </div>
+                {cancelDayData.length>0&&<>
+                  <div style={{marginTop:14}}><div style={S.ct}>{t.drCancelData} ({cancelDayData.length})</div></div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                    <FacTable title={t.drCancelFacility} rows={cancelFacMonthRows}/>
+                    <div style={S.card}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCancelCountry}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV([...cancelCountryMonthRows,grandRow(cancelCountryMonthRows)].map(r=>{const o={};["name",...allCols].forEach(c=>{o[c]=r[c]});return o}),["name",...allCols],"cancel_country.csv")}>⬇ CSV</button></div>
+                      <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr><th style={S.th}>{t.drCountry}</th>{allCols.map(c=><th key={c} style={S.th}>{c}</th>)}</tr></thead><tbody>
+                      {cancelCountryMonthRows.map(r=><tr key={r.name}><td style={S.td}>{tl(r.name)}</td>{allCols.map(c=><td key={c} style={{...S.td,...S.m}}>{c==="売上"?fmtN(r[c]):r[c]}</td>)}</tr>)}
+                      {(()=>{const gr=grandRow(cancelCountryMonthRows);return<tr style={{fontWeight:700}}><td style={S.td}>Grand total</td>{allCols.map(c=><td key={c} style={{...S.td,...S.m}}>{c==="売上"?fmtN(gr[c]):gr[c]}</td>)}</tr>})()}
+                      </tbody></table></div>
+                    </div>
+                  </div>
+                </>}
               </>;
             })()}
           </div>
@@ -1062,21 +1084,6 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
               </tbody></table></div>
             </div>}
           </div>
-          {/* Section 6: キャンセルデータ */}
-          {dailyRpt.cancelCount>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:14}}>
-            <div style={S.card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCancelFacility} ({dailyRpt.cancelCount})</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.cancelFacRows,["facility","count","fee"],"cancel_facility.csv")}>⬇ CSV</button></div>
-              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drFacilityName,t.drCancelCount,t.drCancelFee].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
-              {dailyRpt.cancelFacRows.map(r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{shortFac(r.facility)}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{fmtN(r.fee)}</td></tr>)}
-              </tbody></table></div>
-            </div>
-            <div style={S.card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCancelCountry} ({dailyRpt.cancelCount})</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.cancelCountryRows,["country","count","fee"],"cancel_country.csv")}>⬇ CSV</button></div>
-              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drCountry,t.drCancelCount,t.drCancelFee].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
-              {dailyRpt.cancelCountryRows.map(r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{fmtN(r.fee)}</td></tr>)}
-              </tbody></table></div>
-            </div>
-          </div>}
         </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.drNoData}</div>}
       </div>}
 
