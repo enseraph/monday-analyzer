@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.09";
+const APP_VERSION="1.10";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -103,6 +103,12 @@ const T = {
     facResByFacility:"Reservations by Facility",facAvgRevByFacility:"Avg Revenue by Facility",facIntlByFacility:"International % by Facility",facLOSByFacility:"Avg LOS by Facility",facKvKCompare:"Kanto vs Kansai Comparison",facHvACompare:"Hotel vs Apart Comparison",
     sheetLoading:"Loading live data from Google Sheets…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",
     resetLayout:"Reset Layout",
+    dailyReport:"Daily Report",
+    drDate:"Report Date",drCountryTable:"By Country",drRegionTable:"By Region",
+    drCountry:"Country",drRegion:"Region",drCount:"Res",drRevenue:"Revenue",drADR:"ADR",drShare:"Share",drGrandTotal:"Grand total",
+    drRevYoY:"Revenue YoY",drCountYoY:"Reservation Count YoY",
+    drCurrent:"Current",drPrevYear:"Previous Year",
+    drNoData:"No reservations for this date.",
     darkMode:"Dark",lightMode:"Light",
   },
   ja: {
@@ -171,6 +177,12 @@ const T = {
     facResByFacility:"施設別予約件数",facAvgRevByFacility:"施設別平均単価",facIntlByFacility:"施設別海外比率",facLOSByFacility:"施設別平均泊数",facKvKCompare:"関東vs関西比較",facHvACompare:"ホテルvsアパート比較",
     sheetLoading:"Google Sheetsからデータを読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",
     resetLayout:"レイアウトリセット",
+    dailyReport:"日次レポート",
+    drDate:"レポート日",drCountryTable:"国籍別",drRegionTable:"地域別",
+    drCountry:"国籍",drRegion:"地域",drCount:"件数",drRevenue:"売上",drADR:"ADR",drShare:"シェア",drGrandTotal:"合計",
+    drRevYoY:"売上YoY",drCountYoY:"件数YoY",
+    drCurrent:"当年",drPrevYear:"前年",
+    drNoData:"この日付のデータはありません。",
     darkMode:"ダーク",lightMode:"ライト",
   }
 };
@@ -193,6 +205,17 @@ const CHILD_COLS=[26,28,30,32,34,36,38,40,42];
 const RANK_ORDER=["No Rank","Regular","Gold","Platinum"];
 const RANK_COLORS=["#64748b","#4ea8de","#c9a84c","#e07b54"];
 
+const GEO_REGION=c=>{
+  if(c==="Japan")return"Japan";
+  if(["United States","Canada","Mexico"].includes(c))return"North America";
+  if(["UK","France","Germany","Spain","Italy","Ireland","Switzerland","Netherlands","Denmark","Austria","Finland","Poland","Norway","Russia","Belgium","Sweden","Romania","Czech Republic","Estonia","Luxembourg"].includes(c))return"Europe";
+  if(["Australia","New Zealand"].includes(c))return"Oceania";
+  if(["Brazil","Chile","Argentina","Uruguay"].includes(c))return"South America";
+  if(["South Africa","Nigeria"].includes(c))return"Africa";
+  if(c==="Unknown"||c==="Other")return"Unknown";
+  return"Asia";
+};
+
 // ─── HELPERS ───
 function getRegion(f){return KANSAI_KW.some(k=>f.includes(k))?"Kansai":"Kanto"}
 function getHotelType(f){if(f.includes("Apart")||f.includes("TABI")||f.includes("GRAND"))return"Apart";return"Hotel"}
@@ -203,6 +226,7 @@ function parseYen(v){if(!v)return 0;try{return parseInt(String(v).replace(/,/g,"
 function simplifyRoom(r){if(!r)return"Other";if(r.includes("ファミリー"))return"Family Room";if(r.includes("スイート")||r.toLowerCase().includes("suite"))return"Suite";if(r.includes("ジャパニーズ")||r.includes("和"))return"Japanese Room";if(r.includes("デラックスツイン"))return"Dlx Twin";if(r.includes("デラックスダブル"))return"Dlx Double";if(r.includes("スタンダードツイン"))return"Std Twin";if(r.includes("スタンダードダブル"))return"Std Double";if(r.includes("スタンダードトリプル"))return"Std Triple";if(r.includes("コンパクトツイン"))return"Compact Twin";if(r.includes("コーナーツイン"))return"Corner Twin";if(r.includes("シングル"))return"Single";if(r.includes("ツイン"))return"Twin";if(r.includes("ダブル"))return"Double";if(r.includes("トリプル"))return"Triple";if(r.includes("おまかせ"))return"Room Assigned";if(r.includes("スタンダード"))return"Standard";return"Other"}
 function fmtY(v){return v>=1e6?"¥"+(v/1e6).toFixed(1)+"M":v>=1000?"¥"+(v/1000).toFixed(0)+"K":"¥"+v}
 function fmtN(v){return v!=null?v.toLocaleString():"—"}
+const fmtDate=d=>{const[y,m,day]=d.split("-");const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return mn[parseInt(m)-1]+" "+parseInt(day)+", "+y};
 function pct(n,d){return d>0?((n/d)*100).toFixed(1)+"%":"—"}
 function avg(a){return a.length?a.reduce((x,y)=>x+y,0)/a.length:0}
 function med(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);const m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2}
@@ -271,6 +295,7 @@ export default function App(){
   const[fBrands,setFBrands]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
+  const[drDate,setDrDate]=useState("");
   const[monthMode,setMonthMode]=useState("stay"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?r.month:r.bookMonth;
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
@@ -557,6 +582,61 @@ export default function App(){
     };
   },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang]);
 
+  // ─── DAILY REPORT ───
+  useEffect(()=>{
+    if(allData.length&&!drDate){
+      const dates=allData.filter(r=>r.checkin&&!r.isCancelled).map(r=>r.checkin.toISOString().slice(0,10));
+      if(dates.length)setDrDate(dates.sort().pop());
+    }
+  },[allData]);
+
+  const dailyRpt=useMemo(()=>{
+    if(!allData.length||!drDate)return null;
+    const dt=drDate;
+    const prevDt=`${parseInt(dt.slice(0,4))-1}${dt.slice(4)}`;
+    const curDay=allData.filter(r=>r.checkin&&r.checkin.toISOString().slice(0,10)===dt&&!r.isCancelled);
+    const prevDay=allData.filter(r=>r.checkin&&r.checkin.toISOString().slice(0,10)===prevDt&&!r.isCancelled);
+    if(!curDay.length)return{empty:true};
+    const byCountry={};
+    curDay.forEach(r=>{
+      if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0,nights:0};
+      byCountry[r.country].count++;
+      byCountry[r.country].rev+=r.totalRev||0;
+      byCountry[r.country].nights+=r.nights||0;
+    });
+    const totalRev=curDay.reduce((a,r)=>a+(r.totalRev||0),0);
+    const totalCount=curDay.length;
+    const totalNights=curDay.reduce((a,r)=>a+(r.nights||0),0);
+    const countryRows=Object.entries(byCountry)
+      .sort((a,b)=>b[1].rev-a[1].rev)
+      .map(([c,v])=>({country:c,count:v.count,rev:v.rev,adr:v.nights>0?Math.round(v.rev/v.nights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
+    const byRegion={};
+    curDay.forEach(r=>{
+      const reg=GEO_REGION(r.country);
+      if(!byRegion[reg])byRegion[reg]={count:0,rev:0,nights:0};
+      byRegion[reg].count++;
+      byRegion[reg].rev+=r.totalRev||0;
+      byRegion[reg].nights+=r.nights||0;
+    });
+    const regionRows=Object.entries(byRegion)
+      .sort((a,b)=>b[1].rev-a[1].rev)
+      .map(([reg,v])=>({region:reg,count:v.count,rev:v.rev,adr:v.nights>0?Math.round(v.rev/v.nights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
+    const prevByCountry={};
+    prevDay.forEach(r=>{
+      if(!prevByCountry[r.country])prevByCountry[r.country]={count:0,rev:0};
+      prevByCountry[r.country].count++;
+      prevByCountry[r.country].rev+=r.totalRev||0;
+    });
+    const topCountries=countryRows.slice(0,10).map(r=>r.country);
+    const yoyRev=topCountries.map(c=>({country:c,current:byCountry[c]?.rev||0,prev:prevByCountry[c]?.rev||0}));
+    const yoyCount=topCountries.map(c=>({country:c,current:byCountry[c]?.count||0,prev:prevByCountry[c]?.count||0}));
+    const curYear=dt.slice(0,4);
+    const prevYear=prevDt.slice(0,4);
+    return{countryRows,regionRows,yoyRev,yoyCount,totalRev,totalCount,
+      totalNights,totalADR:totalNights>0?Math.round(totalRev/totalNights):0,
+      curLabel:fmtDate(dt),prevLabel:fmtDate(prevDt),curYear,prevYear};
+  },[allData,drDate]);
+
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
   const tH=[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty];
@@ -603,8 +683,9 @@ export default function App(){
   const tlTick={fill:TH.tickFill,fontSize:11,formatter:v=>tl(v)};
   const TlTick=({x,y,payload,anchor})=><text x={x} y={y} textAnchor={anchor||"middle"} fill={TH.tickFill} fontSize={11} dy={12}>{tl(payload.value)}</text>;
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
+  const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -657,6 +738,92 @@ export default function App(){
       </div>}
       {/* Tabs */}
       <div style={{display:"flex",gap:2,borderBottom:"1px solid "+TH.border,marginBottom:20,overflowX:"auto"}}>{TABS.map(tb=><button key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0)}} style={{...S.btn,border:"none",borderBottom:"2px solid "+(tab===tb.id?TH.gold:"transparent"),color:tab===tb.id?TH.gold:TH.textMuted,borderRadius:0,padding:"8px 14px",whiteSpace:"nowrap"}}>{tb.l}</button>)}</div>
+
+      {/* DAILY REPORT */}
+      {tab==="daily"&&<div>
+        <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
+          <div><div style={S.fl}>{t.drDate}</div><input type="date" style={S.inp} value={drDate} onChange={e=>setDrDate(e.target.value)}/></div>
+        </div>
+        {dailyRpt&&!dailyRpt.empty?<>
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            <div style={S.kpi}><div style={S.kl}>{t.drCount}</div><div style={S.kv}>{fmtN(dailyRpt.totalCount)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.drRevenue}</div><div style={S.kv}>{fmtY(dailyRpt.totalRev)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.drADR}</div><div style={S.kv}>¥{fmtN(dailyRpt.totalADR)}</div></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div style={S.card}>
+              <div style={S.ct}>{t.drCountryTable}</div>
+              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
+                {[t.drCountry,t.drCount,t.drRevenue,t.drADR,t.drShare].map(h=><th key={h} style={S.th}>{h}</th>)}
+              </tr></thead><tbody>
+                {dailyRpt.countryRows.map(r=><tr key={r.country}>
+                  <td style={S.td}>{tl(r.country)}</td>
+                  <td style={{...S.td,...S.m}}>{r.count}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(r.adr)}</td>
+                  <td style={{...S.td,...S.m}}>{r.share}</td>
+                </tr>)}
+                <tr style={{fontWeight:700}}>
+                  <td style={S.td}>{t.drGrandTotal}</td>
+                  <td style={{...S.td,...S.m}}>{dailyRpt.totalCount}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalRev)}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalADR)}</td>
+                  <td style={{...S.td,...S.m}}>100%</td>
+                </tr>
+              </tbody></table></div>
+            </div>
+            <div style={S.card}>
+              <div style={S.ct}>{t.drRevYoY}</div>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={dailyRpt.yoyRev}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="country" tick={<TlTickV2/>} interval={0}/>
+                  <YAxis tick={tk} tickFormatter={fmtY}/>
+                  <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                  <Legend/>
+                  <Bar dataKey="current" fill={dk?"#c8c3b8":"#1a1a2e"} name={dailyRpt.curLabel} radius={[4,4,0,0]}/>
+                  <Bar dataKey="prev" fill={TH.gold} name={dailyRpt.prevLabel} radius={[4,4,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={S.card}>
+              <div style={S.ct}>{t.drRegionTable}</div>
+              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
+                {[t.drRegion,t.drCount,t.drRevenue,t.drADR,t.drShare].map(h=><th key={h} style={S.th}>{h}</th>)}
+              </tr></thead><tbody>
+                {dailyRpt.regionRows.map(r=><tr key={r.region}>
+                  <td style={S.td}>{r.region}</td>
+                  <td style={{...S.td,...S.m}}>{r.count}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(r.adr)}</td>
+                  <td style={{...S.td,...S.m}}>{r.share}</td>
+                </tr>)}
+                <tr style={{fontWeight:700}}>
+                  <td style={S.td}>{t.drGrandTotal}</td>
+                  <td style={{...S.td,...S.m}}>{dailyRpt.totalCount}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalRev)}</td>
+                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalADR)}</td>
+                  <td style={{...S.td,...S.m}}>100%</td>
+                </tr>
+              </tbody></table></div>
+            </div>
+            <div style={S.card}>
+              <div style={S.ct}>{t.drCountYoY}</div>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={dailyRpt.yoyCount}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="country" tick={<TlTickV2/>} interval={0}/>
+                  <YAxis tick={tk}/>
+                  <Tooltip content={<CT/>}/>
+                  <Legend/>
+                  <Bar dataKey="current" fill={dk?"#c8c3b8":"#1a1a2e"} name={dailyRpt.curLabel} radius={[4,4,0,0]}/>
+                  <Bar dataKey="prev" fill={TH.gold} name={dailyRpt.prevLabel} radius={[4,4,0,0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.drNoData}</div>}
+      </div>}
 
       {!agg?<div style={{textAlign:"center",color:TH.textMuted,padding:40}}>{t.noData}</div>:<>
 
