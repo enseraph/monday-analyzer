@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.15";
+const APP_VERSION="1.16";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -109,6 +109,15 @@ const T = {
     drRevYoY:"Revenue YoY",drCountYoY:"Reservation Count YoY",
     drCurrent:"Current",drPrevYear:"Previous Year",
     drNoData:"No reservations for this date.",
+    drADRChart:"ADR",drDirectRatio:"直販比率",
+    drByFacility:"施設別",drByPlan:"プラン別データ",drCouponData:"クーポンデータ",drCancelData:"キャンセルデータ",
+    drHotel:"ホテル",drApart:"アパート",drTotal:"全体",drPlanType:"プランタイプ",
+    drNonRefund:"返金不可",drStudent:"学生",drOther:"その他",
+    drCheckinMonth:"Check-in Month",drRevShare:"Rev Share",
+    drCouponName:"Coupon",drUsage:"Usage",drNoUse:"利用なし",
+    drFacilityName:"Facility",drNights:"Nights",
+    drSingleDate:"Single Day Date",drAfter:"以降",
+    drCancelFacility:"Cancellation by Facility",drCancelCountry:"Cancellation by Country",drCancelCount:"Cancelled",drCancelFee:"Cancel Fee",
     drDisclaimer:"予約番入れ込みデータ",
     geoArea:"Geo Area",allGeoAreas:"All areas",
     darkMode:"Dark",lightMode:"Light",
@@ -185,6 +194,15 @@ const T = {
     drRevYoY:"売上YoY",drCountYoY:"件数YoY",
     drCurrent:"当年",drPrevYear:"前年",
     drNoData:"この日付のデータはありません。",
+    drADRChart:"ADR",drDirectRatio:"直販比率",
+    drByFacility:"施設別",drByPlan:"プラン別データ",drCouponData:"クーポンデータ",drCancelData:"キャンセルデータ",
+    drHotel:"ホテル",drApart:"アパート",drTotal:"全体",drPlanType:"プランタイプ",
+    drNonRefund:"返金不可",drStudent:"学生",drOther:"その他",
+    drCheckinMonth:"チェックイン月",drRevShare:"売上シェア",
+    drCouponName:"クーポン",drUsage:"利用率",drNoUse:"利用なし",
+    drFacilityName:"施設名",drNights:"泊数",
+    drSingleDate:"単日日付",drAfter:"以降",
+    drCancelFacility:"施設別キャンセル",drCancelCountry:"国別キャンセル",drCancelCount:"キャンセル数",drCancelFee:"キャンセル料",
     drDisclaimer:"予約番入れ込みデータ",
     geoArea:"地理エリア",allGeoAreas:"全エリア",
     darkMode:"ダーク",lightMode:"ライト",
@@ -267,7 +285,13 @@ function processRow(row,headers){
   const status=g("状態");
   const isCancelled=status==="キャンセル";
   const cancelFee=parseYen(g("キャンセル料"));
-  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee}
+  const planName=g("宿泊プラン")||"";
+  const couponName=g("クーポン名")||"";
+  const salesChannel=g("販売チャネル")||"";
+  const getPlanType=pn=>{const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"};
+  const planType=getPlanType(planName);
+  const checkinMonth=checkin?`${checkin.getFullYear()}-${String(checkin.getMonth()+1).padStart(2,"0")}`:null;
+  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel}
 }
 
 function decodeBuffer(buf){
@@ -301,6 +325,7 @@ const[fGeo,setFGeo]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
+const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState("stay"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?r.month:r.bookMonth;
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
@@ -592,7 +617,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   useEffect(()=>{
     if(allData.length&&!drFrom){
       const y=new Date();y.setDate(y.getDate()-1);const yd=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0");
-      setDrFrom(yd);setDrTo(yd);
+      setDrFrom(yd);setDrTo(yd);setDrSingle(yd);
     }
   },[allData]);
 
@@ -654,9 +679,57 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     const yoyCount=yoyCountRaw.sort((a,b)=>b.current-a.current);
     const curLabel=from===to?fmtDate(from):`${fmtDate(from)} – ${fmtDate(to)}`;
     const prevLabel=prevFrom===prevTo?fmtDate(prevFrom):`${fmtDate(prevFrom)} – ${fmtDate(prevTo)}`;
+
+    // === Section 1: ADR by country (sorted by ADR descending) ===
+    const adrData=countryRows.map(r=>({country:r.country,adr:r.adr})).sort((a,b)=>b.adr-a.adr);
+
+    // === Section 2: 直販比率 — stacked bar by booking date, segmented by check-in month ===
+    const localDate2=dt=>{if(!dt)return null;const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");return`${y2}-${m2}-${d2}`};
+    const bookDates=[...new Set(curData.map(r=>localDate2(r.bookingDate)).filter(Boolean))].sort();
+    const ciMonths=[...new Set(curData.map(r=>r.checkinMonth).filter(Boolean))].sort().slice(0,6);
+    const directRatio=bookDates.map(bd=>{
+      const dayData=curData.filter(r=>localDate2(r.bookingDate)===bd);
+      const total=dayData.length;if(!total)return null;
+      const row={date:bd};
+      ciMonths.forEach(m=>{const cnt=dayData.filter(r=>r.checkinMonth===m).length;row[m]=+((cnt/total)*100).toFixed(1)});
+      const otherCnt=dayData.filter(r=>!ciMonths.includes(r.checkinMonth)).length;
+      if(otherCnt>0)row["以降"]=+((otherCnt/total)*100).toFixed(1);
+      return row;
+    }).filter(Boolean);
+    const drMonthKeys=[...ciMonths];
+    if(directRatio.some(r=>r["以降"]))drMonthKeys.push("以降");
+
+    // === Section 3: 施設別 — by single date, grouped by hotel type ===
+    // (computed at render time since it depends on drSingle, not drFrom/drTo)
+
+    // === Section 4: プラン別 — same single date ===
+    // (also computed at render time)
+
+    // === Section 5: クーポンデータ ===
+    const couponSummary={};
+    curData.forEach(r=>{const cn=r.couponName||"利用なし";if(!couponSummary[cn])couponSummary[cn]={count:0,rev:0};couponSummary[cn].count++;couponSummary[cn].rev+=r.totalRev||0});
+    const couponRows=Object.entries(couponSummary).sort((a,b)=>b[1].count-a[1].count)
+      .map(([name,v])=>({name,count:v.count,pct:totalCount>0?((v.count/totalCount)*100).toFixed(2)+"%":"0%",rev:v.rev}));
+    // Coupon detail rows (only rows WITH a coupon)
+    const couponDetails=curData.filter(r=>r.couponName&&r.couponName!=="").map(r=>({
+      country:r.country,facility:r.facility,nights:r.nights||0,rev:r.totalRev||0,coupon:r.couponName
+    }));
+
+    // === Section 6: キャンセルデータ ===
+    const cancelData=curData.filter(r=>r.isCancelled);
+    const cancelByFac={};
+    cancelData.forEach(r=>{if(!cancelByFac[r.facility])cancelByFac[r.facility]={count:0,fee:0};cancelByFac[r.facility].count++;cancelByFac[r.facility].fee+=r.cancelFee||0});
+    const cancelFacRows=Object.entries(cancelByFac).sort((a,b)=>b[1].count-a[1].count).map(([f,v])=>({facility:f,count:v.count,fee:v.fee}));
+    const cancelByCountry={};
+    cancelData.forEach(r=>{if(!cancelByCountry[r.country])cancelByCountry[r.country]={count:0,fee:0};cancelByCountry[r.country].count++;cancelByCountry[r.country].fee+=r.cancelFee||0});
+    const cancelCountryRows=Object.entries(cancelByCountry).sort((a,b)=>b[1].count-a[1].count).map(([c,v])=>({country:c,count:v.count,fee:v.fee}));
+
     return{countryRows,regionRows,yoyRev,yoyCount,totalRev,totalCount,
       totalNights,totalADR:totalNights>0?Math.round(totalRev/totalNights):0,
-      curLabel,prevLabel};
+      curLabel,prevLabel,
+      adrData,directRatio,drMonthKeys,
+      couponRows,couponDetails,
+      cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
   },[allData,drFrom,drTo]);
 
   // Table
@@ -714,16 +787,38 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     <div style={{...S.inner,maxWidth:700,paddingTop:60}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><LT/></div>
       <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><p style={{...S.sub,marginTop:8}}>{t.uploadDesc}</p></div>
-      {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:80}}>
-        <div style={{position:"absolute",animation:"duckWalk 3s linear infinite",fontSize:40,top:10}}>
-          <span style={{display:"inline-block",animation:"duckBob 0.4s ease-in-out infinite alternate"}}>🐥</span>
-        </div>
-        <style>{`
-          @keyframes duckWalk{0%{left:-50px}100%{left:calc(100% + 50px)}}
-          @keyframes duckBob{0%{transform:translateY(0) scaleX(1)}100%{transform:translateY(-6px) scaleX(1)}}
-        `}</style>
-        <div style={{position:"absolute",bottom:0,width:"100%",fontSize:14,color:TH.gold,fontWeight:600}}>{t.sheetLoading}</div>
-      </div>}
+      {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:100}}>
+  <div style={{position:"absolute",animation:"duckWalk 4s linear infinite",top:10}}>
+    <svg width="60" height="50" viewBox="0 0 60 50">
+      {/* Body */}
+      <ellipse cx="30" cy="28" rx="18" ry="14" fill="#f5c542"/>
+      {/* Head */}
+      <circle cx="46" cy="18" r="10" fill="#f5c542"/>
+      {/* Eye */}
+      <circle cx="49" cy="15" r="2" fill="#333"/>
+      {/* Beak top */}
+      <polygon points="56,16 66,14 56,18" fill="#e8963e">
+        <animateTransform attributeName="transform" type="rotate" values="0 56 18;-8 56 18;0 56 18" dur="0.5s" repeatCount="indefinite"/>
+      </polygon>
+      {/* Beak bottom */}
+      <polygon points="56,18 66,20 56,20" fill="#d4822a">
+        <animateTransform attributeName="transform" type="rotate" values="0 56 18;8 56 18;0 56 18" dur="0.5s" repeatCount="indefinite"/>
+      </polygon>
+      {/* Left leg */}
+      <line x1="22" y1="40" x2="18" y2="50" stroke="#e8963e" strokeWidth="2">
+        <animate attributeName="x2" values="18;26;18" dur="0.4s" repeatCount="indefinite"/>
+      </line>
+      {/* Right leg */}
+      <line x1="34" y1="40" x2="38" y2="50" stroke="#e8963e" strokeWidth="2">
+        <animate attributeName="x2" values="38;30;38" dur="0.4s" repeatCount="indefinite"/>
+      </line>
+      {/* Wing */}
+      <ellipse cx="25" cy="26" rx="8" ry="5" fill="#e8b732" opacity="0.7"/>
+    </svg>
+  </div>
+  <style>{`@keyframes duckWalk{0%{left:-80px}100%{left:calc(100% + 80px)}}`}</style>
+  <div style={{position:"absolute",bottom:0,width:"100%",fontSize:14,color:TH.gold,fontWeight:600}}>{t.sheetLoading}</div>
+</div>}
       {sheetStatus==="error"&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:14,marginBottom:16,textAlign:"center"}}><div style={{fontSize:12,color:"#ef4444"}}>⚠ {t.sheetError}</div></div>}
       {sheetStatus!=="loading"&&(<><div style={{textAlign:"center",fontSize:12,color:TH.textMuted,marginBottom:12}}>{sheetStatus==="error"?"":t.orUpload}</div>
       <label style={S.upl} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#c9a84c"}} onDragLeave={e=>{e.currentTarget.style.borderColor="#1e3150"}} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#1e3150";handleFiles(e)}}>
@@ -856,6 +951,132 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
               </ResponsiveContainer></div>
             </div>
           </div>
+          {/* Section 1+2: ADR + 直販比率 */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:14}}>
+            <div style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drADRChart}</div><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart("dr-adr","adr",t.drADRChart)}>{t.exportImg}</button></div></div>
+              <div id="dr-adr"><ResponsiveContainer width="100%" height={Math.max(280,dailyRpt.adrData.length*24)}>
+                <BarChart data={dailyRpt.adrData} layout="vertical">
+                  <CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>"¥"+v.toLocaleString()}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/>
+                  <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" fill={TH.gold} radius={[0,4,4,0]} name="ADR"/>
+                </BarChart>
+              </ResponsiveContainer></div>
+            </div>
+            <div style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drDirectRatio}</div><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart("dr-direct","direct_ratio",t.drDirectRatio)}>{t.exportImg}</button></div></div>
+              <div id="dr-direct"><ResponsiveContainer width="100%" height={280}>
+                <BarChart data={dailyRpt.directRatio}>
+                  <CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/>
+                  <Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend wrapperStyle={{fontSize:10}}/>
+                  {dailyRpt.drMonthKeys.map((m,i)=><Bar key={m} dataKey={m} stackId="a" fill={PALETTE[i%PALETTE.length]} name={m}/>)}
+                </BarChart>
+              </ResponsiveContainer></div>
+            </div>
+          </div>
+          {/* Section 3+4: 施設別 + プラン別 */}
+          <div style={{marginTop:14,borderTop:"1px solid "+TH.border,paddingTop:14}}>
+            <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:14}}>
+              <div><div style={S.fl}>{t.drSingleDate}</div><input type="date" style={S.inp} value={drSingle} onChange={e=>setDrSingle(e.target.value)}/></div>
+              <div style={{fontSize:9,color:TH.textMuted,fontStyle:"italic"}}>※数字は8:40以降に確定</div>
+            </div>
+            {(()=>{
+              const localD=dt=>{if(!dt)return null;return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0")};
+              const sd=drSingle;if(!sd)return null;
+              const dayData=allData.filter(r=>localD(r.bookingDate)===sd);
+              if(!dayData.length)return<div style={{color:TH.textMuted,textAlign:"center",padding:20}}>{t.drNoData}</div>;
+              // Current month and next 4 months
+              const now=new Date(sd);const months=[];for(let i=0;i<5;i++){const d2=new Date(now.getFullYear(),now.getMonth()+i,1);months.push(d2.getFullYear()+"-"+String(d2.getMonth()+1).padStart(2,"0"))}
+              const monthLabels=months.map(m=>{const[y,mo]=m.split("-");return parseInt(mo)+"月"});
+              const afterLabel="以降";
+
+              // Helper to build month breakdown rows
+              const buildRows=(data,keyField)=>{
+                const groups={};
+                data.forEach(r=>{const k=r[keyField]||"Unknown";if(!groups[k])groups[k]={counts:{},total:0,rev:0};const ci=r.checkinMonth||"unknown";groups[k].total++;groups[k].rev+=r.totalRev||0;const bucket=months.includes(ci)?ci:"after";groups[k].counts[bucket]=(groups[k].counts[bucket]||0)+1});
+                return Object.entries(groups).sort((a,b)=>b[1].total-a[1].total).map(([k,v])=>{
+                  const row={name:k};months.forEach((m,i)=>{row[monthLabels[i]]=v.counts[m]||0});row[afterLabel]=v.counts["after"]||0;row["件数"]=v.total;row["売上"]=v.rev;return row;
+                });
+              };
+
+              // Section 3: 施設別 — Hotel, Apart, Direct(TABI/GRAND/Premium)
+              const hotelData=dayData.filter(r=>{const lw=r.facility.toLowerCase();return lw.includes("hotel")||lw.includes("イチホテル")||lw.includes("premium hotel")});
+              const apartData=dayData.filter(r=>{const lw=r.facility.toLowerCase();return!(lw.includes("hotel")||lw.includes("イチホテル")||lw.includes("premium hotel"))});
+              const hotelRows=buildRows(hotelData,"facility");
+              const apartRows=buildRows(apartData,"facility");
+              const directFacs=["TABI","GRAND","Premium hotel","Premium Apart"];
+              const directData=dayData.filter(r=>directFacs.some(f=>r.facility.includes(f)));
+              const directRows=buildRows(directData,"facility");
+              const allCols=[...monthLabels,afterLabel,"件数","売上"];
+              const grandRow=(rows)=>{const gr={name:"Grand total"};allCols.forEach(c=>{gr[c]=rows.reduce((a,r)=>a+(r[c]||0),0)});return gr};
+
+              const FacTable=({title,rows})=><div style={S.card}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{title}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV([...rows,grandRow(rows)].map(r=>{const o={};["name",...allCols].forEach(c=>{o[c]=r[c]});return o}),["name",...allCols],title+".csv")}>⬇ CSV</button></div>
+                <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr><th style={S.th}>{t.drFacilityName}</th>{allCols.map(c=><th key={c} style={S.th}>{c}</th>)}</tr></thead><tbody>
+                {rows.map(r=><tr key={r.name}><td style={{...S.td,whiteSpace:"nowrap"}}>{shortFac(r.name)}</td>{allCols.map(c=><td key={c} style={{...S.td,...S.m}}>{c==="売上"?fmtN(r[c]):r[c]}</td>)}</tr>)}
+                {(()=>{const gr=grandRow(rows);return<tr style={{fontWeight:700}}><td style={S.td}>Grand total</td>{allCols.map(c=><td key={c} style={{...S.td,...S.m}}>{c==="売上"?fmtN(gr[c]):gr[c]}</td>)}</tr>})()}
+                </tbody></table></div>
+              </div>;
+
+              // Section 4: プラン別 — Total, Hotel, Apart
+              const planTable=(title,data)=>{
+                const totalRev2=data.reduce((a,r)=>a+(r.totalRev||0),0);
+                const byPlan={};["返金不可","学生","その他"].forEach(pt=>{byPlan[pt]={counts:{},total:0,rev:0}});
+                data.forEach(r=>{const pt=r.planType||"その他";if(!byPlan[pt])byPlan[pt]={counts:{},total:0,rev:0};const ci=r.checkinMonth||"unknown";const bucket=months.includes(ci)?ci:"after";byPlan[pt].counts[bucket]=(byPlan[pt].counts[bucket]||0)+1;byPlan[pt].total++;byPlan[pt].rev+=r.totalRev||0});
+                const planRows=["返金不可","学生","その他"].map(pt=>{const v=byPlan[pt];const row={name:pt};months.forEach((m,i)=>{row[monthLabels[i]]=v.counts[m]||0});row[afterLabel]=v.counts["after"]||0;row["件数"]=v.total;row["売上"]=v.rev;row["売上シェア"]=totalRev2>0?((v.rev/totalRev2)*100).toFixed(1)+"%":"0%";return row});
+                const planCols=[...monthLabels,afterLabel,"件数","売上","売上シェア"];
+                const planGrand={name:"Grand total"};planCols.forEach(c=>{if(c==="売上シェア")planGrand[c]="100%";else planGrand[c]=planRows.reduce((a,r)=>a+(typeof r[c]==="number"?r[c]:0),0)});
+                return<div style={S.card}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{title}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV([...planRows,planGrand].map(r=>{const o={};["name",...planCols].forEach(c=>{o[c]=r[c]});return o}),["name",...planCols],title+".csv")}>⬇ CSV</button></div>
+                  <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr><th style={S.th}>{t.drPlanType}</th>{planCols.map(c=><th key={c} style={S.th}>{c}</th>)}</tr></thead><tbody>
+                  {planRows.map(r=><tr key={r.name}><td style={S.td}>{r.name}</td>{planCols.map(c=><td key={c} style={{...S.td,...S.m}}>{c==="売上"?fmtN(r[c]):r[c]}</td>)}</tr>)}
+                  <tr style={{fontWeight:700}}><td style={S.td}>Grand total</td>{planCols.map(c=><td key={c} style={{...S.td,...S.m}}>{c==="売上"?fmtN(planGrand[c]):planGrand[c]}</td>)}</tr>
+                  </tbody></table></div>
+                </div>;
+              };
+
+              return<>
+                <div style={S.ct}>{t.drByFacility}</div>
+                <FacTable title={t.drHotel} rows={hotelRows}/>
+                <FacTable title={t.drApart} rows={apartRows}/>
+                <FacTable title="直販" rows={directRows}/>
+                <div style={{marginTop:14}}><div style={S.ct}>{t.drByPlan}</div></div>
+                {planTable(t.drTotal,dayData)}
+                {planTable(t.drHotel,hotelData)}
+                {planTable(t.drApart,apartData)}
+              </>;
+            })()}
+          </div>
+          {/* Section 5: クーポンデータ */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:14}}>
+            <div style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCouponData}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.couponRows,["name","count","pct","rev"],"coupon_summary.csv")}>⬇ CSV</button></div>
+              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drCouponName,t.drCount,t.drUsage,t.drRevenue].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
+              {dailyRpt.couponRows.map(r=><tr key={r.name}><td style={S.td}>{r.name}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{r.pct}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>)}
+              </tbody></table></div>
+            </div>
+            {dailyRpt.couponDetails.length>0&&<div style={S.card}>
+              <div style={S.ct}>{t.drCouponData} — Details</div>
+              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drCountry,t.drFacilityName,t.drNights,t.drRevenue].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
+              {dailyRpt.couponDetails.map((r,i)=><tr key={i}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,whiteSpace:"nowrap"}}>{shortFac(r.facility)}</td><td style={{...S.td,...S.m}}>{r.nights}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>)}
+              <tr style={{fontWeight:700}}><td style={S.td} colSpan={2}>Grand total</td><td style={{...S.td,...S.m}}>{dailyRpt.couponDetails.reduce((a,r)=>a+r.nights,0)}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.couponDetails.reduce((a,r)=>a+r.rev,0))}</td></tr>
+              </tbody></table></div>
+            </div>}
+          </div>
+          {/* Section 6: キャンセルデータ */}
+          {dailyRpt.cancelCount>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginTop:14}}>
+            <div style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCancelFacility} ({dailyRpt.cancelCount})</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.cancelFacRows,["facility","count","fee"],"cancel_facility.csv")}>⬇ CSV</button></div>
+              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drFacilityName,t.drCancelCount,t.drCancelFee].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
+              {dailyRpt.cancelFacRows.map(r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{shortFac(r.facility)}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{fmtN(r.fee)}</td></tr>)}
+              </tbody></table></div>
+            </div>
+            <div style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCancelCountry} ({dailyRpt.cancelCount})</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.cancelCountryRows,["country","count","fee"],"cancel_country.csv")}>⬇ CSV</button></div>
+              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drCountry,t.drCancelCount,t.drCancelFee].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
+              {dailyRpt.cancelCountryRows.map(r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{fmtN(r.fee)}</td></tr>)}
+              </tbody></table></div>
+            </div>
+          </div>}
         </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.drNoData}</div>}
       </div>}
 
