@@ -3,22 +3,22 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.06";
+const APP_VERSION="1.07";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
 function saveLayouts(tabId,layouts){localStorage.setItem(`rgl_${tabId}`,JSON.stringify(layouts))}
 function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
-function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||5,minW:2,minH:3})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||5,minW:4,minH:3}))}}
+function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
 const DL={
-  overview:mkL([["ch-mo",0,0,6,5],["ch-sp",6,0,6,5],["ch-mk",0,5,6,5],["ch-dw",6,5,6,5],["ch-mo-rev",0,10,12,5],["ch-res-day",0,15,6,5],["ch-rev-day",6,15,6,5]]),
-  markets:mkL([["ch-mf",0,0,6,6],["ch-mr",6,0,6,6],["ch-ml",0,6,6,6],["ch-mld",6,6,6,6],["ch-msc",0,12,12,6]]),
-  segments:mkL([["ch-sb",0,0,6,5],["ch-sr",6,0,6,5],["ch-sl",0,5,6,5],["ch-slt",6,5,6,5],["sg-seg-mo",0,10,6,5],["sg-seg-co",6,10,6,6],["sg-ld-sg",0,15,6,5],["sg-ld-mo",6,16,6,5],["sg-adr",0,20,6,5]]),
-  booking:mkL([["ch-bd",0,0,6,5],["ch-bt",6,0,6,5],["ch-bv",0,5,6,5]]),
-  revenue:mkL([["ch-rm",0,0,6,6],["ch-rv",6,0,6,5],["ch-rmm",0,6,6,5],["ch-drev",6,5,6,5]]),
-  rooms:mkL([["ch-rt",0,0,12,6]]),
-  facilities:mkL([["fac-res",0,0,6,9],["fac-rev",6,0,6,9],["fac-intl",0,9,6,9],["fac-los",6,9,6,9],["fac-kvk",0,18,6,5],["fac-hva",6,18,6,5]]),
+  overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-res-day",0,9,6,3],["ch-rev-day",6,9,6,3]]),
+  markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4]]),
+  segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
+  booking:mkL([["ch-bd",0,0,6,3],["ch-bt",6,0,6,3],["ch-bv",0,3,6,3]]),
+  revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3]]),
+  rooms:mkL([["ch-rt",0,0,12,4]]),
+  facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
@@ -567,8 +567,8 @@ export default function App(){
   // Styles
   const S={app:{fontFamily:"'DM Sans',sans-serif",background:"#080e1a",color:"#c8c3b8",minHeight:"100vh"},inner:{maxWidth:1440,margin:"0 auto",padding:"24px 16px"},hdr:{borderBottom:"1px solid #1e3150",paddingBottom:20,marginBottom:24},h1:{fontSize:24,fontWeight:700,color:"#f0ece4",letterSpacing:-.5,margin:0},gold:{color:"#c9a84c"},sub:{fontSize:12,color:"#a0977f",marginTop:4,fontFamily:"'JetBrains Mono',monospace"},card:{background:"#0f1928",border:"1px solid #1e3150",borderRadius:8,padding:16,marginBottom:12},ct:{fontSize:13,fontWeight:600,color:"#f0ece4",marginBottom:10},kpi:{background:"#0f1928",border:"1px solid #1e3150",borderRadius:8,padding:"12px 14px",minWidth:140,flex:"1 1 140px"},kl:{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:"#a0977f",fontFamily:"'JetBrains Mono',monospace"},kv:{fontSize:22,fontWeight:700,color:"#f0ece4",marginTop:2},btn:{background:"#0f1928",border:"1px solid #1e3150",color:"#c8c3b8",fontSize:12,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all .15s"},ba:{background:"rgba(201,168,76,0.12)",borderColor:"#c9a84c",color:"#c9a84c"},bg:{background:"rgba(201,168,76,0.15)",border:"1px solid #c9a84c",color:"#c9a84c",fontSize:12,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"},sel:{background:"#142444",border:"1px solid #1e3150",color:"#c8c3b8",fontSize:12,padding:"5px 8px",borderRadius:5,fontFamily:"'DM Sans',sans-serif",outline:"none"},inp:{background:"#142444",border:"1px solid #1e3150",color:"#c8c3b8",fontSize:12,padding:"5px 8px",borderRadius:5,outline:"none"},tag:c=>({fontSize:10,fontWeight:500,padding:"2px 8px",borderRadius:4,background:c+"22",color:c,marginLeft:6,display:"inline-block"}),tbl:{width:"100%",borderCollapse:"collapse",fontSize:12},th:{textAlign:"left",fontWeight:600,color:"#c9a84c",fontSize:10,textTransform:"uppercase",letterSpacing:.5,padding:"6px 8px",borderBottom:"1px solid #1e3150",fontFamily:"'JetBrains Mono',monospace",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"},td:{padding:"5px 8px",borderBottom:"1px solid rgba(30,49,80,0.4)",fontSize:12,color:"#c8c3b8"},upl:{border:"2px dashed #1e3150",borderRadius:10,padding:"40px 20px",textAlign:"center",cursor:"pointer"},m:{fontFamily:"'JetBrains Mono',monospace"},fl:{fontSize:10,color:"#a0977f",marginBottom:3,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"},lt:{display:"flex",background:"#142444",borderRadius:6,overflow:"hidden",border:"1px solid #1e3150"},lb:a=>({padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:a?"#c9a84c":"transparent",color:a?"#080e1a":"#a0977f",fontFamily:"'DM Sans',sans-serif"}),insight:{background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:8,padding:14,marginBottom:14,fontSize:12,color:"#a0977f",lineHeight:1.6}};
   const LT=()=><div style={S.lt}><button style={S.lb(lang==="en")} onClick={()=>setLang("en")}>EN</button><button style={S.lb(lang==="ja")} onClick={()=>setLang("ja")}>日本語</button></div>;
-  const EB=({id,nm,data,title})=><div style={{display:"flex",gap:6,marginTop:4}}><button style={{...S.btn,fontSize:10}} onClick={()=>dlChart(id,nm,title)}>{t.exportImg}</button>{data&&data.length>0&&<button style={{...S.btn,fontSize:10}} onClick={()=>dlTable(data,title||nm,nm,v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋 Table</button>}</div>;
-  const CC=({title,id,nm,children,h,data,grid})=><div style={{...S.card,height:grid?"100%":"auto",display:"flex",flexDirection:"column",marginBottom:grid?0:12,overflow:"hidden"}}><div className="rgl-drag" style={{...S.ct,cursor:grid?"grab":"default",flexShrink:0}}>{title}</div><div id={id} style={{flex:1,minHeight:0,overflow:"hidden"}}><ResponsiveContainer width="100%" height={grid?"100%":(h||280)}>{children}</ResponsiveContainer></div><div style={{flexShrink:0}}><EB id={id} nm={nm} data={data} title={title}/></div></div>;
+  const EB=({id,nm,data,title})=><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart(id,nm,title)}>{t.exportImg}</button>{data&&data.length>0&&<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(data,title||nm,nm,v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋</button>}</div>;
+  const CC=({title,id,nm,children,h,data,grid})=><div style={{...S.card,height:grid?"100%":"auto",display:"flex",flexDirection:"column",marginBottom:grid?0:12,overflow:"hidden"}}><div className="rgl-drag" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:grid?"grab":"default",flexShrink:0,marginBottom:8}}><div style={S.ct}>{title}</div><EB id={id} nm={nm} data={data} title={title}/></div><div id={id} style={{flex:1,minHeight:0,overflow:"hidden"}}><ResponsiveContainer width="100%" height={grid?"100%":(h||280)}>{children}</ResponsiveContainer></div></div>;
   const G={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(400px,1fr))",gap:14};
   const[layoutVer,setLayoutVer]=useState(0);
   const resetLay=useCallback(tabId=>{clearLayout(tabId);setLayoutVer(v=>v+1)},[]);
