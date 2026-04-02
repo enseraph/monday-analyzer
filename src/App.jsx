@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.10";
+const APP_VERSION="1.11";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -104,7 +104,7 @@ const T = {
     sheetLoading:"Loading live data from Google Sheets…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
-    drDate:"Report Date",drCountryTable:"By Country",drRegionTable:"By Region",
+    drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
     drCountry:"Country",drRegion:"Region",drCount:"Res",drRevenue:"Revenue",drADR:"ADR",drShare:"Share",drGrandTotal:"Grand total",
     drRevYoY:"Revenue YoY",drCountYoY:"Reservation Count YoY",
     drCurrent:"Current",drPrevYear:"Previous Year",
@@ -178,7 +178,7 @@ const T = {
     sheetLoading:"Google Sheetsからデータを読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
-    drDate:"レポート日",drCountryTable:"国籍別",drRegionTable:"地域別",
+    drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
     drCountry:"国籍",drRegion:"地域",drCount:"件数",drRevenue:"売上",drADR:"ADR",drShare:"シェア",drGrandTotal:"合計",
     drRevYoY:"売上YoY",drCountYoY:"件数YoY",
     drCurrent:"当年",drPrevYear:"前年",
@@ -295,7 +295,7 @@ export default function App(){
   const[fBrands,setFBrands]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
-  const[drDate,setDrDate]=useState("");
+  const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
   const[monthMode,setMonthMode]=useState("stay"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?r.month:r.bookMonth;
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
@@ -584,34 +584,38 @@ export default function App(){
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
-    if(allData.length&&!drDate){
-      const dates=allData.filter(r=>r.checkin&&!r.isCancelled).map(r=>r.checkin.toISOString().slice(0,10));
-      if(dates.length)setDrDate(dates.sort().pop());
+    if(allData.length&&!drFrom){
+      const dates=allData.filter(r=>r.bookingDate&&!r.isCancelled).map(r=>r.bookingDate.toISOString().slice(0,10));
+      if(dates.length){const sorted=dates.sort();const latest=sorted.pop();setDrFrom(latest);setDrTo(latest)}
     }
   },[allData]);
 
   const dailyRpt=useMemo(()=>{
-    if(!allData.length||!drDate)return null;
-    const dt=drDate;
-    const prevDt=`${parseInt(dt.slice(0,4))-1}${dt.slice(4)}`;
-    const curDay=allData.filter(r=>r.checkin&&r.checkin.toISOString().slice(0,10)===dt&&!r.isCancelled);
-    const prevDay=allData.filter(r=>r.checkin&&r.checkin.toISOString().slice(0,10)===prevDt&&!r.isCancelled);
-    if(!curDay.length)return{empty:true};
+    if(!allData.length||!drFrom)return null;
+    const from=drFrom,to=drTo||drFrom;
+    // Shift range back 1 year for YoY
+    const prevFrom=`${parseInt(from.slice(0,4))-1}${from.slice(4)}`;
+    const prevTo=`${parseInt(to.slice(0,4))-1}${to.slice(4)}`;
+    // Filter by BOOKING DATE (予約受付日時), not check-in
+    const inRange=(r,f,t2)=>{if(!r.bookingDate)return false;const d=r.bookingDate.toISOString().slice(0,10);return d>=f&&d<=t2};
+    const curData=allData.filter(r=>inRange(r,from,to)&&!r.isCancelled);
+    const prevData=allData.filter(r=>inRange(r,prevFrom,prevTo)&&!r.isCancelled);
+    if(!curData.length)return{empty:true};
     const byCountry={};
-    curDay.forEach(r=>{
+    curData.forEach(r=>{
       if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0,nights:0};
       byCountry[r.country].count++;
       byCountry[r.country].rev+=r.totalRev||0;
       byCountry[r.country].nights+=r.nights||0;
     });
-    const totalRev=curDay.reduce((a,r)=>a+(r.totalRev||0),0);
-    const totalCount=curDay.length;
-    const totalNights=curDay.reduce((a,r)=>a+(r.nights||0),0);
+    const totalRev=curData.reduce((a,r)=>a+(r.totalRev||0),0);
+    const totalCount=curData.length;
+    const totalNights=curData.reduce((a,r)=>a+(r.nights||0),0);
     const countryRows=Object.entries(byCountry)
       .sort((a,b)=>b[1].rev-a[1].rev)
       .map(([c,v])=>({country:c,count:v.count,rev:v.rev,adr:v.nights>0?Math.round(v.rev/v.nights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
     const byRegion={};
-    curDay.forEach(r=>{
+    curData.forEach(r=>{
       const reg=GEO_REGION(r.country);
       if(!byRegion[reg])byRegion[reg]={count:0,rev:0,nights:0};
       byRegion[reg].count++;
@@ -622,7 +626,7 @@ export default function App(){
       .sort((a,b)=>b[1].rev-a[1].rev)
       .map(([reg,v])=>({region:reg,count:v.count,rev:v.rev,adr:v.nights>0?Math.round(v.rev/v.nights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
     const prevByCountry={};
-    prevDay.forEach(r=>{
+    prevData.forEach(r=>{
       if(!prevByCountry[r.country])prevByCountry[r.country]={count:0,rev:0};
       prevByCountry[r.country].count++;
       prevByCountry[r.country].rev+=r.totalRev||0;
@@ -630,12 +634,12 @@ export default function App(){
     const topCountries=countryRows.slice(0,10).map(r=>r.country);
     const yoyRev=topCountries.map(c=>({country:c,current:byCountry[c]?.rev||0,prev:prevByCountry[c]?.rev||0}));
     const yoyCount=topCountries.map(c=>({country:c,current:byCountry[c]?.count||0,prev:prevByCountry[c]?.count||0}));
-    const curYear=dt.slice(0,4);
-    const prevYear=prevDt.slice(0,4);
+    const curLabel=from===to?fmtDate(from):`${fmtDate(from)} – ${fmtDate(to)}`;
+    const prevLabel=prevFrom===prevTo?fmtDate(prevFrom):`${fmtDate(prevFrom)} – ${fmtDate(prevTo)}`;
     return{countryRows,regionRows,yoyRev,yoyCount,totalRev,totalCount,
       totalNights,totalADR:totalNights>0?Math.round(totalRev/totalNights):0,
-      curLabel:fmtDate(dt),prevLabel:fmtDate(prevDt),curYear,prevYear};
-  },[allData,drDate]);
+      curLabel,prevLabel};
+  },[allData,drFrom,drTo]);
 
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
@@ -741,8 +745,10 @@ export default function App(){
 
       {/* DAILY REPORT */}
       {tab==="daily"&&<div>
-        <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
-          <div><div style={S.fl}>{t.drDate}</div><input type="date" style={S.inp} value={drDate} onChange={e=>setDrDate(e.target.value)}/></div>
+        <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
+          <div><div style={S.fl}>{t.drDate}</div></div>
+          <div><div style={S.fl}>{t.drFrom}</div><input type="date" style={S.inp} value={drFrom} onChange={e=>setDrFrom(e.target.value)}/></div>
+          <div><div style={S.fl}>{t.drTo}</div><input type="date" style={S.inp} value={drTo} onChange={e=>setDrTo(e.target.value)}/></div>
         </div>
         {dailyRpt&&!dailyRpt.empty?<>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
