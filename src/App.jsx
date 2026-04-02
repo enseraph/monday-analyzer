@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 
-const APP_VERSION="1.02";
+const APP_VERSION="1.03";
 
 // ─── Google Sheets Backend ───
 const GSHEET_CSV_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_G18beGfHLBfeWlS9biwDrt73kQhC0i8RLvIPkybgCejNffzMnsBp7AfmrrS8suD69dQxCyTWEOzh/pub?gid=0&single=true&output=csv";
@@ -63,13 +63,6 @@ const T = {
     kvkRevByCountry:"Avg Rev/Res by Country",
     kvkRoomBySeg:"Room Type by Segment",kvkRoomByRegion:"Room Type by Region",
     kvkRankByRegion:"Membership Rank by Region",kvkRankByCountry:"Membership Rank by Country",
-    kvkInsightMarkets:"Key takeaways: Domestic Japan dominates both regions. Kanto sees higher Taiwan share; Kansai draws proportionally more USA bookings.",
-    kvkInsightSeg:"Key takeaways: Couples are the largest segment. Taiwan/South Korea skew Group-heavy. USA, Canada, and Australia have high Family shares. Kansai has a higher Group share.",
-    kvkInsightLOS:"Key takeaways: Domestic guests average ~1.5 nights. International guests stay 3–4× longer. Families and Groups stay longest. Kansai shows slightly longer stays.",
-    kvkInsightBooking:"Key takeaways: Families and Groups book ~45 days ahead; Solo ~19 days. Lead time increases Jan→Mar. Smartphone accounts for ~60% of bookings.",
-    kvkInsightRev:"Key takeaways: Family and Group ADR is ~2.5× Solo. International guests generate 3–5× more revenue per reservation than domestic.",
-    kvkInsightRooms:"Key takeaways: Families/Groups favor Japanese Rooms and Family Rooms. Solo travelers concentrate on Singles and Standard Doubles.",
-    kvkInsightMembership:"Key takeaways: ~49% of Kanto guests have no rank. Platinum loyalty is overwhelmingly domestic Japanese.",
     kanto:"Kanto",kansai:"Kansai",avg:"Average",median:"Median",
     kantoRes:"Kanto reservations",kansaiRes:"Kansai reservations",
     _Solo:"Solo",_Couple:"Couple",_Family:"Family",_Group:"Group",_Hotel:"Hotel",_Apart:"Apart",
@@ -136,13 +129,6 @@ const T = {
     kvkRevByCountry:"国別 平均予約単価",
     kvkRoomBySeg:"タイプ別部屋タイプ",kvkRoomByRegion:"エリア別部屋タイプ",
     kvkRankByRegion:"エリア別会員ランク",kvkRankByCountry:"国別会員ランク",
-    kvkInsightMarkets:"主な所見: 国内が両エリアで大多数。関東は台湾比率が高く、関西はアメリカ比率が相対的に高い。",
-    kvkInsightSeg:"主な所見: カップルが最大セグメント。台湾・韓国はグループ比率が高い。アメリカ・カナダ・豪州はファミリー比率が高い。",
-    kvkInsightLOS:"主な所見: 国内客は平均約1.5泊。海外客は3〜4倍長い。ファミリー・グループが最長。関西はやや長い。",
-    kvkInsightBooking:"主な所見: ファミリー・グループは約45日前予約、ソロは約19日。1→3月でLT増加。スマホが約60%。",
-    kvkInsightRev:"主な所見: ファミリー・グループのADRはソロの約2.5倍。海外客の予約単価は国内の3〜5倍。",
-    kvkInsightRooms:"主な所見: ファミリー・グループは和室・ファミリールームを選好。ソロはシングル・スタンダードダブルに集中。",
-    kvkInsightMembership:"主な所見: 関東の約49%がランクなし。プラチナ会員はほぼ全て国内客。",
     kanto:"関東",kansai:"関西",avg:"平均",median:"中央値",
     kantoRes:"関東予約",kansaiRes:"関西予約",
     _Solo:"ソロ",_Couple:"カップル",_Family:"ファミリー",_Group:"グループ",_Hotel:"ホテル",_Apart:"アパート",
@@ -433,6 +419,96 @@ export default function App(){
     return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,scale,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
   },[agg,filtered,dL,lang]);
 
+  // ─── DYNAMIC INSIGHTS ───
+  const insights=useMemo(()=>{
+    if(!agg||!filtered.length)return{};
+    const ja=lang==="ja";
+    const n=agg.n,tr=agg.totalRev,ar=agg.avgRev;
+    // top market
+    const topMkt=mktD.length?mktD[0]:null;
+    // top segment
+    const topSeg=segD.length?segD.reduce((a,b)=>b.count>a.count?b:a,segD[0]):null;
+    // highest rev segment
+    const hiRevSeg=segD.length?segD.reduce((a,b)=>b.avgRev>a.avgRev?b:a,segD[0]):null;
+    // longest LOS segment
+    const hiLOSSeg=segD.length?segD.reduce((a,b)=>b.avgLOS>a.avgLOS?b:a,segD[0]):null;
+    // longest lead segment
+    const hiLeadSeg=segD.length?segD.reduce((a,b)=>b.avgLead>a.avgLead?b:a,segD[0]):null;
+    // peak DOW
+    const peakCI=dowD.length?dowD.reduce((a,b)=>b.checkin>a.checkin?b:a,dowD[0]):null;
+    // smartphone %
+    const spN=filtered.filter(r=>r.device==="スマートフォン").length;
+    const spPct=pct(spN,n);
+    // top room
+    const topRoom=rmD.length?rmD[0]:null;
+    const top3RoomPct=rmD.length>=3?pct(rmD[0].count+rmD[1].count+rmD[2].count,n):"—";
+    // top facility
+    const topFac=facD.length?facD[0]:null;
+    const hiRevFac=facD.length?facD.reduce((a,b)=>b.avgRev>a.avgRev?b:a,facD[0]):null;
+    const hiIntlFac=facD.length?facD.reduce((a,b)=>b.intlPct>a.intlPct?b:a,facD[0]):null;
+    // kanto vs kansai
+    const kN=kvk?kvk.kantoN:0,sN=kvk?kvk.kansaiN:0;
+    const kIntl=agg.rC.Kanto?pct(Object.entries(agg.rC.Kanto).filter(([c])=>c!=="Japan").reduce((a,[,v])=>a+v,0),kN):"—";
+    const sIntl=agg.rC.Kansai?pct(Object.entries(agg.rC.Kansai).filter(([c])=>c!=="Japan").reduce((a,[,v])=>a+v,0),sN):"—";
+    const kTop=kvk&&kvk.mkKanto.length?kvk.mkKanto[0].country:"—";
+    const sTop=kvk&&kvk.mkKansai.length?kvk.mkKansai[0].country:"—";
+    // highest rev market
+    const hiRevMkt=mktD.length?mktD.reduce((a,b)=>b.avgRev>a.avgRev?b:a,mktD[0]):null;
+    // highest LOS market
+    const hiLOSMkt=mktLOS.length?mktLOS[0]:null;
+
+    const b=(items)=>items.filter(Boolean).map(s=>"• "+s).join("\n");
+
+    return{
+      overview:b([
+        ja?`予約${fmtN(n)}件、売上合計${fmtY(tr)}、平均単価${fmtY(ar)}`:`${fmtN(n)} reservations, ${fmtY(tr)} total revenue, ${fmtY(ar)} avg/res`,
+        topMkt?(ja?`最大市場: ${tl(topMkt.country)}（${fmtN(topMkt.count)}件）`:`Top market: ${tl(topMkt.country)} (${fmtN(topMkt.count)})`):null,
+        topSeg?(ja?`最多タイプ: ${tl(topSeg.segment)}（${pct(topSeg.count,n)}）`:`Largest segment: ${tl(topSeg.segment)} (${pct(topSeg.count,n)})`):null,
+        ja?`海外比率: ${pct(agg.intlPct*n/100,n)}、平均泊数: ${agg.avgNights.toFixed(1)}泊`:`International: ${pct(agg.intlPct*n/100,n)}, avg stay: ${agg.avgNights.toFixed(1)} nights`,
+      ]),
+      kvk:b([
+        ja?`関東${fmtN(kN)}件 vs 関西${fmtN(sN)}件`:`Kanto ${fmtN(kN)} vs Kansai ${fmtN(sN)} reservations`,
+        ja?`海外比率: 関東${kIntl} / 関西${sIntl}`:`International: Kanto ${kIntl} / Kansai ${sIntl}`,
+        ja?`関東トップインバウンド: ${tl(kTop)}、関西: ${tl(sTop)}`:`Top inbound — Kanto: ${tl(kTop)}, Kansai: ${tl(sTop)}`,
+        kvk&&kvk.losSR.length?(ja?`平均泊数: 関東${kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length>0?(kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length).toFixed(1):"—"}泊 / 関西${(kvk.losSR.reduce((a,s)=>a+s.Kansai,0)/kvk.losSR.length).toFixed(1)}泊`:`Avg LOS: Kanto ${(kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length).toFixed(1)} / Kansai ${(kvk.losSR.reduce((a,s)=>a+s.Kansai,0)/kvk.losSR.length).toFixed(1)} nights`):null,
+      ]),
+      markets:b([
+        topMkt?(ja?`最大市場: ${tl(topMkt.country)}（${fmtN(topMkt.count)}件）`:`#1 market: ${tl(topMkt.country)} (${fmtN(topMkt.count)})`):null,
+        hiRevMkt?(ja?`最高平均単価: ${tl(hiRevMkt.country)}（${fmtY(hiRevMkt.avgRev)}）`:`Highest avg revenue: ${tl(hiRevMkt.country)} (${fmtY(hiRevMkt.avgRev)})`):null,
+        hiLOSMkt?(ja?`最長平均泊数: ${tl(hiLOSMkt.country)}（${hiLOSMkt.avgLOS}泊）`:`Longest avg stay: ${tl(hiLOSMkt.country)} (${hiLOSMkt.avgLOS} nights)`):null,
+        ja?`国内${pct(filtered.filter(r=>r.country==="Japan").length,n)} / 海外${pct(filtered.filter(r=>r.country!=="Japan").length,n)}`:`Domestic ${pct(filtered.filter(r=>r.country==="Japan").length,n)} / International ${pct(filtered.filter(r=>r.country!=="Japan").length,n)}`,
+      ]),
+      segments:b([
+        topSeg?(ja?`最多: ${tl(topSeg.segment)}（${fmtN(topSeg.count)}件、${pct(topSeg.count,n)}）`:`Largest: ${tl(topSeg.segment)} (${fmtN(topSeg.count)}, ${pct(topSeg.count,n)})`):null,
+        hiRevSeg?(ja?`最高単価: ${tl(hiRevSeg.segment)}（${fmtY(hiRevSeg.avgRev)}）`:`Highest revenue: ${tl(hiRevSeg.segment)} (${fmtY(hiRevSeg.avgRev)}/res)`):null,
+        hiLOSSeg?(ja?`最長泊数: ${tl(hiLOSSeg.segment)}（${hiLOSSeg.avgLOS.toFixed(1)}泊）`:`Longest stay: ${tl(hiLOSSeg.segment)} (${hiLOSSeg.avgLOS.toFixed(1)} nights)`):null,
+        hiLeadSeg?(ja?`最長LT: ${tl(hiLeadSeg.segment)}（${hiLeadSeg.avgLead.toFixed(0)}日）`:`Longest lead: ${tl(hiLeadSeg.segment)} (${hiLeadSeg.avgLead.toFixed(0)} days)`):null,
+      ]),
+      booking:b([
+        ja?`平均リードタイム: ${agg.avgLead.toFixed(0)}日`:`Average lead time: ${agg.avgLead.toFixed(0)} days`,
+        peakCI?(ja?`チェックインピーク: ${peakCI.day}（${fmtN(peakCI.checkin)}件）`:`Peak check-in day: ${peakCI.day} (${fmtN(peakCI.checkin)})`):null,
+        ja?`スマホ予約: ${spPct}`:`Smartphone bookings: ${spPct}`,
+        moD.length>=2?(ja?`月次トレンド: ${moD[moD.length-1].count>moD[0].count?"増加傾向":"減少傾向"}`:`Monthly trend: ${moD[moD.length-1].count>moD[0].count?"increasing":"decreasing"}`):null,
+      ]),
+      revenue:b([
+        ja?`売上合計: ${fmtY(tr)}、平均単価: ${fmtY(ar)}`:`Total revenue: ${fmtY(tr)}, avg ${fmtY(ar)}/res`,
+        hiRevMkt?(ja?`最高単価市場: ${tl(hiRevMkt.country)}（${fmtY(hiRevMkt.avgRev)}）`:`Top market by avg rev: ${tl(hiRevMkt.country)} (${fmtY(hiRevMkt.avgRev)})`):null,
+        hiRevSeg?(ja?`最高単価タイプ: ${tl(hiRevSeg.segment)}（${fmtY(hiRevSeg.avgRev)}）`:`Top segment by avg rev: ${tl(hiRevSeg.segment)} (${fmtY(hiRevSeg.avgRev)})`):null,
+        moD.length>=2?(ja?`月次売上: ${moD[moD.length-1].rev>moD[0].rev?"増加傾向":"減少傾向"}`:`Revenue trend: ${moD[moD.length-1].rev>moD[0].rev?"increasing":"decreasing"}`):null,
+      ]),
+      rooms:b([
+        topRoom?(ja?`最多部屋タイプ: ${topRoom.room}（${pct(topRoom.count,n)}）`:`Top room type: ${topRoom.room} (${pct(topRoom.count,n)})`):null,
+        rmD.length>=3?(ja?`上位3タイプで${top3RoomPct}`:`Top 3 types account for ${top3RoomPct}`):null,
+      ]),
+      facilities:b([
+        topFac?(ja?`最多施設: ${topFac.name}（${fmtN(topFac.n)}件）`:`Top facility: ${topFac.name} (${fmtN(topFac.n)})`):null,
+        hiRevFac?(ja?`最高単価: ${hiRevFac.name}（${fmtY(hiRevFac.avgRev)}）`:`Highest avg rev: ${hiRevFac.name} (${fmtY(hiRevFac.avgRev)})`):null,
+        hiIntlFac?(ja?`最高海外比率: ${hiIntlFac.name}（${hiIntlFac.intlPct}%）`:`Most international: ${hiIntlFac.name} (${hiIntlFac.intlPct}%)`):null,
+        ja?`関東${facD.filter(f=>f.region==="Kanto").length}施設 / 関西${facD.filter(f=>f.region==="Kansai").length}施設`:`Kanto: ${facD.filter(f=>f.region==="Kanto").length} properties / Kansai: ${facD.filter(f=>f.region==="Kansai").length} properties`,
+      ]),
+    };
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang]);
+
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
   const tH=[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty];
@@ -511,7 +587,7 @@ export default function App(){
       {!agg?<div style={{textAlign:"center",color:"#a0977f",padding:40}}>{t.noData}</div>:<>
 
         {/* OVERVIEW */}
-        {tab==="overview"&&<div style={G}>
+        {tab==="overview"&&<>{insights.overview&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.overview}</div>}<div style={G}>
           <CC title={t.resByMonth} id="ch-mo" nm="monthly" data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC>
           <CC title={t.resBySeg} id="ch-sp" nm="seg_pie" data={segD}><PieChart><Pie data={segD} dataKey="count" nameKey="segment" cx="50%" cy="50%" outerRadius={100} label={({segment,percent})=>`${tl(segment)} ${(percent*100).toFixed(0)}%`} labelLine={{stroke:"#a0977f"}}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></CC>
           <CC title={t.topMarkets} id="ch-mk" nm="top_markets" h={320} data={mktD.slice(0,10)}><BarChart data={mktD.slice(0,10)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c9a84c" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC>
@@ -519,10 +595,11 @@ export default function App(){
           <CC title={t.monthlyRev} id="ch-mo-rev" nm="monthly_rev_ov" data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC>
           <CC title={t.resByDay} id="ch-res-day" nm="res_day" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC>
           <CC title={t.revByDay} id="ch-rev-day" nm="rev_day" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC>
-        </div>}
+        </div></>}
 
         {/* ═══════════════════ KANTO VS KANSAI ═══════════════════ */}
         {tab==="kvk"&&kvk&&<div>
+          {insights.kvk&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.kvk}</div>}
           <div style={{marginBottom:16}}><div style={{fontSize:18,fontWeight:600,color:"#f0ece4"}}>{t.kvkTitle}</div><div style={{fontSize:12,color:"#a0977f",marginTop:4}}>{t.kvkSub} — {t.kanto} {fmtN(kvk.kantoN)} / {t.kansai} {fmtN(kvk.kansaiN)}</div></div>
 
           {/* 1. SOURCE MARKETS */}
@@ -531,7 +608,7 @@ export default function App(){
             <CC title={`${t.kvkKansaiMarkets}`} id="kk-mk-ks" nm="kansai_markets" h={Math.max(250,kvk.mkKansai.length*26)} data={kvk.mkKansai}><BarChart data={kvk.mkKansai} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#e07b54" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC>
           </div>
           <CC title={t.kvkMarketMonthly} id="kk-mk-mo" nm="market_monthly" h={300} data={kvk.mktMo}><BarChart data={kvk.mktMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>{kvk.topC.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC>
-          <div style={S.insight}>{t.kvkInsightMarkets}</div>
+
 
           {/* 2. SEGMENTS */}
           <div style={G}>
@@ -543,7 +620,7 @@ export default function App(){
             <CC title={t.kvkLOSByCountry} id="kk-los-co" nm="los_country" h={Math.max(280,kvk.losC.length*26)} data={kvk.losC}><BarChart data={kvk.losC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avg" fill="#4ea8de" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC>
             <CC title={t.kvkLOSBySegRegion} id="kk-los-sr" nm="los_seg_region" data={kvk.losSR}><BarChart data={kvk.losSR}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC>
           </div>
-          <div style={S.insight}>{t.kvkInsightLOS}</div>
+
 
           {/* 4. BOOKING */}
           <div style={G}>
@@ -551,32 +628,32 @@ export default function App(){
             <CC title={`${t.kvkDOWCheckout}`} id="kk-dw-co" nm="dow_checkout" h={300} data={kvk.dowCO}><RadarChart data={kvk.dowCO} cx="50%" cy="50%" outerRadius={100}><PolarGrid stroke="#1e3150"/><PolarAngleAxis dataKey="day" tick={{fill:"#c8c3b8",fontSize:11}}/><PolarRadiusAxis tick={false}/><Radar name={t.kanto} dataKey="Kanto" stroke="#4ea8de" fill="rgba(78,168,222,0.1)" dot={{r:3}}/><Radar name={`${t.kansai} (×${kvk.scale})`} dataKey="Kansai" stroke="#e07b54" fill="rgba(224,123,84,0.1)" dot={{r:3}}/><Legend/><Tooltip content={<CT/>}/></RadarChart></CC>
           </div>
           <CC title={t.kvkDeviceByRegion} id="kk-dev" nm="device_region" data={kvk.devR}><BarChart data={kvk.devR}><CartesianGrid {...gl}/><XAxis dataKey="device" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC>
-          <div style={S.insight}>{t.kvkInsightBooking}</div>
+
 
           {/* 5. REVENUE */}
           <div style={G}>
             <CC title={t.kvkRevBySegRegion} id="kk-rev-sr" nm="rev_seg_region" data={kvk.revSR}><BarChart data={kvk.revSR}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC>
           </div>
           <CC title={t.kvkRevByCountry} id="kk-rev-co" nm="rev_country" h={Math.max(300,kvk.revC.length*26)} data={kvk.revC}><BarChart data={kvk.revC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC>
-          <div style={S.insight}>{t.kvkInsightRev}</div>
+
 
           {/* 6. ROOMS */}
           <div style={G}>
             <CC title={t.kvkRoomBySeg} id="kk-rm-sg" nm="room_seg" h={320} data={kvk.roomSeg}><BarChart data={kvk.roomSeg} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="segment" type="category" width={80} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{kvk.allRoomTypes.slice(0,10).map((rm,i)=><Bar key={rm} dataKey={rm} stackId="a" fill={PALETTE[i%PALETTE.length]} name={rm}/>)}</BarChart></CC>
             <CC title={t.kvkRoomByRegion} id="kk-rm-rg" nm="room_region" h={Math.max(280,kvk.roomReg.length*26)} data={kvk.roomReg}><BarChart data={kvk.roomReg} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="room" type="category" width={110} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[0,4,4,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[0,4,4,0]} name={t.kansai}/></BarChart></CC>
           </div>
-          <div style={S.insight}>{t.kvkInsightRooms}</div>
+
 
           {/* 7. MEMBERSHIP */}
           <div style={G}>
             <CC title={t.kvkRankByRegion} id="kk-rk-rg" nm="rank_region" data={kvk.rankReg}><BarChart data={kvk.rankReg}><CartesianGrid {...gl}/><XAxis dataKey="region" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>{RANK_ORDER.map((rk,i)=><Bar key={rk} dataKey={rk} stackId="a" fill={RANK_COLORS[i]} name={tl(rk)}/>)}</BarChart></CC>
             <CC title={t.kvkRankByCountry} id="kk-rk-co" nm="rank_country" h={Math.max(250,kvk.rankC.length*30)} data={kvk.rankC}><BarChart data={kvk.rankC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Legend/>{RANK_ORDER.map((rk,i)=><Bar key={rk} dataKey={rk} stackId="a" fill={RANK_COLORS[i]} name={tl(rk)}/>)}</BarChart></CC>
           </div>
-          <div style={S.insight}>{t.kvkInsightMembership}</div>
+
         </div>}
 
         {/* MARKETS */}
-        {tab==="markets"&&<div><div style={G}>
+        {tab==="markets"&&<div>{insights.markets&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.markets}</div>}<div style={G}>
           <CC title={t.allMarketsCount} id="ch-mf" nm="markets" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC>
           <CC title={t.avgRevByMarket} id="ch-mr" nm="markets_rev" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC>
           <CC title={t.avgLOSByCountry} id="ch-ml" nm="mkt_los" h={Math.max(300,mktLOS.length*28)} data={mktLOS}><BarChart data={mktLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC>
@@ -585,38 +662,38 @@ export default function App(){
         </div><div style={{...S.card,marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.marketSummary}</div><button style={{...S.bg,fontSize:10}} onClick={expSum}>⬇ {t.exportCSV}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.thCountry,t.reservations,t.thTotalRev,t.thAvgRev,t.thAvgLOS,t.thAvgLeadTime].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>{mktD.map(d=><tr key={d.country}><td style={S.td}>{tl(d.country)}</td><td style={{...S.td,...S.m}}>{fmtN(d.count)}</td><td style={{...S.td,...S.m}}>{fmtY(agg.byC[d.country]?.rev||0)}</td><td style={{...S.td,...S.m}}>{fmtY(d.avgRev)}</td><td style={{...S.td,...S.m}}>{(avg(agg.byC[d.country]?.nights||[])).toFixed(1)}{t.ns}</td><td style={{...S.td,...S.m}}>{agg.byC[d.country]?.lead.length?(avg(agg.byC[d.country].lead)).toFixed(0)+t.ds:"—"}</td></tr>)}</tbody></table></div></div></div>}
 
         {/* SEGMENTS */}
-        {tab==="segments"&&<div style={G}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><CC key={id} title={ti} id={id} nm={id} data={segD}><BarChart data={segD}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC>)}
+        {tab==="segments"&&<>{insights.segments&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.segments}</div>}<div style={G}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><CC key={id} title={ti} id={id} nm={id} data={segD}><BarChart data={segD}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC>)}
           {kvk&&<CC title={t.kvkSegByMonth} id="sg-seg-mo" nm="seg_month" data={kvk.segMo}><BarChart data={kvk.segMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>{SEG_ORDER.map((s,i)=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}
           {kvk&&<CC title={t.kvkSegByCountry} id="sg-seg-co" nm="seg_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}
           {kvk&&<CC title={t.kvkLeadBySeg} id="sg-ld-sg" nm="lead_seg" data={kvk.leadSeg}><BarChart data={kvk.leadSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#4ea8de" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(78,168,222,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}
           {kvk&&<CC title={t.kvkLeadByMonth} id="sg-ld-mo" nm="lead_month" data={kvk.leadMo}><BarChart data={kvk.leadMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#c9a84c" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(201,168,76,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}
           {kvk&&<CC title={t.kvkADRBySeg} id="sg-adr" nm="adr_seg" data={kvk.adrSeg}><BarChart data={kvk.adrSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" radius={[4,4,0,0]} name="ADR">{kvk.adrSeg.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC>}
-          <div style={S.insight}>{t.kvkInsightSeg}</div>
-        </div>}
+
+        </div></>}
 
         {/* BOOKING */}
-        {tab==="booking"&&<div style={G}>
+        {tab==="booking"&&<>{insights.booking&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.booking}</div>}<div style={G}>
           <CC title={t.ciCoDOW} id="ch-bd" nm="dow" h={300} data={dowD}><BarChart data={dowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></BarChart></CC>
           <CC title={t.monthlyTrend} id="ch-bt" nm="trend" h={300} data={moD}><LineChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><YAxis yAxisId="r" orientation="right" tick={tks} tickFormatter={fmtY}/><Tooltip content={<CT/>}/><Legend/><Line type="monotone" dataKey="count" stroke="#c9a84c" strokeWidth={2} dot={{fill:"#c9a84c",r:4}} name={t.reservations}/><Line type="monotone" dataKey="avgRev" stroke="#4ea8de" strokeWidth={2} dot={{fill:"#4ea8de",r:4}} name={t.avgRevRes} yAxisId="r"/></LineChart></CC>
           <CC title={t.bookingDevice} id="ch-bv" nm="device" data={(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});return Object.entries(m).map(([name,value])=>({name,value}))})()}>{(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});const dd=Object.entries(m).map(([name,value])=>({name,value}));return(<PieChart><Pie data={dd} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={{stroke:"#a0977f"}}>{dd.map((_,i)=><Cell key={i} fill={PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart>)})()}</CC>
-        </div>}
+        </div></>}
 
         {/* REVENUE */}
-        {tab==="revenue"&&<div style={G}>
+        {tab==="revenue"&&<>{insights.revenue&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.revenue}</div>}<div style={G}>
           <CC title={t.revByMarket} id="ch-rm" nm="rev_mkt" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC>
           <CC title={t.monthlyRev} id="ch-rv" nm="monthly_rev" h={300} data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC>
           <CC title={t.revByMarketMonth} id="ch-rmm" nm="rev_mkt_month" h={300} data={revMktMo.data}><BarChart data={revMktMo.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revMktMo.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC>
           <CC title={t.dailyRev} id="ch-drev" nm="daily_rev" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC>
-        </div>}
+        </div></>}
 
         {/* ROOMS */}
-        {tab==="rooms"&&<div style={G}>
+        {tab==="rooms"&&<>{insights.rooms&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.rooms}</div>}<div style={G}>
           <CC title={t.roomTypeDist} id="ch-rt" nm="rooms" h={Math.max(280,rmD.length*26)} data={rmD}><BarChart data={rmD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="room" type="category" width={120} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c084fc" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC>
           <div style={S.card}><div style={S.ct}>{t.roomTypeTable}</div><table style={S.tbl}><thead><tr><th style={S.th}>{t.thRoom}</th><th style={S.th}>{t.thCount}</th><th style={S.th}>{t.thShare}</th></tr></thead><tbody>{rmD.map(d=><tr key={d.room}><td style={S.td}>{d.room}</td><td style={{...S.td,...S.m}}>{fmtN(d.count)}</td><td style={{...S.td,...S.m}}>{pct(d.count,agg.n)}</td></tr>)}</tbody></table></div>
-        </div>}
+        </div></>}
 
         {/* FACILITIES */}
-        {tab==="facilities"&&<div>
+        {tab==="facilities"&&<div>{insights.facilities&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.facilities}</div>}
           <div style={G}>
             <CC title={t.facResByFacility} id="fac-res" nm="fac_res" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="n" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC>
             <CC title={t.facAvgRevByFacility} id="fac-rev" nm="fac_rev" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC>
