@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.17";
+const APP_VERSION="1.18";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -788,37 +788,12 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><LT/></div>
       <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><p style={{...S.sub,marginTop:8}}>{t.uploadDesc}</p></div>
       {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:100}}>
-  <div style={{position:"absolute",animation:"duckWalk 4s linear infinite",top:10}}>
-    <svg width="60" height="50" viewBox="0 0 60 50">
-      {/* Body */}
-      <ellipse cx="30" cy="28" rx="18" ry="14" fill="#f5c542"/>
-      {/* Head */}
-      <circle cx="46" cy="18" r="10" fill="#f5c542"/>
-      {/* Eye */}
-      <circle cx="49" cy="15" r="2" fill="#333"/>
-      {/* Beak top */}
-      <polygon points="56,16 66,14 56,18" fill="#e8963e">
-        <animateTransform attributeName="transform" type="rotate" values="0 56 18;-8 56 18;0 56 18" dur="0.5s" repeatCount="indefinite"/>
-      </polygon>
-      {/* Beak bottom */}
-      <polygon points="56,18 66,20 56,20" fill="#d4822a">
-        <animateTransform attributeName="transform" type="rotate" values="0 56 18;8 56 18;0 56 18" dur="0.5s" repeatCount="indefinite"/>
-      </polygon>
-      {/* Left leg */}
-      <line x1="22" y1="40" x2="18" y2="50" stroke="#e8963e" strokeWidth="2">
-        <animate attributeName="x2" values="18;26;18" dur="0.4s" repeatCount="indefinite"/>
-      </line>
-      {/* Right leg */}
-      <line x1="34" y1="40" x2="38" y2="50" stroke="#e8963e" strokeWidth="2">
-        <animate attributeName="x2" values="38;30;38" dur="0.4s" repeatCount="indefinite"/>
-      </line>
-      {/* Wing */}
-      <ellipse cx="25" cy="26" rx="8" ry="5" fill="#e8b732" opacity="0.7"/>
-    </svg>
-  </div>
-  <style>{`@keyframes duckWalk{0%{left:-80px}100%{left:calc(100% + 80px)}}`}</style>
-  <div style={{position:"absolute",bottom:0,width:"100%",fontSize:14,color:TH.gold,fontWeight:600}}>{t.sheetLoading}</div>
-</div>}
+        <div style={{position:"absolute",animation:"logoTumble 3.5s linear infinite",top:10}}>
+          <img src={import.meta.env.BASE_URL+"monday-logo.svg"} alt="MONday" style={{width:60,height:60,animation:"logoSpin 1.2s linear infinite"}}/>
+        </div>
+        <style>{`@keyframes logoTumble{0%{left:-80px}100%{left:calc(100% + 80px)}}@keyframes logoSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
+        <div style={{position:"absolute",bottom:0,width:"100%",fontSize:14,color:TH.gold,fontWeight:600}}>{t.sheetLoading}</div>
+      </div>}
       {sheetStatus==="error"&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:14,marginBottom:16,textAlign:"center"}}><div style={{fontSize:12,color:"#ef4444"}}>⚠ {t.sheetError}</div></div>}
       {sheetStatus!=="loading"&&(<><div style={{textAlign:"center",fontSize:12,color:TH.textMuted,marginBottom:12}}>{sheetStatus==="error"?"":t.orUpload}</div>
       <label style={S.upl} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#c9a84c"}} onDragLeave={e=>{e.currentTarget.style.borderColor="#1e3150"}} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#1e3150";handleFiles(e)}}>
@@ -1045,9 +1020,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
                   <FacTable title={t.drHotel} rows={hotelRows}/>
                   <FacTable title={t.drApart} rows={apartRows}/>
                 </div>
-                <FacTable title="直販" rows={directRows}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                  <FacTable title="直販" rows={directRows}/>
+                </div>
                 <div style={{marginTop:14}}><div style={S.ct}>{t.drByPlan}</div></div>
-                {planTable(t.drTotal,dayData)}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+                  {planTable(t.drTotal,dayData)}
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
                   {planTable(t.drHotel,hotelData)}
                   {planTable(t.drApart,apartData)}
