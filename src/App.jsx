@@ -3,22 +3,22 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.05";
+const APP_VERSION="1.06";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
 function saveLayouts(tabId,layouts){localStorage.setItem(`rgl_${tabId}`,JSON.stringify(layouts))}
 function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
-function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
+function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||5,minW:2,minH:3})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||5,minW:4,minH:3}))}}
 const DL={
-  overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-res-day",0,9,6,3],["ch-rev-day",6,9,6,3]]),
-  markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4]]),
-  segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
-  booking:mkL([["ch-bd",0,0,6,3],["ch-bt",6,0,6,3],["ch-bv",0,3,6,3]]),
-  revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3]]),
-  rooms:mkL([["ch-rt",0,0,12,4]]),
-  facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
+  overview:mkL([["ch-mo",0,0,6,5],["ch-sp",6,0,6,5],["ch-mk",0,5,6,5],["ch-dw",6,5,6,5],["ch-mo-rev",0,10,12,5],["ch-res-day",0,15,6,5],["ch-rev-day",6,15,6,5]]),
+  markets:mkL([["ch-mf",0,0,6,6],["ch-mr",6,0,6,6],["ch-ml",0,6,6,6],["ch-mld",6,6,6,6],["ch-msc",0,12,12,6]]),
+  segments:mkL([["ch-sb",0,0,6,5],["ch-sr",6,0,6,5],["ch-sl",0,5,6,5],["ch-slt",6,5,6,5],["sg-seg-mo",0,10,6,5],["sg-seg-co",6,10,6,6],["sg-ld-sg",0,15,6,5],["sg-ld-mo",6,16,6,5],["sg-adr",0,20,6,5]]),
+  booking:mkL([["ch-bd",0,0,6,5],["ch-bt",6,0,6,5],["ch-bv",0,5,6,5]]),
+  revenue:mkL([["ch-rm",0,0,6,6],["ch-rv",6,0,6,5],["ch-rmm",0,6,6,5],["ch-drev",6,5,6,5]]),
+  rooms:mkL([["ch-rt",0,0,12,6]]),
+  facilities:mkL([["fac-res",0,0,6,9],["fac-rev",6,0,6,9],["fac-intl",0,9,6,9],["fac-los",6,9,6,9],["fac-kvk",0,18,6,5],["fac-hva",6,18,6,5]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
