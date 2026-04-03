@@ -804,7 +804,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
 
     const overallAvg=+(withNights.reduce((a,r)=>a+r.nights,0)/withNights.length).toFixed(2);
     return{histData,segLOS,countryLOS,detailRows,overallAvg,totalWithNights:withNights.length};
-  },[filtered]);
+  },[filtered,monthMode]);
 
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
