@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.27";
+const APP_VERSION="1.28";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -103,7 +103,7 @@ const T = {
     revByMarketMonth:"Revenue by Market by Month",
     avgLOSByCountry:"Avg LOS by Country",avgLeadByCountry:"Avg Lead Time by Country",segMixByCountry:"Segment Mix by Country",
     facResByFacility:"Reservations by Facility",facAvgRevByFacility:"Avg Revenue by Facility",facIntlByFacility:"International % by Facility",facLOSByFacility:"Avg LOS by Facility",facKvKCompare:"Kanto vs Kansai Comparison",facHvACompare:"Hotel vs Apart Comparison",
-    sheetLoading:"Loading live data from Google Sheets…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers January 2025 onward.",timezone:"Timezone",
+    sheetLoading:"Loading…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers January 2025 onward.",timezone:"Timezone",
 compare:"Compare",
 cmpPeriodA:"Period A",cmpPeriodB:"Period B",
 cmpPreset:"Quick Select",cmpCustom:"Custom",
@@ -196,7 +196,7 @@ cmpNoData:"Select date ranges for both periods to compare.",
     revByMarketMonth:"月別市場別売上",
     avgLOSByCountry:"国別 平均泊数",avgLeadByCountry:"国別 平均LT",segMixByCountry:"国別タイプ構成",
     facResByFacility:"施設別予約件数",facAvgRevByFacility:"施設別平均単価",facIntlByFacility:"施設別海外比率",facLOSByFacility:"施設別平均泊数",facKvKCompare:"関東vs関西比較",facHvACompare:"ホテルvsアパート比較",
-    sheetLoading:"Google Sheetsからデータを読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2025年1月以降を対象としています。",timezone:"タイムゾーン",
+    sheetLoading:"読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2025年1月以降を対象としています。",timezone:"タイムゾーン",
 compare:"比較",
 cmpPeriodA:"期間A",cmpPeriodB:"期間B",
 cmpPreset:"クイック選択",cmpCustom:"カスタム",
@@ -1180,9 +1180,9 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
               <div><div style={S.fl}>{t.to}</div><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.to} onChange={e=>setCmpB(p=>({...p,to:e.target.value}))}/></div>
             </div>
             <div style={{display:"flex",gap:4}}>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear(),m=now.getMonth();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(now);const b1=`${m===0?y-1:y}-${String(m===0?12:m).padStart(2,"0")}-01`;const bEnd=new Date(y,m,0);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear(),m=now.getMonth(),d=now.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(now);const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,d);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
               <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));const sun=new Date(mon);sun.setDate(mon.getDate()+6);const prevMon=new Date(mon);prevMon.setDate(mon.getDate()-7);const prevSun=new Date(sun);prevSun.setDate(sun.getDate()-7);setCmpA({from:tzFmt(mon),to:tzFmt(sun)});setCmpB({from:tzFmt(prevMon),to:tzFmt(prevSun)})}}>{t.cmpWeekVsWeek}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(now);const b1=`${y-1}-01-01`;const b2=`${y-1}-12-31`;setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(now);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,now.getMonth(),now.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
             </div>
           </div>
           {compareRpt&&!compareRpt.empty?<>
