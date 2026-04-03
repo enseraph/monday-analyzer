@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.28";
+const APP_VERSION="1.29";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -20,6 +20,7 @@ const DL={
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
+  pace:mkL([["pace-chart",0,0,12,5],["pace-summary",0,5,6,4]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
@@ -112,6 +113,7 @@ cmpDelta:"Delta",cmpChange:"Change %",
 cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpNoData:"Select date ranges for both periods to compare.",
+pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -205,6 +207,7 @@ cmpDelta:"差分",cmpChange:"変化率",
 cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別",
 cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
 cmpNoData:"比較する2つの期間を選択してください。",
+pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -373,6 +376,7 @@ const[fGeo,setFGeo]=useState([]);
   const[filtersOpen,setFiltersOpen]=useState(true);
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
 const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
+const[paceMetric,setPaceMetric]=useState("count");
 const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState("booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
@@ -616,6 +620,90 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     return{a,b,pctChg,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
   },[allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
 
+  // ─── PACE REPORT ───
+  const paceRpt=useMemo(()=>{
+    if(!allData.length)return null;
+    // Apply global filters (same as Compare — all except date range)
+    const applyFilters=d=>{
+      if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);
+      else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);
+      if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);
+      if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));
+      if(fR!=="All")d=d.filter(r=>r.region===fR);
+      if(fC.length)d=d.filter(r=>fC.includes(r.country));
+      if(fS.length)d=d.filter(r=>fS.includes(r.segment));
+      if(fP.length)d=d.filter(r=>fP.includes(r.facility));
+      if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+      return d;
+    };
+    const base=applyFilters([...allData]);
+    const getDateStr=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
+
+    // Current month + past 5 months
+    const now=new Date();
+    const months=[];
+    for(let i=0;i<6;i++){
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      months.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));
+    }
+    const currentMonth=months[0];
+    const todayDay=now.getDate();
+
+    // Group data by month and day-of-month
+    const monthData={};
+    months.forEach(m=>{monthData[m]={}});
+    base.forEach(r=>{
+      const ds=getDateStr(r);if(!ds)return;
+      const ym=ds.slice(0,7);
+      const day=parseInt(ds.slice(8,10));
+      if(!monthData[ym])return;
+      if(!monthData[ym][day])monthData[ym][day]={count:0,rev:0};
+      monthData[ym][day].count++;
+      monthData[ym][day].rev+=r.totalRev||0;
+    });
+
+    // Build cumulative data for chart: [{day:1, "2026-04":X, "2026-03":Y, ...}, ...]
+    const maxDay=31;
+    const chartData=[];
+    for(let day=1;day<=maxDay;day++){
+      const row={day};
+      months.forEach(m=>{
+        let cumCount=0,cumRev=0;
+        for(let d=1;d<=day;d++){
+          if(monthData[m][d]){cumCount+=monthData[m][d].count;cumRev+=monthData[m][d].rev}
+        }
+        // For current month, only show up to today's day
+        if(m===currentMonth&&day>todayDay){row[m]=null}
+        else{row[m]=paceMetric==="count"?cumCount:cumRev}
+      });
+      // Skip rows where ALL months are 0 or null
+      if(months.some(m=>row[m]>0))chartData.push(row);
+      else if(day<=todayDay)chartData.push(row);
+    }
+
+    // Month-end totals for summary table
+    const summaryRows=months.map(m=>{
+      let totalCount=0,totalRev=0;
+      Object.values(monthData[m]).forEach(v=>{totalCount+=v.count;totalRev+=v.rev});
+      // For current month, also compute "at this point" for last month
+      return{month:m,count:totalCount,rev:totalRev};
+    });
+
+    // Current month stats at today's day vs last month at same day
+    const curAtDay={count:0,rev:0};
+    for(let d=1;d<=todayDay;d++){if(monthData[currentMonth]?.[d]){curAtDay.count+=monthData[currentMonth][d].count;curAtDay.rev+=monthData[currentMonth][d].rev}}
+    const lastMonth=months[1];
+    const lastAtDay={count:0,rev:0};
+    if(lastMonth)for(let d=1;d<=todayDay;d++){if(monthData[lastMonth]?.[d]){lastAtDay.count+=monthData[lastMonth][d].count;lastAtDay.rev+=monthData[lastMonth][d].rev}}
+
+    // Projected month-end (linear extrapolation)
+    const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+    const projectedCount=todayDay>0?Math.round(curAtDay.count/todayDay*daysInMonth):0;
+    const projectedRev=todayDay>0?Math.round(curAtDay.rev/todayDay*daysInMonth):0;
+
+    return{months,currentMonth,todayDay,chartData,summaryRows,curAtDay,lastAtDay,projectedCount,projectedRev,daysInMonth};
+  },[allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,paceMetric]);
+
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
     if(!agg||!filtered.length)return{};
@@ -708,8 +796,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         ja?`期間B: ${fmtN(compareRpt.b.totalCount)}件、${fmtY(compareRpt.b.totalRev)}`:`Period B: ${fmtN(compareRpt.b.totalCount)} res, ${fmtY(compareRpt.b.totalRev)}`,
         ja?`差分: 予約${compareRpt.a.totalCount-compareRpt.b.totalCount>0?"+":""}${compareRpt.a.totalCount-compareRpt.b.totalCount}件、売上${compareRpt.a.totalRev-compareRpt.b.totalRev>0?"+":""}${fmtY(Math.abs(compareRpt.a.totalRev-compareRpt.b.totalRev))} (${compareRpt.pctChg(compareRpt.a.totalRev,compareRpt.b.totalRev)})`:`Delta: ${compareRpt.a.totalCount-compareRpt.b.totalCount>0?"+":""}${compareRpt.a.totalCount-compareRpt.b.totalCount} res, ${compareRpt.a.totalRev-compareRpt.b.totalRev>0?"+":""}${fmtY(Math.abs(compareRpt.a.totalRev-compareRpt.b.totalRev))} (${compareRpt.pctChg(compareRpt.a.totalRev,compareRpt.b.totalRev)})`,
       ]):null,
+      pace:paceRpt?b([
+        ja?`当月(${paceRpt.currentMonth}): ${paceMetric==="count"?fmtN(paceRpt.curAtDay.count)+"件":fmtY(paceRpt.curAtDay.rev)}（${paceRpt.todayDay}日時点）`:`Current month (${paceRpt.currentMonth}): ${paceMetric==="count"?fmtN(paceRpt.curAtDay.count):fmtY(paceRpt.curAtDay.rev)} (day ${paceRpt.todayDay})`,
+        paceRpt.lastAtDay?(ja?`先月同日: ${paceMetric==="count"?fmtN(paceRpt.lastAtDay.count)+"件":fmtY(paceRpt.lastAtDay.rev)}（差分: ${paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count>0?"+":"")+(paceRpt.curAtDay.count-paceRpt.lastAtDay.count)+"件":(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev>0?"+":"")+fmtY(Math.abs(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev))}）`:`Last month at day ${paceRpt.todayDay}: ${paceMetric==="count"?fmtN(paceRpt.lastAtDay.count):fmtY(paceRpt.lastAtDay.rev)} (delta: ${paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count>0?"+":"")+(paceRpt.curAtDay.count-paceRpt.lastAtDay.count):(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev>0?"+":"")+fmtY(Math.abs(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev))})`):null,
+        ja?`月末予測: ${paceMetric==="count"?fmtN(paceRpt.projectedCount)+"件":fmtY(paceRpt.projectedRev)}`:`Projected month-end: ${paceMetric==="count"?fmtN(paceRpt.projectedCount):fmtY(paceRpt.projectedRev)}`,
+      ]):null,
     };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt]);
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -904,7 +997,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1216,6 +1309,30 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
               /></div>
             </DraggableGrid>
           </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
+        </div>}
+
+        {/* PACE */}
+        {tab==="pace"&&<div>
+          {insights.pace&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.pace}</div>}
+          <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
+            <div><div style={S.fl}>{t.paceTitle}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(paceMetric==="count"?S.ba:{})}} onClick={()=>setPaceMetric("count")}>{t.paceToggleRes}</button><button style={{...S.btn,...(paceMetric==="rev"?S.ba:{})}} onClick={()=>setPaceMetric("rev")}>{t.paceToggleRev}</button></div></div>
+          </div>
+          {paceRpt?<>
+            <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+              <div style={S.kpi}><div style={S.kl}>{paceRpt.currentMonth} {t.paceSoFar}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.curAtDay.count):"¥"+fmtN(paceRpt.curAtDay.rev)}</div></div>
+              {paceRpt.lastAtDay&&<div style={S.kpi}><div style={S.kl}>{paceRpt.months[1]} {t.paceSoFar}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.lastAtDay.count):"¥"+fmtN(paceRpt.lastAtDay.rev)}</div><div style={{fontSize:11,marginTop:4,color:(paceMetric==="count"?paceRpt.curAtDay.count-paceRpt.lastAtDay.count:paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev)>0?"#34d399":"#ef4444"}}>{(paceMetric==="count"?paceRpt.curAtDay.count-paceRpt.lastAtDay.count:paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev)>0?"+":""}{paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count):fmtN(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev)}</div></div>}
+              <div style={S.kpi}><div style={S.kl}>{t.paceProjected}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.projectedCount):"¥"+fmtN(paceRpt.projectedRev)}</div></div>
+            </div>
+            <DraggableGrid {...dgProps("pace")}>
+              <div key="pace-chart"><CC grid title={t.paceTitle} id="pace-chart" nm="pace" data={paceRpt.chartData}><LineChart data={paceRpt.chartData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk} label={{value:"Day of Month",position:"insideBottom",offset:-5,fill:TH.tickFill,fontSize:10}}/><YAxis tick={tk} tickFormatter={paceMetric==="rev"?fmtY:undefined}/><Tooltip content={<CT formatter={paceMetric==="rev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Legend wrapperStyle={{fontSize:10}}/>{paceRpt.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={i===0?TH.gold:PALETTE[i%PALETTE.length]} strokeWidth={i===0?3:1.5} dot={i===0?{fill:TH.gold,r:3}:false} name={m} connectNulls={false}/>)}</LineChart></CC></div>
+              <div key="pace-summary"><SortTbl
+                data={paceRpt.summaryRows}
+                columns={[{key:"month",label:"Month"},{key:"count",label:t.reservations},{key:"rev",label:t.totalRevenue}]}
+                renderRow={r=><tr key={r.month} style={r.month===paceRpt.currentMonth?{fontWeight:700}:{}}><td style={S.td}>{r.month}</td><td style={{...S.td,...S.m}}>{fmtN(r.count)}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>}
+                title={t.paceSummary}
+              /></div>
+            </DraggableGrid>
+          </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.paceNoData}</div>}
         </div>}
 
       {!agg?<div style={{textAlign:"center",color:TH.textMuted,padding:40}}>{t.noData}</div>:<>
