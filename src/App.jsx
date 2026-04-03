@@ -403,6 +403,7 @@ const[fGeo,setFGeo]=useState([]);
   const[filtersOpen,setFiltersOpen]=useState(true);
 const[presets,setPresets]=useState(()=>{try{return JSON.parse(localStorage.getItem("monday_presets"))||[]}catch{return[]}});
 const[presetMsg,setPresetMsg]=useState("");
+const[activePreset,setActivePreset]=useState(null);
 const savePreset=name=>{
   if(!name.trim())return;
   const p={name:name.trim(),filters:{fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDT,fDF,fDTo,monthMode},saved:new Date().toISOString()};
@@ -415,6 +416,7 @@ const loadPreset=p=>{
   setFCancel(f.fCancel||"all");setFHType(f.fHType||"All");setFBrands(f.fBrands||[]);
   setFR(f.fR||"All");setFC(f.fC||[]);setFS(f.fS||[]);setFP(f.fP||[]);setFGeo(f.fGeo||[]);
   setFDT(f.fDT||"booking");setFDF(f.fDF||"");setFDTo(f.fDTo||"");setMonthMode(f.monthMode||"booking");
+  setActivePreset(p.name);
 };
 const deletePreset=name=>{
   const updated=presets.filter(p=>p.name!==name);
@@ -1261,7 +1263,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       {filtersOpen?<div style={{...S.card,overflow:"visible",marginBottom:16,display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap",position:"sticky",top:0,zIndex:50,background:TH.filterBg,backdropFilter:"blur(8px)",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
         <div style={{display:"flex",gap:6,alignItems:"center",flexBasis:"100%",marginBottom:6,flexWrap:"wrap"}}>
           <div style={{fontSize:10,fontWeight:600,color:TH.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}}>{t.presets}:</div>
-          {presets.map(p=><div key={p.name} style={{display:"flex",gap:2,alignItems:"center"}}><button style={{...S.btn,fontSize:10,padding:"3px 10px",background:TH.accent,borderColor:TH.accentBorder,color:TH.gold}} onClick={()=>loadPreset(p)}>{p.name}</button><button style={{...S.btn,fontSize:8,padding:"2px 5px",color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>deletePreset(p.name)}>×</button></div>)}
+          {presets.map(p=><div key={p.name} style={{display:"flex",gap:2,alignItems:"center"}}><button style={{...S.btn,fontSize:10,padding:"3px 10px",...(activePreset===p.name?{background:"rgba(52,211,153,0.15)",borderColor:"#34d399",color:"#34d399"}:{background:TH.accent,borderColor:TH.accentBorder,color:TH.gold})}} onClick={()=>loadPreset(p)}>{activePreset===p.name?"✓ ":""}{p.name}</button><button style={{...S.btn,fontSize:8,padding:"2px 5px",color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>deletePreset(p.name)}>×</button></div>)}
           {presets.length===0&&<span style={{fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.noPresets}</span>}
           <div style={{display:"flex",gap:4,alignItems:"center",marginLeft:"auto"}}>
             <input id="preset-input" type="text" placeholder={t.presetName} style={{...S.inp,fontSize:10,padding:"3px 8px",width:120}} onKeyDown={e=>{if(e.key==="Enter"){savePreset(e.target.value);e.target.value=""}}}/>
@@ -1281,7 +1283,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
         <div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
-        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([])}}>{t.reset}</button>
+        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setActivePreset(null)}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
