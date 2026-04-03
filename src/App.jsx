@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.31";
+const APP_VERSION="1.32";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -17,6 +17,7 @@ const DL={
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-bt",6,0,6,3],["ch-bv",0,3,6,3]]),
+  los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
@@ -116,6 +117,7 @@ cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
+    losTab:"LOS",losTitle:"Length of Stay Distribution",losByNight:"Reservations by Nights",losBySeg:"LOS by Segment",losByCountry:"Avg LOS by Country",losDetail:"LOS Detail",losNights:"Nights",losAvgRev:"Avg Rev/Night",los7plus:"7+",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -211,6 +213,7 @@ cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
 cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
+    losTab:"泊数分布",losTitle:"泊数分布",losByNight:"泊数別予約数",losBySeg:"タイプ別泊数",losByCountry:"国別平均泊数",losDetail:"泊数詳細",losNights:"泊数",losAvgRev:"平均単価/泊",los7plus:"7+",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -755,6 +758,54 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     return{totalN,cancelledN,overallRate,lostRev,totalFee,monthTrend,countryRows,countryByRate,segRows,facRows,facByRate};
   },[allData,fDT,fDF,fDTo,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,monthMode]);
 
+  // ─── LOS DISTRIBUTION ───
+  const losRpt=useMemo(()=>{
+    if(!filtered.length)return null;
+    const withNights=filtered.filter(r=>r.nights&&r.nights>0);
+    if(!withNights.length)return null;
+
+    // Bucket into 1,2,3,4,5,6,7+ nights
+    const buckets=[1,2,3,4,5,6,7];
+    const bucketLabel=n=>n===7?"7+":String(n);
+    const getBucket=n=>n>=7?7:n;
+
+    // Main histogram: stacked by segment
+    const histData=buckets.map(b=>{
+      const label=bucketLabel(b);
+      const row={nights:label};
+      let total=0;
+      SEG_ORDER.forEach(s=>{
+        const count=withNights.filter(r=>getBucket(r.nights)===b&&r.segment===s).length;
+        row[s]=count;total+=count;
+      });
+      row.total=total;
+      return row;
+    });
+
+    // By segment: avg LOS per segment
+    const segLOS=SEG_ORDER.map(s=>{
+      const d=withNights.filter(r=>r.segment===s);
+      return{segment:s,avgLOS:d.length?+(d.reduce((a,r)=>a+r.nights,0)/d.length).toFixed(2):0,count:d.length};
+    }).filter(s=>s.count>0);
+
+    // By country: avg LOS top 15
+    const byC={};
+    withNights.forEach(r=>{if(!byC[r.country])byC[r.country]={total:0,nights:0};byC[r.country].total++;byC[r.country].nights+=r.nights});
+    const countryLOS=Object.entries(byC).sort((a,b)=>b[1].total-a[1].total).slice(0,15).map(([c,v])=>({country:c,avgLOS:+(v.nights/v.total).toFixed(2),count:v.total}));
+
+    // Detail table: per bucket
+    const detailRows=buckets.map(b=>{
+      const rows=withNights.filter(r=>getBucket(r.nights)===b);
+      const count=rows.length;
+      const rev=rows.reduce((a,r)=>a+(r.totalRev||0),0);
+      const totalNights=rows.reduce((a,r)=>a+r.nights,0);
+      return{nights:bucketLabel(b),count,share:withNights.length>0?+((count/withNights.length)*100).toFixed(1):0,avgRevNight:totalNights>0?Math.round(rev/totalNights):0};
+    });
+
+    const overallAvg=+(withNights.reduce((a,r)=>a+r.nights,0)/withNights.length).toFixed(2);
+    return{histData,segLOS,countryLOS,detailRows,overallAvg,totalWithNights:withNights.length};
+  },[filtered]);
+
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
     if(!agg||!filtered.length)return{};
@@ -857,8 +908,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         ja?`失注売上: ${fmtY(cancelRpt.lostRev)}、徴収キャンセル料: ${fmtY(cancelRpt.totalFee)}`:`Lost revenue: ${fmtY(cancelRpt.lostRev)}, fees collected: ${fmtY(cancelRpt.totalFee)}`,
         cancelRpt.segRows.length?(ja?`最高キャンセル率タイプ: ${tl(cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).segment)}（${cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).rate}%）`:`Highest cancel rate segment: ${tl(cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).segment)} (${cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).rate}%)`):null,
       ]):null,
+      los:losRpt?b([
+        ja?`平均泊数: ${losRpt.overallAvg}泊（${fmtN(losRpt.totalWithNights)}件）`:`Average LOS: ${losRpt.overallAvg} nights (${fmtN(losRpt.totalWithNights)} reservations)`,
+        losRpt.detailRows.length?(ja?`最多: ${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).nights}泊（${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).share}%）`:`Most common: ${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).nights} nights (${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).share}%)`):null,
+        losRpt.segLOS.length?(ja?`最長タイプ: ${tl(losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).segment)}（${losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).avgLOS}泊）`:`Longest segment: ${tl(losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).segment)} (${losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).avgLOS} nights)`):null,
+      ]):null,
     };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt]);
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt,losRpt]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -1053,7 +1109,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"los",l:t.losTab},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1459,6 +1515,24 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
           <div key="ch-bt"><CC grid title={t.monthlyTrend} id="ch-bt" nm="trend" h={300} data={moD}><LineChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><YAxis yAxisId="r" orientation="right" tick={tks} tickFormatter={fmtY}/><Tooltip content={<CT/>}/><Legend/><Line type="monotone" dataKey="count" stroke="#c9a84c" strokeWidth={2} dot={{fill:"#c9a84c",r:4}} name={t.reservations}/><Line type="monotone" dataKey="avgRev" stroke="#4ea8de" strokeWidth={2} dot={{fill:"#4ea8de",r:4}} name={t.avgRevRes} yAxisId="r"/></LineChart></CC></div>
           <div key="ch-bv"><CC grid title={t.bookingDevice} id="ch-bv" nm="device" data={(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});return Object.entries(m).map(([name,value])=>({name,value}))})()}>{(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});const dd=Object.entries(m).map(([name,value])=>({name,value}));return(<PieChart><Pie data={dd} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${name} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{dd.map((_,i)=><Cell key={i} fill={PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart>)})()}</CC></div>
         </DraggableGrid></>}
+
+        {/* LOS DISTRIBUTION */}
+        {tab==="los"&&<>{insights.los&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.los}</div>}
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+            <div style={S.kpi}><div style={S.kl}>{t.avgLOS}</div><div style={S.kv}>{losRpt?losRpt.overallAvg:0} {t.ns}</div></div>
+          </div>
+          {losRpt?<DraggableGrid {...dgProps("los")}>
+            <div key="los-hist"><CC grid title={t.losByNight} id="los-hist" nm="los_hist" data={losRpt.histData}><BarChart data={losRpt.histData}><CartesianGrid {...gl}/><XAxis dataKey="nights" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC></div>
+            <div key="los-seg"><CC grid title={t.losBySeg} id="los-seg" nm="los_seg" data={losRpt.segLOS}><BarChart data={losRpt.segLOS}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" radius={[4,4,0,0]} name={t.avgLOS}>{losRpt.segLOS.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
+            <div key="los-country"><CC grid title={t.losByCountry} id="los-country" nm="los_country" data={losRpt.countryLOS}><BarChart data={losRpt.countryLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
+            <div key="los-detail"><SortTbl
+              data={losRpt.detailRows}
+              columns={[{key:"nights",label:t.losNights},{key:"count",label:t.reservations},{key:"share",label:t.drShare},{key:"avgRevNight",label:t.losAvgRev}]}
+              renderRow={r=><tr key={r.nights}><td style={{...S.td,fontWeight:600}}>{r.nights}</td><td style={{...S.td,...S.m}}>{fmtN(r.count)}</td><td style={{...S.td,...S.m}}>{r.share}%</td><td style={{...S.td,...S.m}}>{fmtY(r.avgRevNight)}</td></tr>}
+              title={t.losDetail}
+            /></div>
+          </DraggableGrid>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.paceNoData}</div>}
+        </>}
 
         {/* REVENUE */}
         {tab==="revenue"&&<>{insights.revenue&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.revenue}</div>}<DraggableGrid {...dgProps("revenue")}>
