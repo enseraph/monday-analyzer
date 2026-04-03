@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.34";
+const APP_VERSION="1.35";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -120,6 +120,7 @@ pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
     losTab:"LOS",losTitle:"Length of Stay Distribution",losByNight:"Reservations by Nights",losBySeg:"LOS by Segment",losByCountry:"Avg LOS by Country",losDetail:"LOS Detail",losNights:"Nights",losAvgRev:"Avg Rev/Night",los7plus:"7+",
     revpar:"RevPAR",revparTitle:"Revenue Per Available Room",revparByFac:"RevPAR by Facility",revparTrend:"Monthly RevPAR Trend",revparOcc:"Occupancy",revparAvail:"Available",revparSold:"Sold",revparRate:"RevPAR",occRate:"Occ %",
+    presets:"Presets",saveView:"Save View",presetName:"Preset name",presetSaved:"Saved!",presetDelete:"Delete",presetLoad:"Load",noPresets:"No saved presets",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -217,6 +218,7 @@ pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggl
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
     losTab:"泊数分布",losTitle:"泊数分布",losByNight:"泊数別予約数",losBySeg:"タイプ別泊数",losByCountry:"国別平均泊数",losDetail:"泊数詳細",losNights:"泊数",losAvgRev:"平均単価/泊",los7plus:"7+",
     revpar:"RevPAR",revparTitle:"客室あたり売上",revparByFac:"施設別RevPAR",revparTrend:"月別RevPAR推移",revparOcc:"稼働率",revparAvail:"販売可能",revparSold:"販売済",revparRate:"RevPAR",occRate:"稼働率",
+    presets:"プリセット",saveView:"ビュー保存",presetName:"プリセット名",presetSaved:"保存済!",presetDelete:"削除",presetLoad:"読込",noPresets:"保存済プリセットなし",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -399,6 +401,25 @@ export default function App(){
 const[fGeo,setFGeo]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
+const[presets,setPresets]=useState(()=>{try{return JSON.parse(localStorage.getItem("monday_presets"))||[]}catch{return[]}});
+const[presetMsg,setPresetMsg]=useState("");
+const savePreset=name=>{
+  if(!name.trim())return;
+  const p={name:name.trim(),filters:{fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDT,fDF,fDTo,monthMode},saved:new Date().toISOString()};
+  const updated=[...presets.filter(x=>x.name!==p.name),p];
+  setPresets(updated);localStorage.setItem("monday_presets",JSON.stringify(updated));
+  setPresetMsg(t.presetSaved);setTimeout(()=>setPresetMsg(""),2000);
+};
+const loadPreset=p=>{
+  const f=p.filters;
+  setFCancel(f.fCancel||"all");setFHType(f.fHType||"All");setFBrands(f.fBrands||[]);
+  setFR(f.fR||"All");setFC(f.fC||[]);setFS(f.fS||[]);setFP(f.fP||[]);setFGeo(f.fGeo||[]);
+  setFDT(f.fDT||"booking");setFDF(f.fDF||"");setFDTo(f.fDTo||"");setMonthMode(f.monthMode||"booking");
+};
+const deletePreset=name=>{
+  const updated=presets.filter(p=>p.name!==name);
+  setPresets(updated);localStorage.setItem("monday_presets",JSON.stringify(updated));
+};
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
 const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
 const[paceMetric,setPaceMetric]=useState("count");
@@ -1238,6 +1259,16 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       </div>
       {/* Filters */}
       {filtersOpen?<div style={{...S.card,overflow:"visible",marginBottom:16,display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap",position:"sticky",top:0,zIndex:50,background:TH.filterBg,backdropFilter:"blur(8px)",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexBasis:"100%",marginBottom:6,flexWrap:"wrap"}}>
+          <div style={{fontSize:10,fontWeight:600,color:TH.textMuted,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"}}>{t.presets}:</div>
+          {presets.map(p=><div key={p.name} style={{display:"flex",gap:2,alignItems:"center"}}><button style={{...S.btn,fontSize:10,padding:"3px 10px",background:TH.accent,borderColor:TH.accentBorder,color:TH.gold}} onClick={()=>loadPreset(p)}>{p.name}</button><button style={{...S.btn,fontSize:8,padding:"2px 5px",color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>deletePreset(p.name)}>×</button></div>)}
+          {presets.length===0&&<span style={{fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.noPresets}</span>}
+          <div style={{display:"flex",gap:4,alignItems:"center",marginLeft:"auto"}}>
+            <input id="preset-input" type="text" placeholder={t.presetName} style={{...S.inp,fontSize:10,padding:"3px 8px",width:120}} onKeyDown={e=>{if(e.key==="Enter"){savePreset(e.target.value);e.target.value=""}}}/>
+            <button style={{...S.btn,fontSize:10,padding:"3px 10px",background:"rgba(201,168,76,0.15)",borderColor:TH.gold,color:TH.gold}} onClick={()=>{const inp=document.getElementById("preset-input");if(inp){savePreset(inp.value);inp.value=""}}}>{t.saveView}</button>
+            {presetMsg&&<span style={{fontSize:10,color:"#34d399"}}>{presetMsg}</span>}
+          </div>
+        </div>
         <div><div style={S.fl}>{t.statusFilter}</div><div style={{display:"flex",gap:3}}>{[["confirmed",t.statusConfirmed],["cancelled",t.statusCancelled],["all",t.statusAll]].map(([v,l])=><button key={v} style={{...S.btn,...(fCancel===v?S.ba:{})}} onClick={()=>setFCancel(v)}>{l}</button>)}</div></div>
         <div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fHType===v?S.ba:{})}} onClick={()=>setFHType(v)}>{l}</button>)}</div></div>
         <div><div style={S.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={S} cl={t.clear}/></div>
