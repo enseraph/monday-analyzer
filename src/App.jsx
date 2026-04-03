@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.32";
+const APP_VERSION="1.33";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -23,6 +23,7 @@ const DL={
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
   pace:mkL([["pace-chart",0,0,12,5],["pace-summary",0,5,6,4]]),
   cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,9],["canc-detail",6,7,6,7]]),
+  revpar:mkL([["rp-trend",0,0,12,4],["rp-fac",0,4,6,7],["rp-detail",6,4,6,5]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
@@ -118,6 +119,7 @@ cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
     losTab:"LOS",losTitle:"Length of Stay Distribution",losByNight:"Reservations by Nights",losBySeg:"LOS by Segment",losByCountry:"Avg LOS by Country",losDetail:"LOS Detail",losNights:"Nights",losAvgRev:"Avg Rev/Night",los7plus:"7+",
+    revpar:"RevPAR",revparTitle:"Revenue Per Available Room",revparByFac:"RevPAR by Facility",revparTrend:"Monthly RevPAR Trend",revparOcc:"Occupancy",revparAvail:"Available",revparSold:"Sold",revparRate:"RevPAR",occRate:"Occ %",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -214,6 +216,7 @@ cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
     losTab:"泊数分布",losTitle:"泊数分布",losByNight:"泊数別予約数",losBySeg:"タイプ別泊数",losByCountry:"国別平均泊数",losDetail:"泊数詳細",losNights:"泊数",losAvgRev:"平均単価/泊",los7plus:"7+",
+    revpar:"RevPAR",revparTitle:"客室あたり売上",revparByFac:"施設別RevPAR",revparTrend:"月別RevPAR推移",revparOcc:"稼働率",revparAvail:"販売可能",revparSold:"販売済",revparRate:"RevPAR",occRate:"稼働率",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -264,6 +267,22 @@ const GEO_REGION=c=>{
   if(c==="Unknown"||c==="Other")return"Unknown";
   return"Asia";
 };
+
+const ROOM_INVENTORY={
+  "hotel MONday Premium 豊洲":263,"hotel MONday 東京西葛西":129,"hotel MONday Premium 上野御徒町":124,
+  "hotel MONday 浅草":115,"イチホテル上野新御徒町":108,"イチホテル浅草橋":103,"hotel MONday 羽田空港":102,
+  "イチホテル東京八丁堀":102,"hotel MONday 京都丸太町":100,"hotel MONday 秋葉原浅草橋":94,
+  "hotel MONday 京都烏丸二条":92,"Premium hotel MONday 舞浜ビューⅠ":57,
+  "MONday Apart Premium 上野":71,"MONday Apart Premium 日本橋":56,"MONday Apart Premium 上野御徒町":50,
+  "GRAND MONday 銀座":45,"Premium Apart MONday 銀座EAST":43,"MONday Apart Premium 京都駅":41,
+  "MONday Apart 銀座新富町":40,"MONday Apart 上野新御徒町":36,"Premium Apart MONday 京都五条":36,
+  "MONday Apart Premium 大阪難波WEST":28,"MONday Apart Premium 秋葉原浅草橋ステーション":27,
+  "MONday Apart Premium 秋葉原":27,"MONday Apart 浅草橋秋葉原":27,"MONday Apart 日本橋人形町":26,
+  "MONday Apart Premium 浅草":25,"MONday Apart 浜松町大門":22,"MONday Apart Premium 京都駅鴨川":22,
+  "Premium Apart MONday 浜松町ステーション":9,"MONday Apart Premium 浜松町":27,"TABI上野":35,
+  "GRAND MONday 上野御徒町":50,
+};
+const TOTAL_ROOMS=Object.values(ROOM_INVENTORY).reduce((a,b)=>a+b,0);
 
 // ─── HELPERS ───
 function getRegion(f){return KANSAI_KW.some(k=>f.includes(k))?"Kansai":"Kanto"}
@@ -806,6 +825,72 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     return{histData,segLOS,countryLOS,detailRows,overallAvg,totalWithNights:withNights.length};
   },[filtered,monthMode]);
 
+  // ─── REVPAR ───
+  const revparRpt=useMemo(()=>{
+    if(!filtered.length)return null;
+    // Only include facilities with known room counts
+    const withRooms=filtered.filter(r=>ROOM_INVENTORY[r.facility]);
+
+    // Monthly trend: RevPAR, occupancy, ADR
+    const byMonth={};
+    withRooms.forEach(r=>{
+      const m=getM(r);if(!m)return;
+      if(!byMonth[m])byMonth[m]={rev:0,nightsSold:0,facilities:new Set()};
+      byMonth[m].rev+=r.totalRev||0;
+      byMonth[m].nightsSold+=r.nights||0;
+      byMonth[m].facilities.add(r.facility);
+    });
+    // For each month, calculate available room-nights
+    const monthTrend=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>{
+      // Days in this month
+      const[y2,m2]=m.split("-").map(Number);
+      const daysInMonth=new Date(y2,m2,0).getDate();
+      // Total rooms across all facilities that had bookings
+      const totalRooms=Object.keys(ROOM_INVENTORY).reduce((a,f)=>a+ROOM_INVENTORY[f],0);
+      const avail=totalRooms*daysInMonth;
+      const occ=avail>0?+((v.nightsSold/avail)*100).toFixed(1):0;
+      const revpar=avail>0?Math.round(v.rev/avail):0;
+      const adr=v.nightsSold>0?Math.round(v.rev/v.nightsSold):0;
+      return{month:m,rev:v.rev,nightsSold:v.nightsSold,avail,occ,revpar,adr};
+    });
+
+    // By facility
+    const byFac={};
+    withRooms.forEach(r=>{
+      if(!byFac[r.facility])byFac[r.facility]={rev:0,nightsSold:0};
+      byFac[r.facility].rev+=r.totalRev||0;
+      byFac[r.facility].nightsSold+=r.nights||0;
+    });
+    // Calculate total days in the filtered period
+    const allDates=withRooms.map(r=>tzFmt(r.checkin)).filter(Boolean);
+    const minDate=allDates.length?allDates.sort()[0]:null;
+    const maxDate=allDates.length?allDates.sort().pop():null;
+    const totalDays=minDate&&maxDate?Math.max(1,Math.round((new Date(maxDate)-new Date(minDate))/864e5)+1):1;
+
+    const facRows=Object.entries(byFac).map(([f,v])=>{
+      const rooms=ROOM_INVENTORY[f]||0;
+      const avail=rooms*totalDays;
+      return{
+        facility:f,name:shortFac(f),rooms,
+        rev:v.rev,nightsSold:v.nightsSold,
+        avail,
+        occ:avail>0?+((v.nightsSold/avail)*100).toFixed(1):0,
+        revpar:avail>0?Math.round(v.rev/avail):0,
+        adr:v.nightsSold>0?Math.round(v.rev/v.nightsSold):0,
+      };
+    }).sort((a,b)=>b.revpar-a.revpar);
+
+    // Overall
+    const totalAvail=TOTAL_ROOMS*totalDays;
+    const totalRev=withRooms.reduce((a,r)=>a+(r.totalRev||0),0);
+    const totalNightsSold=withRooms.reduce((a,r)=>a+(r.nights||0),0);
+    const overallRevpar=totalAvail>0?Math.round(totalRev/totalAvail):0;
+    const overallOcc=totalAvail>0?+((totalNightsSold/totalAvail)*100).toFixed(1):0;
+    const overallAdr=totalNightsSold>0?Math.round(totalRev/totalNightsSold):0;
+
+    return{monthTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
+  },[filtered,monthMode,tz,tzFmt]);
+
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
     if(!agg||!filtered.length)return{};
@@ -913,8 +998,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         losRpt.detailRows.length?(ja?`最多: ${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).nights}泊（${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).share}%）`:`Most common: ${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).nights} nights (${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).share}%)`):null,
         losRpt.segLOS.length?(ja?`最長タイプ: ${tl(losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).segment)}（${losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).avgLOS}泊）`:`Longest segment: ${tl(losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).segment)} (${losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).avgLOS} nights)`):null,
       ]):null,
+      revpar:revparRpt?b([
+        ja?`RevPAR: ¥${fmtN(revparRpt.overallRevpar)}、稼働率: ${revparRpt.overallOcc}%、ADR: ¥${fmtN(revparRpt.overallAdr)}`:`RevPAR: ¥${fmtN(revparRpt.overallRevpar)}, Occupancy: ${revparRpt.overallOcc}%, ADR: ¥${fmtN(revparRpt.overallAdr)}`,
+        ja?`販売可能室泊: ${fmtN(revparRpt.totalAvail)}、販売済: ${fmtN(revparRpt.totalNightsSold)}（${revparRpt.totalDays}日間）`:`Available: ${fmtN(revparRpt.totalAvail)} room-nights, Sold: ${fmtN(revparRpt.totalNightsSold)} (${revparRpt.totalDays} days)`,
+        revparRpt.facRows.length?(ja?`最高RevPAR: ${revparRpt.facRows[0].name}（¥${fmtN(revparRpt.facRows[0].revpar)}）`:`Top RevPAR: ${revparRpt.facRows[0].name} (¥${fmtN(revparRpt.facRows[0].revpar)})`):null,
+      ]):null,
     };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt,losRpt]);
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt,losRpt,revparRpt]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -1109,7 +1199,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"los",l:t.losTab},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"los",l:t.losTab},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},{id:"revpar",l:t.revpar},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1564,6 +1654,26 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
             /></div>
           </DraggableGrid>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>No data</div>}
         </div>}
+
+        {/* REVPAR */}
+        {tab==="revpar"&&<>{insights.revpar&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.revpar}</div>}
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+            <div style={S.kpi}><div style={S.kl}>RevPAR</div><div style={S.kv}>¥{revparRpt?fmtN(revparRpt.overallRevpar):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.revparOcc}</div><div style={S.kv}>{revparRpt?revparRpt.overallOcc+"%":"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>ADR</div><div style={S.kv}>¥{revparRpt?fmtN(revparRpt.overallAdr):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.revparAvail}</div><div style={S.kv}>{revparRpt?fmtN(revparRpt.totalAvail):"—"}</div></div>
+          </div>
+          {revparRpt?<DraggableGrid {...dgProps("revpar")}>
+            <div key="rp-trend"><CC grid title={t.revparTrend} id="rp-trend" nm="revpar_trend" data={revparRpt.monthTrend}><ComposedChart data={revparRpt.monthTrend}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><YAxis yAxisId="occ" orientation="right" tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="revpar" fill={TH.gold} radius={[4,4,0,0]} name="RevPAR"/><Line type="monotone" dataKey="occ" stroke="#4ea8de" strokeWidth={2} yAxisId="occ" dot={{fill:"#4ea8de",r:3}} name={t.occRate}/></ComposedChart></CC></div>
+            <div key="rp-fac"><CC grid title={t.revparByFac} id="rp-fac" nm="revpar_fac" data={revparRpt.facRows}><BarChart data={revparRpt.facRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="revpar" fill={TH.gold} radius={[0,4,4,0]} name="RevPAR"/></BarChart></CC></div>
+            <div key="rp-detail"><SortTbl
+              data={revparRpt.facRows}
+              columns={[{key:"name",label:t.thFacility},{key:"rooms",label:"Rooms"},{key:"occ",label:t.occRate},{key:"revpar",label:"RevPAR"},{key:"adr",label:"ADR"},{key:"nightsSold",label:t.revparSold}]}
+              renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{r.rooms}</td><td style={{...S.td,...S.m}}>{r.occ}%</td><td style={{...S.td,...S.m}}>{fmtY(r.revpar)}</td><td style={{...S.td,...S.m}}>{fmtY(r.adr)}</td><td style={{...S.td,...S.m}}>{fmtN(r.nightsSold)}</td></tr>}
+              title={t.revparTitle}
+            /></div>
+          </DraggableGrid>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>No data</div>}
+        </>}
 
         {/* ROOMS */}
         {tab==="rooms"&&<>{insights.rooms&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.rooms}</div>}<DraggableGrid {...dgProps("rooms")}>
