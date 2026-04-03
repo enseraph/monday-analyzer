@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.22";
+const APP_VERSION="1.23";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -102,7 +102,7 @@ const T = {
     revByMarketMonth:"Revenue by Market by Month",
     avgLOSByCountry:"Avg LOS by Country",avgLeadByCountry:"Avg Lead Time by Country",segMixByCountry:"Segment Mix by Country",
     facResByFacility:"Reservations by Facility",facAvgRevByFacility:"Avg Revenue by Facility",facIntlByFacility:"International % by Facility",facLOSByFacility:"Avg LOS by Facility",facKvKCompare:"Kanto vs Kansai Comparison",facHvACompare:"Hotel vs Apart Comparison",
-    sheetLoading:"Loading live data from Google Sheets…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers January 2025 onward.",
+    sheetLoading:"Loading live data from Google Sheets…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers January 2025 onward.",timezone:"Timezone",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -187,7 +187,7 @@ const T = {
     revByMarketMonth:"月別市場別売上",
     avgLOSByCountry:"国別 平均泊数",avgLeadByCountry:"国別 平均LT",segMixByCountry:"国別タイプ構成",
     facResByFacility:"施設別予約件数",facAvgRevByFacility:"施設別平均単価",facIntlByFacility:"施設別海外比率",facLOSByFacility:"施設別平均泊数",facKvKCompare:"関東vs関西比較",facHvACompare:"ホテルvsアパート比較",
-    sheetLoading:"Google Sheetsからデータを読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2025年1月以降を対象としています。",
+    sheetLoading:"Google Sheetsからデータを読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2025年1月以降を対象としています。",timezone:"タイムゾーン",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -314,7 +314,13 @@ const MS=({options,selected,onChange,placeholder,maxShow=2,S,cl})=>{const[open,s
 
 // ─── MAIN ───
 export default function App(){
-  const[lang,setLang]=useState("en");const[theme,setTheme]=useState(()=>localStorage.getItem("rgl_theme")||"dark");const t=T[lang];const dL=lang==="ja"?DOW_JA:DOW_SHORT;
+  const[lang,setLang]=useState("en");const[theme,setTheme]=useState(()=>localStorage.getItem("rgl_theme")||"dark");
+  const defaultTz=()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone}catch{return"Asia/Tokyo"}};
+  const[tz,setTz]=useState(()=>localStorage.getItem("rgl_tz")||defaultTz());
+  useEffect(()=>{localStorage.setItem("rgl_tz",tz)},[tz]);
+  // Timezone-aware date formatter: converts a JS Date to YYYY-MM-DD in the selected timezone
+  const tzFmt=(dt,fmt)=>{if(!dt)return null;try{const parts=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(dt);const y=parts.find(p=>p.type==="year").value;const m=parts.find(p=>p.type==="month").value;const d=parts.find(p=>p.type==="day").value;if(fmt==="month")return`${y}-${m}`;return`${y}-${m}-${d}`}catch{const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");if(fmt==="month")return`${y2}-${m2}`;return`${y2}-${m2}-${d2}`}};
+  const t=T[lang];const dL=lang==="ja"?DOW_JA:DOW_SHORT;
   // Translate data-level labels (region, segment, type, rank, country)
   const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
@@ -330,7 +336,7 @@ const[fGeo,setFGeo]=useState([]);
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
 const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState("booking"); // "stay" or "booking"
-  const getM=r=>monthMode==="stay"?r.month:r.bookMonth;
+  const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
 
   // ─── Auto-fetch from Google Sheets on mount ───
@@ -428,7 +434,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
 
     const totRev=d.reduce((a,r)=>a+r.totalRev,0);const intlN=d.filter(r=>r.country!=="Japan").length;
     return{n,totalRev:totRev,avgRev:n>0?totRev/n:0,avgNights:avg(d.filter(r=>r.nights).map(r=>r.nights)),avgLead:avg(d.filter(r=>r.leadTime!=null).map(r=>r.leadTime)),intlPct:n>0?(intlN/n)*100:0,byR,byC,byS,byM,byF,byD,byRm,rC,rS,rM,rSL,rDow,rRoom,rRank,rDev,cS,cLOS,segLead,mLead,segADR,rSR,rkC};
-  },[filtered,monthMode]);
+  },[filtered,monthMode,tz]);
 
   // ─── CHART DATA ───
   const mktD=useMemo(()=>!agg?[]:Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,count:v.n,avgRev:Math.round(v.rev/v.n)})),[agg]);
@@ -442,9 +448,9 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const dailyD=useMemo(()=>{
     if(!filtered.length)return[];
     const byDate={};
-    filtered.forEach(r=>{const dt=r.checkin?r.checkin.toISOString().slice(0,10):null;if(!dt)return;if(!byDate[dt])byDate[dt]={date:dt,rev:0,count:0};byDate[dt].rev+=r.totalRev||0;byDate[dt].count++});
+    filtered.forEach(r=>{const dt=tzFmt(r.checkin);if(!dt)return;if(!byDate[dt])byDate[dt]={date:dt,rev:0,count:0};byDate[dt].rev+=r.totalRev||0;byDate[dt].count++});
     return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
-  },[filtered]);
+  },[filtered,tz]);
 
   // Country LOS and Lead for Country Overview tab
   const mktLOS=useMemo(()=>!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.nights.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)})),[agg]);
@@ -524,7 +530,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     const rankC=topRkC.map(c=>{const row={country:c};RANK_ORDER.forEach(rk=>{row[rk]=agg.rkC[c]?.[rk]||0});return row});
 
     return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,scale,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
-  },[agg,filtered,dL,lang]);
+  },[agg,filtered,dL,lang,tz]);
 
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
@@ -619,7 +625,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   // ─── DAILY REPORT ───
   useEffect(()=>{
     if(allData.length&&!drFrom){
-      const y=new Date();y.setDate(y.getDate()-1);const yd=y.getFullYear()+"-"+String(y.getMonth()+1).padStart(2,"0")+"-"+String(y.getDate()).padStart(2,"0");
+      const y=new Date();y.setDate(y.getDate()-1);const yd=tzFmt(y);
       setDrFrom(yd);setDrTo(yd);setDrSingle(yd);
     }
   },[allData]);
@@ -631,7 +637,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     const prevFrom=`${parseInt(from.slice(0,4))-1}${from.slice(4)}`;
     const prevTo=`${parseInt(to.slice(0,4))-1}${to.slice(4)}`;
     // Filter by BOOKING DATE (予約受付日時) using LOCAL date (not UTC)
-    const localDate=dt=>{if(!dt)return null;const y=dt.getFullYear(),m=String(dt.getMonth()+1).padStart(2,"0"),d=String(dt.getDate()).padStart(2,"0");return`${y}-${m}-${d}`};
+    const localDate=dt=>tzFmt(dt);
     const inRange=(r,f,t2)=>{const d=localDate(r.bookingDate);if(!d)return false;return d>=f&&d<=t2};
     const curData=allData.filter(r=>inRange(r,from,to));
     const prevData=allData.filter(r=>inRange(r,prevFrom,prevTo));
@@ -687,7 +693,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     const adrData=countryRows.map(r=>({country:r.country,adr:r.adr})).sort((a,b)=>b.adr-a.adr);
 
     // === Section 2: 直販比率 — stacked bar by booking date, segmented by check-in month ===
-    const localDate2=dt=>{if(!dt)return null;const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");return`${y2}-${m2}-${d2}`};
+    const localDate2=dt=>tzFmt(dt);
     const bookDates=[...new Set(curData.map(r=>localDate2(r.bookingDate)).filter(Boolean))].sort();
     const ciMonths=[...new Set(curData.map(r=>r.checkinMonth).filter(Boolean))].sort().slice(0,6);
     const directRatio=bookDates.map(bd=>{
@@ -733,15 +739,15 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       adrData,directRatio,drMonthKeys,
       couponRows,couponDetails,
       cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
-  },[allData,drFrom,drTo]);
+  },[allData,drFrom,drTo,tz]);
 
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
   const tH=[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty];
-  const tRows=useMemo(()=>{let rows=filtered.map(r=>{const o={};tC.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?r[c].toISOString().slice(0,10):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[filtered,tSort]);
+  const tRows=useMemo(()=>{let rows=filtered.map(r=>{const o={};tC.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?tzFmt(r[c]):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[filtered,tSort]);
   const paged=useMemo(()=>tRows.slice(tPage*PG,(tPage+1)*PG),[tRows,tPage]);const totPg=Math.ceil(tRows.length/PG);
 
-  const expFilt=()=>{const h=["Facility","Region","Country","Segment","Check-in","Check-out","Nights","Lead","Rev","Room","Device","Rank","Party"];expCSV(filtered.map(r=>{const o={};tC.forEach((k,i)=>{o[h[i]]=(k==="checkin"||k==="checkout")?(r[k]?r[k].toISOString().slice(0,10):""):r[k]??""});return o}),h,"filtered.csv")};
+  const expFilt=()=>{const h=["Facility","Region","Country","Segment","Check-in","Check-out","Nights","Lead","Rev","Room","Device","Rank","Party"];expCSV(filtered.map(r=>{const o={};tC.forEach((k,i)=>{o[h[i]]=(k==="checkin"||k==="checkout")?(r[k]?tzFmt(r[k]):""):r[k]??""});return o}),h,"filtered.csv")};
   const expSum=()=>{if(!agg)return;const h=["Country","Res","TotalRev","AvgRev","AvgLOS","AvgLead"];expCSV(Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).map(([c,v])=>({Country:c,Res:v.n,TotalRev:v.rev,AvgRev:Math.round(v.rev/v.n),AvgLOS:v.nights.length?avg(v.nights).toFixed(2):0,AvgLead:v.lead.length?avg(v.lead).toFixed(1):0})),h,"summary.csv")};
 
   // Styles
@@ -813,7 +819,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <div style={{...S.inner,maxWidth:700,paddingTop:60}}>
-      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><LT/></div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/></div>
       <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1></div>
       {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:100}}>
         <div style={{position:"absolute",animation:"logoTumble 3.5s linear infinite",top:10}}>
@@ -836,7 +842,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <div style={S.inner}>
       {/* Header */}
-      <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><LT/><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button></div></div>
+      <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button></div></div>
         {fL.length>0&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>{fL.map((f,i)=><span key={i} style={{fontSize:10,background:TH.input,padding:"3px 8px",borderRadius:4,color:TH.textMuted}}>{f.name} ({fmtN(f.rows)}) <span style={{color:"#4ea8de"}}>{f.encoding}</span></span>)}<span style={{fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.dataCoverage}</span></div>}
         {errs.length>0&&<div style={{marginTop:8}}>{errs.map((e,i)=><div key={i} style={{fontSize:11,color:"#ef4444"}}>⚠ {e}</div>)}</div>}
       </div>
@@ -957,12 +963,12 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
               <div style={{fontSize:9,color:TH.textMuted,fontStyle:"italic"}}>※数字は8:40以降に確定</div>
             </div>
             {(()=>{
-              const localD=dt=>{if(!dt)return null;return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0")};
+              const localD=dt=>tzFmt(dt);
               const sd=drSingle;if(!sd)return null;
               const dayData=allData.filter(r=>localD(r.bookingDate)===sd);
               if(!dayData.length)return<div style={{color:TH.textMuted,textAlign:"center",padding:20}}>{t.drNoData}</div>;
               // Current month and next 4 months
-              const now=new Date(sd);const months=[];for(let i=0;i<5;i++){const d2=new Date(now.getFullYear(),now.getMonth()+i,1);months.push(d2.getFullYear()+"-"+String(d2.getMonth()+1).padStart(2,"0"))}
+              const now=new Date(sd);const months=[];for(let i=0;i<5;i++){const d2=new Date(now.getFullYear(),now.getMonth()+i,1);months.push(tzFmt(d2,"month"))}
               const monthLabels=months.map(m=>{const[y,mo]=m.split("-");return parseInt(mo)+"月"});
               const afterLabel="以降";
 
