@@ -773,6 +773,31 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const LT=()=><div style={S.lt}><button style={S.lb(lang==="en")} onClick={()=>setLang("en")}>EN</button><button style={S.lb(lang==="ja")} onClick={()=>setLang("ja")}>日本語</button></div>;
   const EB=({id,nm,data,title})=><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart(id,nm,title)}>{t.exportImg}</button>{data&&data.length>0&&<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(data,title||nm,nm,v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋</button>}</div>;
   const CC=({title,id,nm,children,h,data,grid})=>{if(grid)return(<div style={{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:"6px 10px",height:"calc(100% - 4px)",display:"flex",flexDirection:"column",overflow:"hidden",boxSizing:"border-box"}}><div className="rgl-drag" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"grab",flexShrink:0,marginBottom:4}}><div style={{fontSize:12,fontWeight:600,color:TH.textStrong,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title}</div><EB id={id} nm={nm} data={data} title={title}/></div><div id={id} style={{flex:1,minHeight:0}}><ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer></div></div>);return(<div style={S.card}><div style={S.ct}>{title}</div><div id={id}><ResponsiveContainer width="100%" height={h||280}>{children}</ResponsiveContainer></div><div style={{marginTop:4}}><EB id={id} nm={nm} data={data} title={title}/></div></div>)};
+  const SortTbl=({data,columns,renderRow,grandTotalRow,title,exportFn})=>{
+    const[sortCol,setSortCol]=useState(null);
+    const[sortAsc,setSortAsc]=useState(false);
+    const sorted=useMemo(()=>{
+      if(!sortCol||!data)return data||[];
+      return[...data].sort((a,b)=>{
+        let va=a[sortCol],vb=b[sortCol];
+        if(typeof va==="string"&&va.match(/^[\d,.]+%?$/))va=parseFloat(va.replace(/[,%]/g,""));
+        if(typeof vb==="string"&&vb.match(/^[\d,.]+%?$/))vb=parseFloat(vb.replace(/[,%]/g,""));
+        if(typeof va==="number"&&typeof vb==="number")return sortAsc?va-vb:vb-va;
+        return sortAsc?String(va||"").localeCompare(String(vb||"")):String(vb||"").localeCompare(String(va||""));
+      });
+    },[data,sortCol,sortAsc]);
+    const toggleSort=col=>{if(sortCol===col)setSortAsc(!sortAsc);else{setSortCol(col);setSortAsc(false)}};
+    const arrow=col=>sortCol===col?(sortAsc?" ▲":" ▼"):"";
+    return<div style={S.card}>
+      {(title||exportFn)&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>{title&&<div style={S.ct}>{title}</div>}{exportFn&&exportFn}</div>}
+      <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
+        {columns.map(c=><th key={c.key} style={{...S.th,cursor:"pointer"}} onClick={()=>toggleSort(c.key)}>{c.label}{arrow(c.key)}</th>)}
+      </tr></thead><tbody>
+        {sorted.map(renderRow)}
+        {grandTotalRow}
+      </tbody></table></div>
+    </div>;
+  };
   const G={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(400px,1fr))",gap:14};
   const[layoutVer,setLayoutVer]=useState(0);
   const resetLay=useCallback(tabId=>{clearLayout(tabId);setLayoutVer(v=>v+1)},[]);
@@ -858,27 +883,14 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
             <div style={S.kpi}><div style={S.kl}>{t.drADR}</div><div style={S.kv}>¥{fmtN(dailyRpt.totalADR)}</div></div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
-            <div style={S.card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCountryTable}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.countryRows.map(r=>({Country:r.country,Res:r.count,Revenue:r.rev,ADR:r.adr,Share:r.share})),["Country","Res","Revenue","ADR","Share"],"daily_country.csv")}>⬇ CSV</button></div>
-              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
-                {[t.drCountry,t.drCount,t.drRevenue,t.drADR,t.drShare].map(h=><th key={h} style={S.th}>{h}</th>)}
-              </tr></thead><tbody>
-                {dailyRpt.countryRows.map(r=><tr key={r.country}>
-                  <td style={S.td}>{tl(r.country)}</td>
-                  <td style={{...S.td,...S.m}}>{r.count}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(r.adr)}</td>
-                  <td style={{...S.td,...S.m}}>{r.share}</td>
-                </tr>)}
-                <tr style={{fontWeight:700}}>
-                  <td style={S.td}>{t.drGrandTotal}</td>
-                  <td style={{...S.td,...S.m}}>{dailyRpt.totalCount}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalRev)}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalADR)}</td>
-                  <td style={{...S.td,...S.m}}>100%</td>
-                </tr>
-              </tbody></table></div>
-            </div>
+            <SortTbl
+              data={dailyRpt.countryRows}
+              columns={[{key:"country",label:t.drCountry},{key:"count",label:t.drCount},{key:"rev",label:t.drRevenue},{key:"adr",label:t.drADR},{key:"share",label:t.drShare}]}
+              renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td><td style={{...S.td,...S.m}}>{fmtN(r.adr)}</td><td style={{...S.td,...S.m}}>{r.share}</td></tr>}
+              grandTotalRow={<tr style={{fontWeight:700}}><td style={S.td}>{t.drGrandTotal}</td><td style={{...S.td,...S.m}}>{dailyRpt.totalCount}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalRev)}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalADR)}</td><td style={{...S.td,...S.m}}>100%</td></tr>}
+              title={t.drCountryTable}
+              exportFn={<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.countryRows.map(r=>({Country:r.country,Res:r.count,Revenue:r.rev,ADR:r.adr,Share:r.share})),["Country","Res","Revenue","ADR","Share"],"daily_country.csv")}>⬇ CSV</button>}
+            />
             <div style={S.card}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drRevYoY}</div><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart("dr-rev-yoy","rev_yoy",t.drRevYoY)}>{t.exportImg}</button><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(dailyRpt.yoyRev,t.drRevYoY,"rev_yoy",v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋</button></div></div>
               <div id="dr-rev-yoy"><ResponsiveContainer width="100%" height={280}>
@@ -893,27 +905,14 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
                 </BarChart>
               </ResponsiveContainer></div>
             </div>
-            <div style={S.card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drRegionTable}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.regionRows.map(r=>({Region:r.region,Res:r.count,Revenue:r.rev,ADR:r.adr,Share:r.share})),["Region","Res","Revenue","ADR","Share"],"daily_region.csv")}>⬇ CSV</button></div>
-              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
-                {[t.drRegion,t.drCount,t.drRevenue,t.drADR,t.drShare].map(h=><th key={h} style={S.th}>{h}</th>)}
-              </tr></thead><tbody>
-                {dailyRpt.regionRows.map(r=><tr key={r.region}>
-                  <td style={S.td}>{r.region}</td>
-                  <td style={{...S.td,...S.m}}>{r.count}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(r.adr)}</td>
-                  <td style={{...S.td,...S.m}}>{r.share}</td>
-                </tr>)}
-                <tr style={{fontWeight:700}}>
-                  <td style={S.td}>{t.drGrandTotal}</td>
-                  <td style={{...S.td,...S.m}}>{dailyRpt.totalCount}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalRev)}</td>
-                  <td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalADR)}</td>
-                  <td style={{...S.td,...S.m}}>100%</td>
-                </tr>
-              </tbody></table></div>
-            </div>
+            <SortTbl
+              data={dailyRpt.regionRows}
+              columns={[{key:"region",label:t.drRegion},{key:"count",label:t.drCount},{key:"rev",label:t.drRevenue},{key:"adr",label:t.drADR},{key:"share",label:t.drShare}]}
+              renderRow={r=><tr key={r.region}><td style={S.td}>{r.region}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td><td style={{...S.td,...S.m}}>{fmtN(r.adr)}</td><td style={{...S.td,...S.m}}>{r.share}</td></tr>}
+              grandTotalRow={<tr style={{fontWeight:700}}><td style={S.td}>{t.drGrandTotal}</td><td style={{...S.td,...S.m}}>{dailyRpt.totalCount}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalRev)}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.totalADR)}</td><td style={{...S.td,...S.m}}>100%</td></tr>}
+              title={t.drRegionTable}
+              exportFn={<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.regionRows.map(r=>({Region:r.region,Res:r.count,Revenue:r.rev,ADR:r.adr,Share:r.share})),["Region","Res","Revenue","ADR","Share"],"daily_region.csv")}>⬇ CSV</button>}
+            />
             <div style={S.card}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCountYoY}</div><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart("dr-count-yoy","count_yoy",t.drCountYoY)}>{t.exportImg}</button><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(dailyRpt.yoyCount,t.drCountYoY,"count_yoy",v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v))}>📋</button></div></div>
               <div id="dr-count-yoy"><ResponsiveContainer width="100%" height={280}>
@@ -1052,19 +1051,20 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
           </div>
           {/* Section 5: クーポンデータ */}
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginTop:14}}>
-            <div style={S.card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.drCouponData}</div><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.couponRows,["name","count","pct","rev"],"coupon_summary.csv")}>⬇ CSV</button></div>
-              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drCouponName,t.drCount,t.drUsage,t.drRevenue].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
-              {dailyRpt.couponRows.map(r=><tr key={r.name}><td style={S.td}>{r.name}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{r.pct}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>)}
-              </tbody></table></div>
-            </div>
-            {dailyRpt.couponDetails.length>0&&<div style={S.card}>
-              <div style={S.ct}>{t.drCouponData} — Details</div>
-              <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.drCountry,t.drFacilityName,t.drNights,t.drRevenue].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>
-              {dailyRpt.couponDetails.map((r,i)=><tr key={i}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,whiteSpace:"nowrap"}}>{shortFac(r.facility)}</td><td style={{...S.td,...S.m}}>{r.nights}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>)}
-              <tr style={{fontWeight:700}}><td style={S.td} colSpan={2}>Grand total</td><td style={{...S.td,...S.m}}>{dailyRpt.couponDetails.reduce((a,r)=>a+r.nights,0)}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.couponDetails.reduce((a,r)=>a+r.rev,0))}</td></tr>
-              </tbody></table></div>
-            </div>}
+            <SortTbl
+              data={dailyRpt.couponRows}
+              columns={[{key:"name",label:t.drCouponName},{key:"count",label:t.drCount},{key:"pct",label:t.drUsage},{key:"rev",label:t.drRevenue}]}
+              renderRow={r=><tr key={r.name}><td style={S.td}>{r.name}</td><td style={{...S.td,...S.m}}>{r.count}</td><td style={{...S.td,...S.m}}>{r.pct}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>}
+              title={t.drCouponData}
+              exportFn={<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expCSV(dailyRpt.couponRows,["name","count","pct","rev"],"coupon_summary.csv")}>⬇ CSV</button>}
+            />
+            {dailyRpt.couponDetails.length>0&&<SortTbl
+              data={dailyRpt.couponDetails}
+              columns={[{key:"country",label:t.drCountry},{key:"facility",label:t.drFacilityName},{key:"nights",label:t.drNights},{key:"rev",label:t.drRevenue}]}
+              renderRow={(r,i)=><tr key={i}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,whiteSpace:"nowrap"}}>{shortFac(r.facility)}</td><td style={{...S.td,...S.m}}>{r.nights}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>}
+              grandTotalRow={<tr style={{fontWeight:700}}><td style={S.td} colSpan={2}>Grand total</td><td style={{...S.td,...S.m}}>{dailyRpt.couponDetails.reduce((a,r)=>a+r.nights,0)}</td><td style={{...S.td,...S.m}}>{fmtN(dailyRpt.couponDetails.reduce((a,r)=>a+r.rev,0))}</td></tr>}
+              title={t.drCouponData+" — Details"}
+            />}
           </div>
         </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.drNoData}</div>}
       </div>}
@@ -1113,7 +1113,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
           <div key="ch-mld"><CC grid title={t.avgLeadByCountry} id="ch-mld" nm="mkt_lead" h={Math.max(300,mktLead.length*28)} data={mktLead}><BarChart data={mktLead} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Bar dataKey="avgLead" fill="#e07b54" radius={[0,4,4,0]} name={t.avgLeadTime}/></BarChart></CC></div>
           <div key="ch-msc">{kvk&&<CC grid title={t.segMixByCountry} id="ch-msc" nm="seg_mix_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
           <div key="ch-rkc">{kvk&&<CC grid title={t.kvkRankByCountry} id="ch-rkc" nm="rank_country" h={Math.max(250,kvk.rankC.length*30)} data={kvk.rankC}><BarChart data={kvk.rankC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Legend/>{RANK_ORDER.map((rk,i)=><Bar key={rk} dataKey={rk} stackId="a" fill={RANK_COLORS[i]} name={tl(rk)}/>)}</BarChart></CC>}</div>
-        </DraggableGrid><div style={{...S.card,marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={S.ct}>{t.marketSummary}</div><button style={{...S.bg,fontSize:10}} onClick={expSum}>⬇ {t.exportCSV}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.thCountry,t.reservations,t.thTotalRev,t.thAvgRev,t.thAvgLOS,t.thAvgLeadTime].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>{mktD.map(d=><tr key={d.country}><td style={S.td}>{tl(d.country)}</td><td style={{...S.td,...S.m}}>{fmtN(d.count)}</td><td style={{...S.td,...S.m}}>{fmtY(agg.byC[d.country]?.rev||0)}</td><td style={{...S.td,...S.m}}>{fmtY(d.avgRev)}</td><td style={{...S.td,...S.m}}>{(avg(agg.byC[d.country]?.nights||[])).toFixed(1)}{t.ns}</td><td style={{...S.td,...S.m}}>{agg.byC[d.country]?.lead.length?(avg(agg.byC[d.country].lead)).toFixed(0)+t.ds:"—"}</td></tr>)}</tbody></table></div></div></div>}
+        </DraggableGrid><div style={{marginTop:14}}><SortTbl
+          data={mktD.map(d=>({country:d.country,count:d.count,totalRev:agg.byC[d.country]?.rev||0,avgRev:d.avgRev,avgLOS:agg.byC[d.country]?.nights.length?(avg(agg.byC[d.country].nights)):0,avgLead:agg.byC[d.country]?.lead.length?(avg(agg.byC[d.country].lead)):0}))}
+          columns={[{key:"country",label:t.thCountry},{key:"count",label:t.reservations},{key:"totalRev",label:t.thTotalRev},{key:"avgRev",label:t.thAvgRev},{key:"avgLOS",label:t.thAvgLOS},{key:"avgLead",label:t.thAvgLeadTime}]}
+          renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{fmtN(r.count)}</td><td style={{...S.td,...S.m}}>{fmtY(r.totalRev)}</td><td style={{...S.td,...S.m}}>{fmtY(r.avgRev)}</td><td style={{...S.td,...S.m}}>{r.avgLOS.toFixed(1)}{t.ns}</td><td style={{...S.td,...S.m}}>{r.avgLead>0?r.avgLead.toFixed(0)+t.ds:"—"}</td></tr>}
+          title={t.marketSummary}
+          exportFn={<button style={{...S.bg,fontSize:10}} onClick={expSum}>⬇ {t.exportCSV}</button>}
+        /></div></div>}
 
         {/* SEGMENTS */}
         {tab==="segments"&&<>{insights.segments&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.segments}</div>}<DraggableGrid {...dgProps("segments")}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><div key={id}><CC grid title={ti} id={id} nm={id} data={segD}><BarChart data={segD}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>)}
@@ -1144,7 +1150,12 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         {tab==="rooms"&&<>{insights.rooms&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.rooms}</div>}<DraggableGrid {...dgProps("rooms")}>
           <div key="ch-rt"><CC grid title={t.roomTypeDist} id="ch-rt" nm="rooms" h={Math.max(280,rmD.length*26)} data={rmD}><BarChart data={rmD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="room" type="category" width={120} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c084fc" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
         </DraggableGrid>
-          <div style={S.card}><div style={S.ct}>{t.roomTypeTable}</div><table style={S.tbl}><thead><tr><th style={S.th}>{t.thRoom}</th><th style={S.th}>{t.thCount}</th><th style={S.th}>{t.thShare}</th></tr></thead><tbody>{rmD.map(d=><tr key={d.room}><td style={S.td}>{d.room}</td><td style={{...S.td,...S.m}}>{fmtN(d.count)}</td><td style={{...S.td,...S.m}}>{pct(d.count,agg.n)}</td></tr>)}</tbody></table></div>
+          <SortTbl
+            data={rmD.map(d=>({room:d.room,count:d.count,share:agg.n>0?((d.count/agg.n)*100):0}))}
+            columns={[{key:"room",label:t.thRoom},{key:"count",label:t.thCount},{key:"share",label:t.thShare}]}
+            renderRow={d=><tr key={d.room}><td style={S.td}>{d.room}</td><td style={{...S.td,...S.m}}>{fmtN(d.count)}</td><td style={{...S.td,...S.m}}>{d.share.toFixed(1)}%</td></tr>}
+            title={t.roomTypeTable}
+          />
         </>}
 
         {/* FACILITIES */}
@@ -1157,7 +1168,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
             <div key="fac-kvk"><CC grid title={t.facKvKCompare} id="fac-kvk" nm="fac_kvk" data={kvkFac}><BarChart data={kvkFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Kanto")}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={tl("Kansai")}/></BarChart></CC></div>
             <div key="fac-hva"><CC grid title={t.facHvACompare} id="fac-hva" nm="fac_hva" data={hvaFac}><BarChart data={hvaFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Hotel" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Hotel")}/><Bar dataKey="Apart" fill="#c9a84c" radius={[4,4,0,0]} name={tl("Apart")}/></BarChart></CC></div>
           </DraggableGrid>
-          <div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.facilityPerf}</div><button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.fullName,Region:f.region,Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{[t.thFacility,t.thRegion,t.reservations,t.thAvgRev,t.thIntlPct,t.thAvgLOS,t.thTopSeg].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead><tbody>{facD.map(f=><tr key={f.fullName}><td style={{...S.td,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={f.fullName}>{f.fullName}</td><td style={S.td}><span style={S.tag(f.region==="Kanto"?"#4ea8de":"#e07b54")}>{tl(f.region)}</span></td><td style={{...S.td,...S.m}}>{fmtN(f.n)}</td><td style={{...S.td,...S.m}}>{fmtY(f.avgRev)}</td><td style={{...S.td,...S.m,color:f.intlPct>50?"#c9a84c":"#c8c3b8"}}>{f.intlPct}%</td><td style={{...S.td,...S.m}}>{f.avgLOS}{t.nu}</td><td style={S.td}><span style={S.tag(SEG_COLORS[f.topSeg]||"#64748b")}>{tl(f.topSeg)}</span></td></tr>)}</tbody></table></div></div></div>}
+          <SortTbl
+            data={facD}
+            columns={[{key:"fullName",label:t.thFacility},{key:"region",label:t.thRegion},{key:"n",label:t.reservations},{key:"avgRev",label:t.thAvgRev},{key:"intlPct",label:t.thIntlPct},{key:"avgLOS",label:t.thAvgLOS},{key:"topSeg",label:t.thTopSeg}]}
+            renderRow={f=><tr key={f.fullName}><td style={{...S.td,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={f.fullName}>{f.fullName}</td><td style={S.td}><span style={S.tag(f.region==="Kanto"?"#4ea8de":"#e07b54")}>{tl(f.region)}</span></td><td style={{...S.td,...S.m}}>{fmtN(f.n)}</td><td style={{...S.td,...S.m}}>{fmtY(f.avgRev)}</td><td style={{...S.td,...S.m,color:f.intlPct>50?"#c9a84c":"#c8c3b8"}}>{f.intlPct}%</td><td style={{...S.td,...S.m}}>{f.avgLOS}{t.nu}</td><td style={S.td}><span style={S.tag(SEG_COLORS[f.topSeg]||"#64748b")}>{tl(f.topSeg)}</span></td></tr>}
+            title={t.facilityPerf}
+            exportFn={<button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.fullName,Region:f.region,Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button>}
+          /></div>}
 
         {/* RAW DATA */}
         {tab==="data"&&<div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.rowsFiltered(fmtN(filtered.length))}</div><button style={S.bg} onClick={expFilt}>⬇ {t.exportFiltered}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{tH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tC[i],asc:p.col===tC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead><tbody>{paged.map((r,ri)=><tr key={ri}>{tC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","leadTime","totalRev","partySize"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="region"?<span style={S.tag(r[c]==="Kanto"?"#4ea8de":"#e07b54")}>{tl(r[c])}</span>:c==="isCancelled"?<span style={S.tag(r[c]?"#ef4444":"#34d399")}>{r[c]?t.statusCancelled:t.statusConfirmed}</span>:["segment","hotelType"].includes(c)?tl(String(r[c]??"")):String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>{totPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12}}><button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button><span style={{fontSize:12,color:"#a0977f"}}>{t.pageOf(tPage+1,totPg)}</span><button style={S.btn} onClick={()=>setTPage(p=>Math.min(totPg-1,p+1))} disabled={tPage>=totPg-1}>{t.next}</button></div>}</div>}
