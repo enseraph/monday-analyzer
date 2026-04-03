@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.26";
+const APP_VERSION="1.27";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -107,9 +107,9 @@ const T = {
 compare:"Compare",
 cmpPeriodA:"Period A",cmpPeriodB:"Period B",
 cmpPreset:"Quick Select",cmpCustom:"Custom",
-cmpMonthVsMonth:"This Month vs Last Month",cmpWeekVsWeek:"This Week vs Last Week",
+cmpMonthVsMonth:"This Month vs Last Month",cmpWeekVsWeek:"This Week vs Last Week",cmpYearVsYear:"This Year vs Last Year",
 cmpDelta:"Delta",cmpChange:"Change %",
-cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility (Top 10)",
+cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpNoData:"Select date ranges for both periods to compare.",
     resetLayout:"Reset Layout",
@@ -200,9 +200,9 @@ cmpNoData:"Select date ranges for both periods to compare.",
 compare:"比較",
 cmpPeriodA:"期間A",cmpPeriodB:"期間B",
 cmpPreset:"クイック選択",cmpCustom:"カスタム",
-cmpMonthVsMonth:"今月 vs 先月",cmpWeekVsWeek:"今週 vs 先週",
+cmpMonthVsMonth:"今月 vs 先月",cmpWeekVsWeek:"今週 vs 先週",cmpYearVsYear:"今年 vs 昨年",
 cmpDelta:"差分",cmpChange:"変化率",
-cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別（上位10）",
+cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別",
 cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
 cmpNoData:"比較する2つの期間を選択してください。",
     resetLayout:"レイアウトリセット",
@@ -607,7 +607,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
     const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
-    const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta)).slice(0,10);
+    const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const topC=[...countryRows].sort((x,y)=>y.revA-x.revA).slice(0,10);
     const revChart=topC.map(c=>({country:c.country,A:c.revA,B:c.revB}));
     const countChart=[...countryRows].sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
@@ -1182,6 +1182,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
             <div style={{display:"flex",gap:4}}>
               <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear(),m=now.getMonth();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(now);const b1=`${m===0?y-1:y}-${String(m===0?12:m).padStart(2,"0")}-01`;const bEnd=new Date(y,m,0);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
               <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));const sun=new Date(mon);sun.setDate(mon.getDate()+6);const prevMon=new Date(mon);prevMon.setDate(mon.getDate()-7);const prevSun=new Date(sun);prevSun.setDate(sun.getDate()-7);setCmpA({from:tzFmt(mon),to:tzFmt(sun)});setCmpB({from:tzFmt(prevMon),to:tzFmt(prevSun)})}}>{t.cmpWeekVsWeek}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(now);const b1=`${y-1}-01-01`;const b2=`${y-1}-12-31`;setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
             </div>
           </div>
           {compareRpt&&!compareRpt.empty?<>
@@ -1199,14 +1200,14 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
                 renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
                 title={t.cmpByCountry}
               /></div>
-              <div key="cmp-rev"><CC grid title={t.cmpRevChart} id="cmp-rev" nm="cmp_rev" data={compareRpt.revChart}><BarChart data={compareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-rev"><CC grid title={t.cmpRevChart} id="cmp-rev" nm="cmp_rev" data={compareRpt.revChart}><BarChart data={compareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
               <div key="cmp-segment"><SortTbl
                 data={compareRpt.segRows}
                 columns={[{key:"segment",label:t.thSegment},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
                 renderRow={r=><tr key={r.segment}><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
                 title={t.cmpBySegment}
               /></div>
-              <div key="cmp-count"><CC grid title={t.cmpCountChart} id="cmp-count" nm="cmp_count" data={compareRpt.countChart}><BarChart data={compareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-count"><CC grid title={t.cmpCountChart} id="cmp-count" nm="cmp_count" data={compareRpt.countChart}><BarChart data={compareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
               <div key="cmp-facility"><SortTbl
                 data={compareRpt.facRows}
                 columns={[{key:"name",label:t.thFacility},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
