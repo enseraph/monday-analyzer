@@ -1,0 +1,82 @@
+@media print {
+  /* Hide UI controls that shouldn't appear in PDF */
+  .no-print,
+  .react-resizable-handle,
+  button,
+  select,
+  input[type="date"],
+  input[type="file"],
+  input[type="text"],
+  label { visibility: hidden; height: 0; overflow: hidden; margin: 0; padding: 0; }
+
+  /* But keep content buttons visible (table sort headers etc) */
+  th { visibility: visible !important; height: auto !important; overflow: visible !important; }
+
+  /* Force print-friendly colors */
+  body {
+    background: #ffffff !important;
+    color: #333333 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Exact color reproduction */
+  * {
+    color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  /* Grid layout: make items flow naturally for print */
+  .react-grid-layout {
+    height: auto !important;
+    position: static !important;
+  }
+  .react-grid-item {
+    position: static !important;
+    transform: none !important;
+    width: 48% !important;
+    display: inline-block !important;
+    vertical-align: top !important;
+    margin: 0.5% !important;
+    height: auto !important;
+    overflow: visible !important;
+    page-break-inside: avoid;
+  }
+  .react-grid-item > div {
+    height: auto !important;
+  }
+
+  /* Charts need explicit height for print rendering */
+  .recharts-responsive-container {
+    height: 280px !important;
+    min-height: 280px !important;
+  }
+
+  /* Tables */
+  table { page-break-inside: auto; font-size: 10px !important; }
+  tr { page-break-inside: avoid; }
+  td, th { padding: 3px 6px !important; }
+
+  /* Keep title visible */
+  h1 { font-size: 18px !important; }
+
+  /* Remove sticky positioning */
+  [style*="sticky"] {
+    position: static !important;
+  }
+
+  /* Remove box shadows */
+  * {
+    box-shadow: none !important;
+  }
+
+  /* Ensure SVG charts print properly */
+  svg { overflow: visible !important; }
+}

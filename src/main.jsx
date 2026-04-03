@@ -3,6 +3,7 @@ import { Component } from 'react'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import './grid.css'
+import './print.css'
 import App from './App.jsx'
 
 class ErrorBoundary extends Component {
