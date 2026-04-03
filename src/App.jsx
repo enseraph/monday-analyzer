@@ -571,6 +571,51 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,scale,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
   },[agg,filtered,dL,lang,tz]);
 
+  // ─── COMPARE TAB ───
+  const compareRpt=useMemo(()=>{
+    if(!allData.length||!cmpA.from||!cmpB.from)return null;
+    const applyFilters=d=>{
+      if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);
+      else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);
+      if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);
+      if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));
+      if(fR!=="All")d=d.filter(r=>r.region===fR);
+      if(fC.length)d=d.filter(r=>fC.includes(r.country));
+      if(fS.length)d=d.filter(r=>fS.includes(r.segment));
+      if(fP.length)d=d.filter(r=>fP.includes(r.facility));
+      if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+      return d;
+    };
+    const base=applyFilters([...allData]);
+    const getDateStr=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
+    const inRange=(r,from,to)=>{const d=getDateStr(r);if(!d)return false;return d>=from&&d<=(to||from)};
+    const dataA=base.filter(r=>inRange(r,cmpA.from,cmpA.to||cmpA.from));
+    const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
+    if(!dataA.length&&!dataB.length)return{empty:true};
+    const aggregate=data=>{
+      const totalCount=data.length;const totalRev=data.reduce((a,r)=>a+(r.totalRev||0),0);
+      const totalNights=data.reduce((a,r)=>a+(r.nights||0),0);const adr=totalNights>0?Math.round(totalRev/totalNights):0;
+      const byCountry={};data.forEach(r=>{if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=r.totalRev||0});
+      const bySegment={};data.forEach(r=>{if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev||0});
+      const byFacility={};data.forEach(r=>{if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev||0});
+      return{totalCount,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
+    };
+    const a=aggregate(dataA),b=aggregate(dataB);
+    const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"new":"0%");
+    const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
+    const countryRows=allCountries.map(c=>({country:c,countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
+    const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
+    const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta)).slice(0,10);
+    const topC=[...countryRows].sort((x,y)=>y.revA-x.revA).slice(0,10);
+    const revChart=topC.map(c=>({country:c.country,A:c.revA,B:c.revB}));
+    const countChart=[...countryRows].sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
+    const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
+    const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
+    return{a,b,pctChg,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
+  },[allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
+
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
     if(!agg||!filtered.length)return{};
@@ -785,87 +830,6 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
   },[allData,drFrom,drTo,tz]);
 
-  // ─── COMPARE TAB ───
-  const compareRpt=useMemo(()=>{
-    if(!allData.length||!cmpA.from||!cmpB.from)return null;
-    // Apply global filters (same as filtered, minus date range)
-    const applyFilters=d=>{
-      if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);
-      else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);
-      if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);
-      if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));
-      if(fR!=="All")d=d.filter(r=>r.region===fR);
-      if(fC.length)d=d.filter(r=>fC.includes(r.country));
-      if(fS.length)d=d.filter(r=>fS.includes(r.segment));
-      if(fP.length)d=d.filter(r=>fP.includes(r.facility));
-      if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
-      return d;
-    };
-    const base=applyFilters([...allData]);
-    // Date field selector based on global fDT
-    const getDateStr=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
-    const inRange=(r,from,to)=>{const d=getDateStr(r);if(!d)return false;return d>=from&&d<=(to||from)};
-    const dataA=base.filter(r=>inRange(r,cmpA.from,cmpA.to||cmpA.from));
-    const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
-    if(!dataA.length&&!dataB.length)return{empty:true};
-
-    const aggregate=data=>{
-      const totalCount=data.length;
-      const totalRev=data.reduce((a,r)=>a+(r.totalRev||0),0);
-      const totalNights=data.reduce((a,r)=>a+(r.nights||0),0);
-      const adr=totalNights>0?Math.round(totalRev/totalNights):0;
-      const byCountry={};
-      data.forEach(r=>{if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=r.totalRev||0});
-      const bySegment={};
-      data.forEach(r=>{if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev||0});
-      const byFacility={};
-      data.forEach(r=>{if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev||0});
-      return{totalCount,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
-    };
-    const a=aggregate(dataA),b=aggregate(dataB);
-    const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"new":"0%");
-
-    // Country comparison table
-    const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
-    const countryRows=allCountries.map(c=>({
-      country:c,
-      countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,
-      countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,
-      countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),
-      revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0),
-    })).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
-
-    // Segment comparison table
-    const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
-    const segRows=allSegs.map(s=>({
-      segment:s,
-      countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,
-      countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,
-      countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),
-      revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0),
-    })).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
-
-    // Facility comparison (top 10 by absolute delta)
-    const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
-    const facRows=allFacs.map(f=>({
-      facility:f,name:shortFac(f),
-      countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,
-      countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,
-      countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),
-      revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0),
-    })).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta)).slice(0,10);
-
-    // Bar chart data: top 10 countries by period A revenue
-    const topC=countryRows.sort((x,y)=>y.revA-x.revA).slice(0,10);
-    const revChart=topC.map(c=>({country:c.country,A:c.revA,B:c.revB}));
-    const countChart=countryRows.sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
-
-    // Labels
-    const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
-    const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
-
-    return{a,b,pctChg,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
-  },[allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
 
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
