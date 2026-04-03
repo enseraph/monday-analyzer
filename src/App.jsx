@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.33";
+const APP_VERSION="1.34";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -23,7 +23,7 @@ const DL={
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
   pace:mkL([["pace-chart",0,0,12,5],["pace-summary",0,5,6,4]]),
   cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,9],["canc-detail",6,7,6,7]]),
-  revpar:mkL([["rp-trend",0,0,12,4],["rp-fac",0,4,6,7],["rp-detail",6,4,6,5]]),
+  revpar:mkL([["rp-trend",0,0,12,4],["rp-daily",0,4,12,4],["rp-fac",0,8,6,7],["rp-detail",6,8,6,7]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
@@ -888,7 +888,12 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     const overallOcc=totalAvail>0?+((totalNightsSold/totalAvail)*100).toFixed(1):0;
     const overallAdr=totalNightsSold>0?Math.round(totalRev/totalNightsSold):0;
 
-    return{monthTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
+    // Daily RevPAR trend
+    const byDay={};
+    withRooms.forEach(r=>{const d=tzFmt(r.checkin);if(!d)return;if(!byDay[d])byDay[d]={rev:0,nightsSold:0};byDay[d].rev+=r.totalRev||0;byDay[d].nightsSold+=r.nights||0});
+    const dailyTrend=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,v])=>({date:d,revpar:TOTAL_ROOMS>0?Math.round(v.rev/TOTAL_ROOMS):0,occ:TOTAL_ROOMS>0?+((v.nightsSold/TOTAL_ROOMS)*100).toFixed(1):0}));
+
+    return{monthTrend,dailyTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
   },[filtered,monthMode,tz,tzFmt]);
 
   // ─── DYNAMIC INSIGHTS ───
@@ -1665,6 +1670,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
           </div>
           {revparRpt?<DraggableGrid {...dgProps("revpar")}>
             <div key="rp-trend"><CC grid title={t.revparTrend} id="rp-trend" nm="revpar_trend" data={revparRpt.monthTrend}><ComposedChart data={revparRpt.monthTrend}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><YAxis yAxisId="occ" orientation="right" tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="revpar" fill={TH.gold} radius={[4,4,0,0]} name="RevPAR"/><Line type="monotone" dataKey="occ" stroke="#4ea8de" strokeWidth={2} yAxisId="occ" dot={{fill:"#4ea8de",r:3}} name={t.occRate}/></ComposedChart></CC></div>
+            <div key="rp-daily"><CC grid title="Daily RevPAR" id="rp-daily" nm="revpar_daily" data={revparRpt.dailyTrend}><ComposedChart data={revparRpt.dailyTrend}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><YAxis yAxisId="occ" orientation="right" tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="revpar" fill={TH.gold} radius={[4,4,0,0]} name="RevPAR"/><Line type="monotone" dataKey="occ" stroke="#4ea8de" strokeWidth={1.5} yAxisId="occ" dot={false} name={t.occRate}/></ComposedChart></CC></div>
             <div key="rp-fac"><CC grid title={t.revparByFac} id="rp-fac" nm="revpar_fac" data={revparRpt.facRows}><BarChart data={revparRpt.facRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="revpar" fill={TH.gold} radius={[0,4,4,0]} name="RevPAR"/></BarChart></CC></div>
             <div key="rp-detail"><SortTbl
               data={revparRpt.facRows}
