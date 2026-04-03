@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.25";
+const APP_VERSION="1.26";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -823,7 +823,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       return{totalCount,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
-    const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"+∞":"0%");
+    const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"new":"0%");
 
     // Country comparison table
     const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
