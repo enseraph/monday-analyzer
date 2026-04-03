@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.24";
+const APP_VERSION="1.25";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -12,6 +12,7 @@ function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
 function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
 const DL={
+  compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-facility",0,9,12,4]]),
   overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-res-day",0,9,6,3],["ch-rev-day",6,9,6,3]]),
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
@@ -103,6 +104,14 @@ const T = {
     avgLOSByCountry:"Avg LOS by Country",avgLeadByCountry:"Avg Lead Time by Country",segMixByCountry:"Segment Mix by Country",
     facResByFacility:"Reservations by Facility",facAvgRevByFacility:"Avg Revenue by Facility",facIntlByFacility:"International % by Facility",facLOSByFacility:"Avg LOS by Facility",facKvKCompare:"Kanto vs Kansai Comparison",facHvACompare:"Hotel vs Apart Comparison",
     sheetLoading:"Loading live data from Google Sheets…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers January 2025 onward.",timezone:"Timezone",
+compare:"Compare",
+cmpPeriodA:"Period A",cmpPeriodB:"Period B",
+cmpPreset:"Quick Select",cmpCustom:"Custom",
+cmpMonthVsMonth:"This Month vs Last Month",cmpWeekVsWeek:"This Week vs Last Week",
+cmpDelta:"Delta",cmpChange:"Change %",
+cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility (Top 10)",
+cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
+cmpNoData:"Select date ranges for both periods to compare.",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -188,6 +197,14 @@ const T = {
     avgLOSByCountry:"国別 平均泊数",avgLeadByCountry:"国別 平均LT",segMixByCountry:"国別タイプ構成",
     facResByFacility:"施設別予約件数",facAvgRevByFacility:"施設別平均単価",facIntlByFacility:"施設別海外比率",facLOSByFacility:"施設別平均泊数",facKvKCompare:"関東vs関西比較",facHvACompare:"ホテルvsアパート比較",
     sheetLoading:"Google Sheetsからデータを読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2025年1月以降を対象としています。",timezone:"タイムゾーン",
+compare:"比較",
+cmpPeriodA:"期間A",cmpPeriodB:"期間B",
+cmpPreset:"クイック選択",cmpCustom:"カスタム",
+cmpMonthVsMonth:"今月 vs 先月",cmpWeekVsWeek:"今週 vs 先週",
+cmpDelta:"差分",cmpChange:"変化率",
+cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別（上位10）",
+cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
+cmpNoData:"比較する2つの期間を選択してください。",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -355,6 +372,7 @@ const[fGeo,setFGeo]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
+const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
 const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState("booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
@@ -640,8 +658,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         hiIntlFac?(ja?`最高海外比率: ${hiIntlFac.name}（${hiIntlFac.intlPct}%）`:`Most international: ${hiIntlFac.name} (${hiIntlFac.intlPct}%)`):null,
         ja?`関東${facD.filter(f=>f.region==="Kanto").length}施設 / 関西${facD.filter(f=>f.region==="Kansai").length}施設`:`Kanto: ${facD.filter(f=>f.region==="Kanto").length} properties / Kansai: ${facD.filter(f=>f.region==="Kansai").length} properties`,
       ]),
+      compare:compareRpt&&!compareRpt.empty?b([
+        ja?`期間A: ${fmtN(compareRpt.a.totalCount)}件、${fmtY(compareRpt.a.totalRev)}`:`Period A: ${fmtN(compareRpt.a.totalCount)} res, ${fmtY(compareRpt.a.totalRev)}`,
+        ja?`期間B: ${fmtN(compareRpt.b.totalCount)}件、${fmtY(compareRpt.b.totalRev)}`:`Period B: ${fmtN(compareRpt.b.totalCount)} res, ${fmtY(compareRpt.b.totalRev)}`,
+        ja?`差分: 予約${compareRpt.a.totalCount-compareRpt.b.totalCount>0?"+":""}${compareRpt.a.totalCount-compareRpt.b.totalCount}件、売上${compareRpt.a.totalRev-compareRpt.b.totalRev>0?"+":""}${fmtY(Math.abs(compareRpt.a.totalRev-compareRpt.b.totalRev))} (${compareRpt.pctChg(compareRpt.a.totalRev,compareRpt.b.totalRev)})`:`Delta: ${compareRpt.a.totalCount-compareRpt.b.totalCount>0?"+":""}${compareRpt.a.totalCount-compareRpt.b.totalCount} res, ${compareRpt.a.totalRev-compareRpt.b.totalRev>0?"+":""}${fmtY(Math.abs(compareRpt.a.totalRev-compareRpt.b.totalRev))} (${compareRpt.pctChg(compareRpt.a.totalRev,compareRpt.b.totalRev)})`,
+      ]):null,
     };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang]);
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -762,6 +785,88 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
       cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
   },[allData,drFrom,drTo,tz]);
 
+  // ─── COMPARE TAB ───
+  const compareRpt=useMemo(()=>{
+    if(!allData.length||!cmpA.from||!cmpB.from)return null;
+    // Apply global filters (same as filtered, minus date range)
+    const applyFilters=d=>{
+      if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);
+      else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);
+      if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);
+      if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));
+      if(fR!=="All")d=d.filter(r=>r.region===fR);
+      if(fC.length)d=d.filter(r=>fC.includes(r.country));
+      if(fS.length)d=d.filter(r=>fS.includes(r.segment));
+      if(fP.length)d=d.filter(r=>fP.includes(r.facility));
+      if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+      return d;
+    };
+    const base=applyFilters([...allData]);
+    // Date field selector based on global fDT
+    const getDateStr=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
+    const inRange=(r,from,to)=>{const d=getDateStr(r);if(!d)return false;return d>=from&&d<=(to||from)};
+    const dataA=base.filter(r=>inRange(r,cmpA.from,cmpA.to||cmpA.from));
+    const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
+    if(!dataA.length&&!dataB.length)return{empty:true};
+
+    const aggregate=data=>{
+      const totalCount=data.length;
+      const totalRev=data.reduce((a,r)=>a+(r.totalRev||0),0);
+      const totalNights=data.reduce((a,r)=>a+(r.nights||0),0);
+      const adr=totalNights>0?Math.round(totalRev/totalNights):0;
+      const byCountry={};
+      data.forEach(r=>{if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=r.totalRev||0});
+      const bySegment={};
+      data.forEach(r=>{if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev||0});
+      const byFacility={};
+      data.forEach(r=>{if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev||0});
+      return{totalCount,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
+    };
+    const a=aggregate(dataA),b=aggregate(dataB);
+    const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"+∞":"0%");
+
+    // Country comparison table
+    const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
+    const countryRows=allCountries.map(c=>({
+      country:c,
+      countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,
+      countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,
+      countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),
+      revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0),
+    })).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+
+    // Segment comparison table
+    const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
+    const segRows=allSegs.map(s=>({
+      segment:s,
+      countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,
+      countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,
+      countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),
+      revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0),
+    })).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+
+    // Facility comparison (top 10 by absolute delta)
+    const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
+    const facRows=allFacs.map(f=>({
+      facility:f,name:shortFac(f),
+      countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,
+      countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,
+      countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),
+      revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0),
+    })).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta)).slice(0,10);
+
+    // Bar chart data: top 10 countries by period A revenue
+    const topC=countryRows.sort((x,y)=>y.revA-x.revA).slice(0,10);
+    const revChart=topC.map(c=>({country:c.country,A:c.revA,B:c.revB}));
+    const countChart=countryRows.sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
+
+    // Labels
+    const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
+    const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
+
+    return{a,b,pctChg,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
+  },[allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
+
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
   const tH=[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty];
@@ -835,7 +940,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1095,6 +1200,58 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
           </div>
         </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.drNoData}</div>}
       </div>}
+
+        {/* COMPARE */}
+        {tab==="compare"&&<div>
+          {insights.compare&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.compare}</div>}
+          <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
+              <div style={{fontWeight:600,color:TH.textStrong,fontSize:12,alignSelf:"center"}}>{t.cmpPeriodA}</div>
+              <div><div style={S.fl}>{t.from}</div><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.from} onChange={e=>setCmpA(p=>({...p,from:e.target.value}))}/></div>
+              <div><div style={S.fl}>{t.to}</div><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.to} onChange={e=>setCmpA(p=>({...p,to:e.target.value}))}/></div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
+              <div style={{fontWeight:600,color:TH.gold,fontSize:12,alignSelf:"center"}}>{t.cmpPeriodB}</div>
+              <div><div style={S.fl}>{t.from}</div><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.from} onChange={e=>setCmpB(p=>({...p,from:e.target.value}))}/></div>
+              <div><div style={S.fl}>{t.to}</div><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.to} onChange={e=>setCmpB(p=>({...p,to:e.target.value}))}/></div>
+            </div>
+            <div style={{display:"flex",gap:4}}>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear(),m=now.getMonth();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(now);const b1=`${m===0?y-1:y}-${String(m===0?12:m).padStart(2,"0")}-01`;const bEnd=new Date(y,m,0);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));const sun=new Date(mon);sun.setDate(mon.getDate()+6);const prevMon=new Date(mon);prevMon.setDate(mon.getDate()-7);const prevSun=new Date(sun);prevSun.setDate(sun.getDate()-7);setCmpA({from:tzFmt(mon),to:tzFmt(sun)});setCmpB({from:tzFmt(prevMon),to:tzFmt(prevSun)})}}>{t.cmpWeekVsWeek}</button>
+            </div>
+          </div>
+          {compareRpt&&!compareRpt.empty?<>
+            <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+              {[
+                [t.reservations,compareRpt.a.totalCount,compareRpt.b.totalCount],
+                [t.totalRevenue,compareRpt.a.totalRev,compareRpt.b.totalRev],
+                [t.drADR,compareRpt.a.adr,compareRpt.b.adr],
+              ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue||label===t.drADR;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,color:"#4ea8de"}}>A</div><div style={{...S.kv,fontSize:18}}>{fmt(va)}</div></div><div><div style={{fontSize:10,color:TH.gold}}>B</div><div style={{...S.kv,fontSize:18}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({compareRpt.pctChg(va,vb)})</div></div>})}
+            </div>
+            <DraggableGrid {...dgProps("compare")}>
+              <div key="cmp-country"><SortTbl
+                data={compareRpt.countryRows}
+                columns={[{key:"country",label:t.drCountry},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
+                renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
+                title={t.cmpByCountry}
+              /></div>
+              <div key="cmp-rev"><CC grid title={t.cmpRevChart} id="cmp-rev" nm="cmp_rev" data={compareRpt.revChart}><BarChart data={compareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-segment"><SortTbl
+                data={compareRpt.segRows}
+                columns={[{key:"segment",label:t.thSegment},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
+                renderRow={r=><tr key={r.segment}><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
+                title={t.cmpBySegment}
+              /></div>
+              <div key="cmp-count"><CC grid title={t.cmpCountChart} id="cmp-count" nm="cmp_count" data={compareRpt.countChart}><BarChart data={compareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-facility"><SortTbl
+                data={compareRpt.facRows}
+                columns={[{key:"name",label:t.thFacility},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
+                renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
+                title={t.cmpByFacility}
+              /></div>
+            </DraggableGrid>
+          </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
+        </div>}
 
       {!agg?<div style={{textAlign:"center",color:TH.textMuted,padding:40}}>{t.noData}</div>:<>
 
