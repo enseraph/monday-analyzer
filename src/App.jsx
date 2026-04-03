@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.23";
+const APP_VERSION="1.24";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -318,8 +318,29 @@ export default function App(){
   const defaultTz=()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone}catch{return"Asia/Tokyo"}};
   const[tz,setTz]=useState(()=>localStorage.getItem("rgl_tz")||defaultTz());
   useEffect(()=>{localStorage.setItem("rgl_tz",tz)},[tz]);
-  // Timezone-aware date formatter: converts a JS Date to YYYY-MM-DD in the selected timezone
-  const tzFmt=(dt,fmt)=>{if(!dt)return null;try{const parts=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(dt);const y=parts.find(p=>p.type==="year").value;const m=parts.find(p=>p.type==="month").value;const d=parts.find(p=>p.type==="day").value;if(fmt==="month")return`${y}-${m}`;return`${y}-${m}-${d}`}catch{const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");if(fmt==="month")return`${y2}-${m2}`;return`${y2}-${m2}-${d2}`}};
+  // Timezone-aware date formatter with caching for performance
+  const tzCache=useRef({tz:null,fmt:null,map:new Map()});
+  const tzFmt=useCallback((dt,fmt)=>{
+    if(!dt)return null;
+    // Reset cache if timezone changed
+    if(tzCache.current.tz!==tz){tzCache.current={tz,fmt:null,map:new Map()}}
+    // Cache key: timestamp + format
+    const key=dt.getTime()+(fmt||"");
+    const cached=tzCache.current.map.get(key);
+    if(cached!==undefined)return cached;
+    let result;
+    try{
+      if(!tzCache.current.fmt)tzCache.current.fmt=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"});
+      const parts=tzCache.current.fmt.formatToParts(dt);
+      const y=parts.find(p=>p.type==="year").value;const m=parts.find(p=>p.type==="month").value;const d=parts.find(p=>p.type==="day").value;
+      result=fmt==="month"?`${y}-${m}`:`${y}-${m}-${d}`;
+    }catch{
+      const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");
+      result=fmt==="month"?`${y2}-${m2}`:`${y2}-${m2}-${d2}`;
+    }
+    tzCache.current.map.set(key,result);
+    return result;
+  },[tz]);
   const t=T[lang];const dL=lang==="ja"?DOW_JA:DOW_SHORT;
   // Translate data-level labels (region, segment, type, rank, country)
   const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
