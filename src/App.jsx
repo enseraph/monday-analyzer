@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import * as Papa from "papaparse";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.29";
+const APP_VERSION="1.30";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -21,6 +21,7 @@ const DL={
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
   pace:mkL([["pace-chart",0,0,12,5],["pace-summary",0,5,6,4]]),
+  cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,5],["canc-detail",6,7,6,4]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
@@ -114,6 +115,7 @@ cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
+    cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -208,6 +210,7 @@ cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別",
 cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
 cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
+    cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -704,6 +707,54 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
     return{months,currentMonth,todayDay,chartData,summaryRows,curAtDay,lastAtDay,projectedCount,projectedRev,daysInMonth};
   },[allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,paceMetric]);
 
+  // ─── CANCELLATION RATE TRACKER ───
+  const cancelRpt=useMemo(()=>{
+    if(!allData.length)return null;
+    // Apply all global filters EXCEPT fCancel (need both confirmed+cancelled)
+    let base=[...allData];
+    if(fHType!=="All")base=base.filter(r=>r.hotelType===fHType);
+    if(fBrands.length)base=base.filter(r=>fBrands.includes(r.brand));
+    if(fR!=="All")base=base.filter(r=>r.region===fR);
+    if(fC.length)base=base.filter(r=>fC.includes(r.country));
+    if(fS.length)base=base.filter(r=>fS.includes(r.segment));
+    if(fP.length)base=base.filter(r=>fP.includes(r.facility));
+    if(fGeo.length)base=base.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+    // Apply date range
+    if(fDF||fDTo){const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;base=base.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}
+    if(!base.length)return{empty:true};
+
+    const getMonth=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt,"month")};
+    const totalN=base.length;
+    const cancelledN=base.filter(r=>r.isCancelled).length;
+    const overallRate=totalN>0?+((cancelledN/totalN)*100).toFixed(1):0;
+    const lostRev=base.filter(r=>r.isCancelled).reduce((a,r)=>a+(r.totalRev||0),0);
+    const totalFee=base.filter(r=>r.isCancelled).reduce((a,r)=>a+(r.cancelFee||0),0);
+
+    // Monthly trend
+    const byMonth={};
+    base.forEach(r=>{const m=getMonth(r);if(!m)return;if(!byMonth[m])byMonth[m]={total:0,cancelled:0,lostRev:0};byMonth[m].total++;if(r.isCancelled){byMonth[m].cancelled++;byMonth[m].lostRev+=r.totalRev||0}});
+    const monthTrend=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev}));
+
+    // By country (top 15 by total volume)
+    const byCountry={};
+    base.forEach(r=>{if(!byCountry[r.country])byCountry[r.country]={total:0,cancelled:0,lostRev:0,cancelFee:0};byCountry[r.country].total++;if(r.isCancelled){byCountry[r.country].cancelled++;byCountry[r.country].lostRev+=r.totalRev||0;byCountry[r.country].cancelFee+=r.cancelFee||0}});
+    const countryRows=Object.entries(byCountry).sort((a,b)=>b[1].total-a[1].total).slice(0,15).map(([c,v])=>({country:c,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev,cancelFee:v.cancelFee}));
+    const countryByRate=[...countryRows].sort((a,b)=>b.rate-a.rate);
+
+    // By segment
+    const bySeg={};
+    base.forEach(r=>{if(!bySeg[r.segment])bySeg[r.segment]={total:0,cancelled:0,lostRev:0};bySeg[r.segment].total++;if(r.isCancelled){bySeg[r.segment].cancelled++;bySeg[r.segment].lostRev+=r.totalRev||0}});
+    const segRows=Object.entries(bySeg).sort((a,b)=>b[1].total-a[1].total).map(([s,v])=>({segment:s,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev}));
+
+    // By facility
+    const byFac={};
+    base.forEach(r=>{if(!byFac[r.facility])byFac[r.facility]={total:0,cancelled:0,lostRev:0,cancelFee:0};byFac[r.facility].total++;if(r.isCancelled){byFac[r.facility].cancelled++;byFac[r.facility].lostRev+=r.totalRev||0;byFac[r.facility].cancelFee+=r.cancelFee||0}});
+    const facRows=Object.entries(byFac).sort((a,b)=>b[1].total-a[1].total).map(([f,v])=>({facility:f,name:shortFac(f),total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev,cancelFee:v.cancelFee}));
+    const facByRate=[...facRows].sort((a,b)=>b.rate-a.rate);
+
+    return{totalN,cancelledN,overallRate,lostRev,totalFee,monthTrend,countryRows,countryByRate,segRows,facRows,facByRate};
+  },[allData,fDT,fDF,fDTo,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
+
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
     if(!agg||!filtered.length)return{};
@@ -801,8 +852,13 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
         paceRpt.lastAtDay?(ja?`先月同日: ${paceMetric==="count"?fmtN(paceRpt.lastAtDay.count)+"件":fmtY(paceRpt.lastAtDay.rev)}（差分: ${paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count>0?"+":"")+(paceRpt.curAtDay.count-paceRpt.lastAtDay.count)+"件":(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev>0?"+":"")+fmtY(Math.abs(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev))}）`:`Last month at day ${paceRpt.todayDay}: ${paceMetric==="count"?fmtN(paceRpt.lastAtDay.count):fmtY(paceRpt.lastAtDay.rev)} (delta: ${paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count>0?"+":"")+(paceRpt.curAtDay.count-paceRpt.lastAtDay.count):(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev>0?"+":"")+fmtY(Math.abs(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev))})`):null,
         ja?`月末予測: ${paceMetric==="count"?fmtN(paceRpt.projectedCount)+"件":fmtY(paceRpt.projectedRev)}`:`Projected month-end: ${paceMetric==="count"?fmtN(paceRpt.projectedCount):fmtY(paceRpt.projectedRev)}`,
       ]):null,
+      cancellations:cancelRpt&&!cancelRpt.empty?b([
+        ja?`総キャンセル: ${fmtN(cancelRpt.cancelledN)}件 / ${fmtN(cancelRpt.totalN)}件（${cancelRpt.overallRate}%）`:`Total cancelled: ${fmtN(cancelRpt.cancelledN)} / ${fmtN(cancelRpt.totalN)} (${cancelRpt.overallRate}%)`,
+        ja?`失注売上: ${fmtY(cancelRpt.lostRev)}、徴収キャンセル料: ${fmtY(cancelRpt.totalFee)}`:`Lost revenue: ${fmtY(cancelRpt.lostRev)}, fees collected: ${fmtY(cancelRpt.totalFee)}`,
+        cancelRpt.segRows.length?(ja?`最高キャンセル率タイプ: ${tl(cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).segment)}（${cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).rate}%）`:`Highest cancel rate segment: ${tl(cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).segment)} (${cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).rate}%)`):null,
+      ]):null,
     };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric]);
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -997,7 +1053,7 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1411,6 +1467,29 @@ const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(
           <div key="ch-rmm"><CC grid title={t.revByMarketMonth} id="ch-rmm" nm="rev_mkt_month" h={300} data={revMktMo.data}><BarChart data={revMktMo.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revMktMo.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC></div>
           <div key="ch-drev"><CC grid title={t.dailyRev} id="ch-drev" nm="daily_rev" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
         </DraggableGrid></>}
+
+        {/* CANCELLATIONS */}
+        {tab==="cancellations"&&<div>
+          {insights.cancellations&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.cancellations}</div>}
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+            <div style={S.kpi}><div style={S.kl}>{t.cancelCancelled}</div><div style={S.kv}>{cancelRpt?fmtN(cancelRpt.cancelledN):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.cancelRate}</div><div style={S.kv}>{cancelRpt?cancelRpt.overallRate+"%":"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.cancelRevLost}</div><div style={S.kv}>{cancelRpt?fmtY(cancelRpt.lostRev):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.cancelFeePct}</div><div style={S.kv}>{cancelRpt?fmtY(cancelRpt.totalFee):"—"}</div></div>
+          </div>
+          {cancelRpt&&!cancelRpt.empty?<DraggableGrid {...dgProps("cancellations")}>
+            <div key="canc-trend"><CC grid title={t.cancelTrend} id="canc-trend" nm="cancel_trend" data={cancelRpt.monthTrend}><ComposedChart data={cancelRpt.monthTrend}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><YAxis yAxisId="rate" orientation="right" tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.cancelTotal} opacity={0.5}/><Bar dataKey="cancelled" fill="#ef4444" radius={[4,4,0,0]} name={t.cancelCancelled}/><Line type="monotone" dataKey="rate" stroke={TH.gold} strokeWidth={2} yAxisId="rate" dot={{fill:TH.gold,r:3}} name={t.cancelRatePct}/></ComposedChart></CC></div>
+            <div key="canc-country"><CC grid title={t.cancelByCountry} id="canc-country" nm="cancel_country" data={cancelRpt.countryByRate}><BarChart data={cancelRpt.countryByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name={t.cancelRatePct}/></BarChart></CC></div>
+            <div key="canc-seg"><CC grid title={t.cancelBySeg} id="canc-seg" nm="cancel_seg" data={cancelRpt.segRows}><BarChart data={cancelRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[4,4,0,0]} name={t.cancelRatePct}/></BarChart></CC></div>
+            <div key="canc-fac"><CC grid title={t.cancelByFac} id="canc-fac" nm="cancel_fac" data={cancelRpt.facByRate}><BarChart data={cancelRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name={t.cancelRatePct}/></BarChart></CC></div>
+            <div key="canc-detail"><SortTbl
+              data={cancelRpt.countryRows}
+              columns={[{key:"country",label:t.drCountry},{key:"total",label:t.cancelTotal},{key:"cancelled",label:t.cancelCancelled},{key:"rate",label:t.cancelRatePct},{key:"lostRev",label:t.cancelRevLost},{key:"cancelFee",label:t.cancelFeePct}]}
+              renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{fmtN(r.total)}</td><td style={{...S.td,...S.m}}>{fmtN(r.cancelled)}</td><td style={{...S.td,...S.m,color:r.rate>30?"#ef4444":r.rate>15?TH.gold:TH.text}}>{r.rate}%</td><td style={{...S.td,...S.m}}>{fmtN(r.lostRev)}</td><td style={{...S.td,...S.m}}>{fmtN(r.cancelFee)}</td></tr>}
+              title={t.cancelDetail}
+            /></div>
+          </DraggableGrid>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>No data</div>}
+        </div>}
 
         {/* ROOMS */}
         {tab==="rooms"&&<>{insights.rooms&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.rooms}</div>}<DraggableGrid {...dgProps("rooms")}>
