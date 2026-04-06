@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.42";
+const APP_VERSION="1.43";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -1633,8 +1633,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* COMPARE */}
         {tab==="compare"&&<div>
-          {insights.compare&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.compare}</div>}
-          <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
             <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
               <div style={{fontWeight:600,color:TH.textStrong,fontSize:12,alignSelf:"center"}}>{t.cmpPeriodA}</div>
               <div><div style={S.fl}>{t.from}</div><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.from} onChange={e=>setCmpA(p=>({...p,from:e.target.value}))}/></div>
@@ -1686,8 +1685,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* PACE */}
         {tab==="pace"&&<div>
-          {insights.pace&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.pace}</div>}
-          <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
             <div><div style={S.fl}>{t.paceTitle}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(paceMetric==="count"?S.ba:{})}} onClick={()=>setPaceMetric("count")}>{t.paceToggleRes}</button><button style={{...S.btn,...(paceMetric==="rev"?S.ba:{})}} onClick={()=>setPaceMetric("rev")}>{t.paceToggleRev}</button></div></div>
           </div>
           {paceRpt?<>
@@ -1711,7 +1709,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       {!agg?<div style={{textAlign:"center",color:TH.textMuted,padding:40}}>{t.noData}</div>:<>
 
         {/* OVERVIEW */}
-        {tab==="overview"&&<>{insights.overview&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.overview}</div>}<DraggableGrid {...dgProps("overview")}>
+        {tab==="overview"&&<><DraggableGrid {...dgProps("overview")}>
           <div key="ch-mo"><CC grid title={t.resByMonth} id="ch-mo" nm="monthly" data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-sp"><CC grid title={t.resBySeg} id="ch-sp" nm="seg_pie" data={segD}><PieChart><Pie data={segD} dataKey="count" nameKey="segment" cx="50%" cy="50%" outerRadius="65%" label={({segment,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${tl(segment)} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
           <div key="ch-mk"><CC grid title={t.topMarkets} id="ch-mk" nm="top_markets" h={320} data={mktD.slice(0,10)}><BarChart data={mktD.slice(0,10)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c9a84c" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
@@ -1723,8 +1721,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* ═══════════════════ KANTO VS KANSAI ═══════════════════ */}
         {tab==="kvk"&&kvk&&<div>
-          {insights.kvk&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.kvk}</div>}
-          <div style={{marginBottom:16}}><div style={{fontSize:18,fontWeight:600,color:TH.textStrong}}>{t.kvkTitle}</div><div style={{fontSize:12,color:TH.textMuted,marginTop:4}}>{t.kvkSub} — {t.kanto} {fmtN(kvk.kantoN)} / {t.kansai} {fmtN(kvk.kansaiN)}</div></div>
+                    <div style={{marginBottom:16}}><div style={{fontSize:18,fontWeight:600,color:TH.textStrong}}>{t.kvkTitle}</div><div style={{fontSize:12,color:TH.textMuted,marginTop:4}}>{t.kvkSub} — {t.kanto} {fmtN(kvk.kantoN)} / {t.kansai} {fmtN(kvk.kansaiN)}</div></div>
 
           <DraggableGrid {...dgProps("kvk")}>
             <div key="kk-mk-kt"><CC grid title={`${t.kvkKantoMarkets}`} id="kk-mk-kt" nm="kanto_markets" h={Math.max(250,kvk.mkKanto.length*26)} data={kvk.mkKanto}><BarChart data={kvk.mkKanto} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
@@ -1745,7 +1742,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </div>}
 
         {/* MARKETS */}
-        {tab==="markets"&&<div>{insights.markets&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.markets}</div>}<DraggableGrid {...dgProps("markets")}>
+        {tab==="markets"&&<div><DraggableGrid {...dgProps("markets")}>
           <div key="ch-mf"><CC grid title={t.allMarketsCount} id="ch-mf" nm="markets" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-mr"><CC grid title={t.avgRevByMarket} id="ch-mr" nm="markets_rev" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
           <div key="ch-ml"><CC grid title={t.avgLOSByCountry} id="ch-ml" nm="mkt_los" h={Math.max(300,mktLOS.length*28)} data={mktLOS}><BarChart data={mktLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
@@ -1761,7 +1758,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         /></div></div>}
 
         {/* SEGMENTS */}
-        {tab==="segments"&&<>{insights.segments&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.segments}</div>}<DraggableGrid {...dgProps("segments")}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><div key={id}><CC grid title={ti} id={id} nm={id} data={segD}><BarChart data={segD}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>)}
+        {tab==="segments"&&<><DraggableGrid {...dgProps("segments")}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><div key={id}><CC grid title={ti} id={id} nm={id} data={segD}><BarChart data={segD}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>)}
           <div key="sg-seg-mo">{kvk&&<CC grid title={t.kvkSegByMonth} id="sg-seg-mo" nm="seg_month" data={kvk.segMo}><BarChart data={kvk.segMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>{SEG_ORDER.map((s,i)=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
           <div key="sg-seg-co">{kvk&&<CC grid title={t.kvkSegByCountry} id="sg-seg-co" nm="seg_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
           <div key="sg-ld-sg">{kvk&&<CC grid title={t.kvkLeadBySeg} id="sg-ld-sg" nm="lead_seg" data={kvk.leadSeg}><BarChart data={kvk.leadSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#4ea8de" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(78,168,222,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}</div>
@@ -1771,7 +1768,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </DraggableGrid></>}
 
         {/* BOOKING */}
-        {tab==="booking"&&<>{insights.booking&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.booking}</div>}<DraggableGrid {...dgProps("booking")}>
+        {tab==="booking"&&<><DraggableGrid {...dgProps("booking")}>
           <div key="ch-bd"><CC grid title={t.ciCoDOW} id="ch-bd" nm="dow" h={300} data={dowD}><BarChart data={dowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></BarChart></CC></div>
           <div key="ch-mdow"><CC grid title={t.monthlyDOW+" ("+t.checkInLabel+")"} id="ch-mdow" nm="monthly_dow_ci" data={monthDowD.ciData}><LineChart data={monthDowD.ciData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{monthDowD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
           <div key="ch-mdow2"><CC grid title={t.monthlyDOW+" ("+t.checkOutLabel+")"} id="ch-mdow2" nm="monthly_dow_co" data={monthDowD.coData}><LineChart data={monthDowD.coData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{monthDowD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
@@ -1780,8 +1777,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </DraggableGrid></>}
 
         {/* MEMBER */}
-        {tab==="member"&&<>{insights.member&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.member}</div>}
-          <div style={{...S.card,background:TH.insightBg,border:"1px solid "+TH.insightBorder,marginBottom:14,fontSize:11,color:TH.textMuted,lineHeight:1.6}}>{t.memberDisclaimer}</div>
+        {tab==="member"&&<>          <div style={{...S.card,background:TH.insightBg,border:"1px solid "+TH.insightBorder,marginBottom:14,fontSize:11,color:TH.textMuted,lineHeight:1.6}}>{t.memberDisclaimer}</div>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>{t.memberTotal}</div><div style={S.kv}>{memberRpt?fmtN(memberRpt.totalGuests):"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.memberRepeatCount}</div><div style={S.kv}>{memberRpt?fmtN(memberRpt.repeatCount):"—"}</div></div>
@@ -1791,11 +1787,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           {memberRpt?<DraggableGrid {...dgProps("member")}>
             <div key="mb-overview"><CC grid title={t.memberRepeatRate} id="mb-overview" nm="member_overview" data={memberRpt.overviewPie}><PieChart><Pie data={memberRpt.overviewPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x2=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y2=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);const label=name==="repeat"?t.memberRepeater:t.memberFirstTimer;return<text x={x2} y={y2} textAnchor={x2>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${label} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}><Cell fill="#34d399"/><Cell fill="#4ea8de"/></Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
             <div key="mb-jpintl"><CC grid title={t.memberByCountryType} id="mb-jpintl" nm="member_jpintl" data={memberRpt.jpIntlData}><BarChart data={memberRpt.jpIntlData}><CartesianGrid {...gl}/><XAxis dataKey="type" tick={tk}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}><Cell fill="#c9a84c"/><Cell fill="#4ea8de"/></Bar></BarChart></CC></div>
-            <div key="mb-rank"><CC grid title={t.memberByRank} id="mb-rank" nm="member_rank" data={memberRpt.rankRows}><BarChart data={memberRpt.rankRows}><CartesianGrid {...gl}/><XAxis dataKey="rank" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/><Bar dataKey="rate" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeatRate}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberTotal} opacity={0.4}/></BarChart></CC></div>
+            <div key="mb-rank"><CC grid title={t.memberByRank} id="mb-rank" nm="member_rank" data={memberRpt.rankRows}><ComposedChart data={memberRpt.rankRows}><CartesianGrid {...gl}/><XAxis dataKey="rank" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><YAxis yAxisId="count" orientation="right" tick={tks}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="rate" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeatRate}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberTotal} opacity={0.4} yAxisId="count"/></ComposedChart></CC></div>
             <div key="mb-seg"><CC grid title={t.memberBySegment} id="mb-seg" nm="member_seg" data={memberRpt.segRows}><BarChart data={memberRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}>{memberRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
             <div key="mb-detail"><SortTbl
               data={memberRpt.detailRows}
-              columns={[{key:"idx",label:"#"},{key:"country",label:t.drCountry},{key:"rank",label:t.thRank},{key:"segment",label:t.thSegment},{key:"bookings",label:t.memberAvgBookings},{key:"rev",label:t.totalRevenue}]}
+              columns={[{key:"idx",label:"#"},{key:"country",label:t.drCountry},{key:"rank",label:t.thRank},{key:"segment",label:t.thSegment},{key:"bookings",label:t.reservations},{key:"rev",label:t.totalRevenue}]}
               renderRow={r=><tr key={r.idx}><td style={{...S.td,...S.m}}>{r.idx}</td><td style={S.td}>{tl(r.country)}</td><td style={S.td}>{tl(r.rank)}</td><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m}}>{r.bookings}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>}
               title={t.memberDetail+" (Top 50)"}
             /></div>
@@ -1803,8 +1799,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </>}
 
         {/* LOS DISTRIBUTION */}
-        {tab==="los"&&<>{insights.los&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.los}</div>}
-          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+        {tab==="los"&&<>          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>{t.avgLOS}</div><div style={S.kv}>{losRpt?losRpt.overallAvg:0} {t.ns}</div></div>
           </div>
           {losRpt?<DraggableGrid {...dgProps("los")}>
@@ -1821,7 +1816,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </>}
 
         {/* REVENUE */}
-        {tab==="revenue"&&<>{insights.revenue&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.revenue}</div>}<DraggableGrid {...dgProps("revenue")}>
+        {tab==="revenue"&&<><DraggableGrid {...dgProps("revenue")}>
           <div key="ch-rm"><CC grid title={t.revByMarket} id="ch-rm" nm="rev_mkt" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
           <div key="ch-rv"><CC grid title={t.monthlyRev} id="ch-rv" nm="monthly_rev" h={300} data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
           <div key="ch-rmm"><CC grid title={t.revByMarketMonth} id="ch-rmm" nm="rev_mkt_month" h={300} data={revMktMo.data}><BarChart data={revMktMo.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revMktMo.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC></div>
@@ -1832,8 +1827,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* CANCELLATIONS */}
         {tab==="cancellations"&&<div>
-          {insights.cancellations&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.cancellations}</div>}
-          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+                    <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>{t.cancelCancelled}</div><div style={S.kv}>{cancelRpt?fmtN(cancelRpt.cancelledN):"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.cancelRate}</div><div style={S.kv}>{cancelRpt?cancelRpt.overallRate+"%":"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.cancelRevLost}</div><div style={S.kv}>{cancelRpt?fmtY(cancelRpt.lostRev):"—"}</div></div>
@@ -1854,8 +1848,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </div>}
 
         {/* REVPAR */}
-        {tab==="revpar"&&<>{insights.revpar&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.revpar}</div>}
-          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+        {tab==="revpar"&&<>          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>RevPAR</div><div style={S.kv}>¥{revparRpt?fmtN(revparRpt.overallRevpar):"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.revparOcc}</div><div style={S.kv}>{revparRpt?revparRpt.overallOcc+"%":"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>ADR</div><div style={S.kv}>¥{revparRpt?fmtN(revparRpt.overallAdr):"—"}</div></div>
@@ -1875,7 +1868,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </>}
 
         {/* ROOMS */}
-        {tab==="rooms"&&<>{insights.rooms&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.rooms}</div>}<DraggableGrid {...dgProps("rooms")}>
+        {tab==="rooms"&&<><DraggableGrid {...dgProps("rooms")}>
           <div key="ch-rt"><CC grid title={t.roomTypeDist} id="ch-rt" nm="rooms" h={Math.max(280,rmD.length*26)} data={rmD}><BarChart data={rmD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="room" type="category" width={120} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c084fc" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
         </DraggableGrid>
           <SortTbl
@@ -1887,8 +1880,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </>}
 
         {/* FACILITIES */}
-        {tab==="facilities"&&<div>{insights.facilities&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.facilities}</div>}
-          <DraggableGrid {...dgProps("facilities")}>
+        {tab==="facilities"&&<div>          <DraggableGrid {...dgProps("facilities")}>
             <div key="fac-res"><CC grid title={t.facResByFacility} id="fac-res" nm="fac_res" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="n" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
             <div key="fac-rev"><CC grid title={t.facAvgRevByFacility} id="fac-rev" nm="fac_rev" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
             <div key="fac-intl"><CC grid title={t.facIntlByFacility} id="fac-intl" nm="fac_intl" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="intlPct" fill="#e07b54" radius={[0,4,4,0]} name={t.intlPct}/></BarChart></CC></div>
