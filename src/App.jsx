@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.40";
+const APP_VERSION="1.41";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -17,6 +17,7 @@ const DL={
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
+  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-detail",0,7,12,5]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
@@ -107,7 +108,7 @@ const T = {
     revByMarketMonth:"Revenue by Market by Month",
     avgLOSByCountry:"Avg LOS by Country",avgLeadByCountry:"Avg Lead Time by Country",segMixByCountry:"Segment Mix by Country",
     facResByFacility:"Reservations by Facility",facAvgRevByFacility:"Avg Revenue by Facility",facIntlByFacility:"International % by Facility",facLOSByFacility:"Avg LOS by Facility",facKvKCompare:"Kanto vs Kansai Comparison",facHvACompare:"Hotel vs Apart Comparison",
-    sheetLoading:"Loading…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers January 2025 onward.",timezone:"Timezone",
+    sheetLoading:"Loading…",sheetLoaded:n=>`${n} reservations loaded from Google Sheets`,sheetError:"Could not load Google Sheets data. Upload a CSV manually.",orUpload:"Or upload a CSV manually",dataCoverage:"Data covers May 2024 onward.",timezone:"Timezone",
 compare:"Compare",
 cmpPeriodA:"Period A",cmpPeriodB:"Period B",
 cmpPreset:"Quick Select",cmpCustom:"Custom",
@@ -121,6 +122,11 @@ pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:
     losTab:"LOS",losTitle:"Length of Stay Distribution",losByNight:"Reservations by Nights",losBySeg:"LOS by Segment",losByCountry:"Avg LOS by Country",losDetail:"LOS Detail",losNights:"Nights",losAvgRev:"Avg Rev/Night",los7plus:"7+",
     revpar:"RevPAR",revparTitle:"Revenue Per Available Room",revparByFac:"RevPAR by Facility",revparTrend:"Monthly RevPAR Trend",revparOcc:"Occupancy",revparAvail:"Available",revparSold:"Sold",revparRate:"RevPAR",occRate:"Occ %",
     presets:"Presets",saveView:"Save View",presetName:"Preset name",presetSaved:"Saved!",presetDelete:"Delete",presetLoad:"Load",noPresets:"No saved presets",downloadPDF:"Download PDF",dowFilter:"Day of Week",allDOW:"All days",monthlyDOW:"Check-in/Check-out by Month",revByDOW:"Revenue by Day of Week",revByDOWMonth:"Revenue by DOW — Monthly",
+memberTab:"Member",memberTitle:"Member & Repeat Analysis",memberDisclaimer:"Note: 予約番 data only goes back to May 2024. Guests who booked before this cutoff would be counted as first-timers unless they booked twice after May 2024.",
+memberRepeatRate:"Repeat Rate",memberFirstTimer:"First-timer",memberRepeater:"Repeater",memberByCountryType:"Repeat Rate: Japanese vs Foreign",
+memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Repeat Guest Detail",
+memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
+memberJP:"Japanese",memberIntl:"International",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -205,7 +211,7 @@ pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:
     revByMarketMonth:"月別市場別売上",
     avgLOSByCountry:"国別 平均泊数",avgLeadByCountry:"国別 平均LT",segMixByCountry:"国別タイプ構成",
     facResByFacility:"施設別予約件数",facAvgRevByFacility:"施設別平均単価",facIntlByFacility:"施設別海外比率",facLOSByFacility:"施設別平均泊数",facKvKCompare:"関東vs関西比較",facHvACompare:"ホテルvsアパート比較",
-    sheetLoading:"読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2025年1月以降を対象としています。",timezone:"タイムゾーン",
+    sheetLoading:"読み込み中…",sheetLoaded:n=>`Google Sheetsから${n}件読込`,sheetError:"Google Sheetsの読み込みに失敗しました。CSVを手動でアップロードしてください。",orUpload:"またはCSVを手動でアップロード",dataCoverage:"データは2024年5月以降を対象としています。",timezone:"タイムゾーン",
 compare:"比較",
 cmpPeriodA:"期間A",cmpPeriodB:"期間B",
 cmpPreset:"クイック選択",cmpCustom:"カスタム",
@@ -219,6 +225,11 @@ pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggl
     losTab:"泊数分布",losTitle:"泊数分布",losByNight:"泊数別予約数",losBySeg:"タイプ別泊数",losByCountry:"国別平均泊数",losDetail:"泊数詳細",losNights:"泊数",losAvgRev:"平均単価/泊",los7plus:"7+",
     revpar:"RevPAR",revparTitle:"客室あたり売上",revparByFac:"施設別RevPAR",revparTrend:"月別RevPAR推移",revparOcc:"稼働率",revparAvail:"販売可能",revparSold:"販売済",revparRate:"RevPAR",occRate:"稼働率",
     presets:"プリセット",saveView:"ビュー保存",presetName:"プリセット名",presetSaved:"保存済!",presetDelete:"削除",presetLoad:"読込",noPresets:"保存済プリセットなし",downloadPDF:"PDF出力",dowFilter:"曜日",allDOW:"全曜日",monthlyDOW:"月別チェックイン/チェックアウト",revByDOW:"曜日別売上",revByDOWMonth:"曜日別売上（月別）",
+memberTab:"会員",memberTitle:"会員・リピート分析",memberDisclaimer:"注意: 予約番データは2024年5月以降のみ。この期間より前に予約した客は、2024年5月以降に2回以上予約しない限り初回客としてカウントされます。",
+memberRepeatRate:"リピート率",memberFirstTimer:"初回",memberRepeater:"リピーター",memberByCountryType:"リピート率: 国内 vs 海外",
+memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"リピーター詳細",
+memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
+memberJP:"国内",memberIntl:"海外",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -336,10 +347,11 @@ function processRow(row,headers){
   const planName=g("宿泊プラン")||"";
   const couponName=g("クーポン名")||"";
   const salesChannel=g("販売チャネル")||"";
+  const email=(g("メールアドレス")||"").trim().toLowerCase();
   const getPlanType=pn=>{const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"};
   const planType=getPlanType(planName);
   const checkinMonth=checkin?`${checkin.getFullYear()}-${String(checkin.getMonth()+1).padStart(2,"0")}`:null;
-  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel}
+  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email}
 }
 
 function decodeBuffer(buf){
@@ -955,6 +967,81 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     return{monthTrend,dailyTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
   },[filtered,monthMode,tz,tzFmt]);
 
+  // ─── MEMBER & REPEAT ANALYSIS ───
+  const memberRpt=useMemo(()=>{
+    if(!filtered.length)return null;
+    const withEmail=filtered.filter(r=>r.email);
+    if(!withEmail.length)return null;
+
+    // Count bookings per email
+    const emailCount={};
+    withEmail.forEach(r=>{
+      if(!emailCount[r.email])emailCount[r.email]={count:0,country:r.country,rank:r.rank,segment:r.segment,rev:0};
+      emailCount[r.email].count++;
+      emailCount[r.email].rev+=r.totalRev||0;
+    });
+
+    const totalGuests=Object.keys(emailCount).length;
+    const repeaters=Object.values(emailCount).filter(v=>v.count>=2);
+    const repeatCount=repeaters.length;
+    const repeatRate=totalGuests>0?+((repeatCount/totalGuests)*100).toFixed(1):0;
+    const avgBookings=repeatCount>0?+(repeaters.reduce((a,v)=>a+v.count,0)/repeatCount).toFixed(1):0;
+
+    // Overview pie data
+    const overviewPie=[
+      {name:"first",value:totalGuests-repeatCount},
+      {name:"repeat",value:repeatCount}
+    ];
+
+    // Japanese vs International repeat rate
+    const jpEmails={};const intlEmails={};
+    withEmail.forEach(r=>{
+      const bucket=r.country==="Japan"?jpEmails:intlEmails;
+      if(!bucket[r.email])bucket[r.email]=0;
+      bucket[r.email]++;
+    });
+    const jpTotal=Object.keys(jpEmails).length;
+    const jpRepeat=Object.values(jpEmails).filter(v=>v>=2).length;
+    const intlTotal=Object.keys(intlEmails).length;
+    const intlRepeat=Object.values(intlEmails).filter(v=>v>=2).length;
+    const jpIntlData=[
+      {type:"Japanese",total:jpTotal,repeat:jpRepeat,rate:jpTotal>0?+((jpRepeat/jpTotal)*100).toFixed(1):0},
+      {type:"International",total:intlTotal,repeat:intlRepeat,rate:intlTotal>0?+((intlRepeat/intlTotal)*100).toFixed(1):0},
+    ];
+
+    // By membership rank
+    const byRank={};
+    Object.values(emailCount).forEach(v=>{
+      const rk=v.rank||"No Rank";
+      if(!byRank[rk])byRank[rk]={total:0,repeat:0};
+      byRank[rk].total++;
+      if(v.count>=2)byRank[rk].repeat++;
+    });
+    const rankRows=["No Rank","Regular","Gold","Platinum"].map(rk=>({
+      rank:rk,total:byRank[rk]?.total||0,repeat:byRank[rk]?.repeat||0,
+      rate:(byRank[rk]?.total||0)>0?+(((byRank[rk]?.repeat||0)/(byRank[rk]?.total||0))*100).toFixed(1):0
+    }));
+
+    // By segment
+    const bySeg={};
+    Object.values(emailCount).forEach(v=>{
+      if(!bySeg[v.segment])bySeg[v.segment]={total:0,repeat:0};
+      bySeg[v.segment].total++;
+      if(v.count>=2)bySeg[v.segment].repeat++;
+    });
+    const segRows=Object.entries(bySeg).sort((a,b)=>b[1].total-a[1].total).map(([s,v])=>({
+      segment:s,total:v.total,repeat:v.repeat,
+      rate:v.total>0?+((v.repeat/v.total)*100).toFixed(1):0
+    }));
+
+    // Detail table: top repeaters
+    const detailRows=repeaters.sort((a,b)=>b.count-a.count).slice(0,50).map((v,i)=>({
+      idx:i+1,country:v.country,rank:v.rank,segment:v.segment,bookings:v.count,rev:v.rev
+    }));
+
+    return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows};
+  },[filtered]);
+
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
     if(!agg||!filtered.length)return{};
@@ -1067,8 +1154,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         ja?`販売可能室泊: ${fmtN(revparRpt.totalAvail)}、販売済: ${fmtN(revparRpt.totalNightsSold)}（${revparRpt.totalDays}日間）`:`Available: ${fmtN(revparRpt.totalAvail)} room-nights, Sold: ${fmtN(revparRpt.totalNightsSold)} (${revparRpt.totalDays} days)`,
         revparRpt.facRows.length?(ja?`最高RevPAR: ${revparRpt.facRows[0].name}（¥${fmtN(revparRpt.facRows[0].revpar)}）`:`Top RevPAR: ${revparRpt.facRows[0].name} (¥${fmtN(revparRpt.facRows[0].revpar)})`):null,
       ]):null,
+      member:memberRpt?b([
+        ja?`ユニーク客数: ${fmtN(memberRpt.totalGuests)}、リピーター: ${fmtN(memberRpt.repeatCount)}（${memberRpt.repeatRate}%）`:`Unique guests: ${fmtN(memberRpt.totalGuests)}, Repeaters: ${fmtN(memberRpt.repeatCount)} (${memberRpt.repeatRate}%)`,
+        ja?`リピーター平均予約数: ${memberRpt.avgBookings}回`:`Avg bookings per repeater: ${memberRpt.avgBookings}`,
+        memberRpt.jpIntlData.length?(ja?`国内リピート率: ${memberRpt.jpIntlData[0].rate}%、海外: ${memberRpt.jpIntlData[1].rate}%`:`Japanese repeat rate: ${memberRpt.jpIntlData[0].rate}%, International: ${memberRpt.jpIntlData[1].rate}%`):null,
+      ]):null,
     };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt,losRpt,revparRpt]);
+  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt,losRpt,revparRpt,memberRpt]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -1264,7 +1356,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"los",l:t.losTab},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},/*{id:"revpar",l:t.revpar},*/{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"member",l:t.memberTab},{id:"los",l:t.losTab},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},/*{id:"revpar",l:t.revpar},*/{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1683,6 +1775,29 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-bt"><CC grid title={t.monthlyTrend} id="ch-bt" nm="trend" h={300} data={moD}><LineChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><YAxis yAxisId="r" orientation="right" tick={tks} tickFormatter={fmtY}/><Tooltip content={<CT/>}/><Legend/><Line type="monotone" dataKey="count" stroke="#c9a84c" strokeWidth={2} dot={{fill:"#c9a84c",r:4}} name={t.reservations}/><Line type="monotone" dataKey="avgRev" stroke="#4ea8de" strokeWidth={2} dot={{fill:"#4ea8de",r:4}} name={t.avgRevRes} yAxisId="r"/></LineChart></CC></div>
           <div key="ch-bv"><CC grid title={t.bookingDevice} id="ch-bv" nm="device" data={(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});return Object.entries(m).map(([name,value])=>({name,value}))})()}>{(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});const dd=Object.entries(m).map(([name,value])=>({name,value}));return(<PieChart><Pie data={dd} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${name} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{dd.map((_,i)=><Cell key={i} fill={PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart>)})()}</CC></div>
         </DraggableGrid></>}
+
+        {/* MEMBER */}
+        {tab==="member"&&<>{insights.member&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.member}</div>}
+          <div style={{...S.card,background:TH.insightBg,border:"1px solid "+TH.insightBorder,marginBottom:14,fontSize:11,color:TH.textMuted,lineHeight:1.6}}>{t.memberDisclaimer}</div>
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
+            <div style={S.kpi}><div style={S.kl}>{t.memberTotal}</div><div style={S.kv}>{memberRpt?fmtN(memberRpt.totalGuests):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.memberRepeatCount}</div><div style={S.kv}>{memberRpt?fmtN(memberRpt.repeatCount):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.memberRepeatRate}</div><div style={S.kv}>{memberRpt?memberRpt.repeatRate+"%":"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.memberAvgBookings}</div><div style={S.kv}>{memberRpt?memberRpt.avgBookings:"—"}</div></div>
+          </div>
+          {memberRpt?<DraggableGrid {...dgProps("member")}>
+            <div key="mb-overview"><CC grid title={t.memberRepeatRate} id="mb-overview" nm="member_overview" data={memberRpt.overviewPie}><PieChart><Pie data={memberRpt.overviewPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x2=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y2=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);const label=name==="repeat"?t.memberRepeater:t.memberFirstTimer;return<text x={x2} y={y2} textAnchor={x2>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${label} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}><Cell fill="#34d399"/><Cell fill="#4ea8de"/></Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
+            <div key="mb-jpintl"><CC grid title={t.memberByCountryType} id="mb-jpintl" nm="member_jpintl" data={memberRpt.jpIntlData}><BarChart data={memberRpt.jpIntlData}><CartesianGrid {...gl}/><XAxis dataKey="type" tick={tk}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}><Cell fill="#c9a84c"/><Cell fill="#4ea8de"/></Bar></BarChart></CC></div>
+            <div key="mb-rank"><CC grid title={t.memberByRank} id="mb-rank" nm="member_rank" data={memberRpt.rankRows}><BarChart data={memberRpt.rankRows}><CartesianGrid {...gl}/><XAxis dataKey="rank" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/><Bar dataKey="rate" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeatRate}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberTotal} opacity={0.4}/></BarChart></CC></div>
+            <div key="mb-seg"><CC grid title={t.memberBySegment} id="mb-seg" nm="member_seg" data={memberRpt.segRows}><BarChart data={memberRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}>{memberRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
+            <div key="mb-detail"><SortTbl
+              data={memberRpt.detailRows}
+              columns={[{key:"idx",label:"#"},{key:"country",label:t.drCountry},{key:"rank",label:t.thRank},{key:"segment",label:t.thSegment},{key:"bookings",label:t.memberAvgBookings},{key:"rev",label:t.totalRevenue}]}
+              renderRow={r=><tr key={r.idx}><td style={{...S.td,...S.m}}>{r.idx}</td><td style={S.td}>{tl(r.country)}</td><td style={S.td}>{tl(r.rank)}</td><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m}}>{r.bookings}</td><td style={{...S.td,...S.m}}>{fmtN(r.rev)}</td></tr>}
+              title={t.memberDetail+" (Top 50)"}
+            /></div>
+          </DraggableGrid>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>No data</div>}
+        </>}
 
         {/* LOS DISTRIBUTION */}
         {tab==="los"&&<>{insights.los&&<div style={{...S.insight,whiteSpace:"pre-line"}}>{insights.los}</div>}
