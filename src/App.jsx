@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.44";
+const APP_VERSION="1.45";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -17,7 +17,7 @@ const DL={
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
-  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-detail",0,7,12,5]]),
+  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-detail",0,7,12,14]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
