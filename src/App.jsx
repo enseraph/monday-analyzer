@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.41";
+const APP_VERSION="1.42";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -548,22 +548,25 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const segD=useMemo(()=>!agg?[]:SEG_ORDER.filter(s=>agg.byS[s]).map(s=>({segment:s,count:agg.byS[s].n,avgRev:Math.round(agg.byS[s].rev/agg.byS[s].n),avgLOS:+(avg(agg.byS[s].nights)).toFixed(2),avgLead:+(avg(agg.byS[s].lead)).toFixed(1)})),[agg]);
   const moD=useMemo(()=>!agg?[]:Object.entries(agg.byM).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const dowD=useMemo(()=>!agg?[]:DOW_FULL.map((d,i)=>({day:dL[i],checkin:agg.byD[d]?.ci||0,checkout:agg.byD[d]?.co||0})),[agg,dL]);
+  // Helper: get the selected date field for a reservation
+  const getDateField=r=>fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;
+  const getDowField=r=>{const dt=getDateField(r);if(!dt)return null;return DOW_FULL[(dt.getDay()+6)%7]};
   // Revenue by DOW
   const revDowD=useMemo(()=>{
     if(!filtered.length)return[];
     const byDow={};
-    filtered.forEach(r=>{if(r.checkinDow)byDow[r.checkinDow]=(byDow[r.checkinDow]||0)+(r.totalRev||0)});
+    filtered.forEach(r=>{const dow=getDowField(r);if(dow)byDow[dow]=(byDow[dow]||0)+(r.totalRev||0)});
     return DOW_FULL.map((d,i)=>({day:dL[i],rev:byDow[d]||0}));
-  },[filtered,dL]);
+  },[filtered,dL,fDT]);
   // Revenue by DOW by month (line chart: X=DOW, one line per month)
   const revDowMonthD=useMemo(()=>{
     if(!filtered.length)return{data:[],months:[]};
     const byMonthDow={};
-    filtered.forEach(r=>{const m=getM(r);if(!m||!r.checkinDow)return;if(!byMonthDow[m])byMonthDow[m]={};byMonthDow[m][r.checkinDow]=(byMonthDow[m][r.checkinDow]||0)+(r.totalRev||0)});
+    filtered.forEach(r=>{const m=getM(r);const dow=getDowField(r);if(!m||!dow)return;if(!byMonthDow[m])byMonthDow[m]={};byMonthDow[m][dow]=(byMonthDow[m][dow]||0)+(r.totalRev||0)});
     const months=Object.keys(byMonthDow).sort();
     const data=DOW_FULL.map((d,i)=>{const row={day:dL[i]};months.forEach(m=>{row[m]=byMonthDow[m]?.[d]||0});return row});
     return{data,months};
-  },[filtered,monthMode,tz,dL]);
+  },[filtered,monthMode,tz,dL,fDT]);
   const monthDowD=useMemo(()=>{
     if(!filtered.length)return{data:[],months:[],ciData:[],coData:[]};
     // Group by month × day-of-week
@@ -587,9 +590,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const dailyD=useMemo(()=>{
     if(!filtered.length)return[];
     const byDate={};
-    filtered.forEach(r=>{const dt=tzFmt(r.checkin);if(!dt)return;if(!byDate[dt])byDate[dt]={date:dt,rev:0,count:0};byDate[dt].rev+=r.totalRev||0;byDate[dt].count++});
+    filtered.forEach(r=>{const dt=tzFmt(getDateField(r));if(!dt)return;if(!byDate[dt])byDate[dt]={date:dt,rev:0,count:0};byDate[dt].rev+=r.totalRev||0;byDate[dt].count++});
     return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
-  },[filtered,tz]);
+  },[filtered,tz,fDT]);
 
   // Country LOS and Lead for Country Overview tab
   const mktLOS=useMemo(()=>!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.nights.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)})),[agg]);
@@ -933,7 +936,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       byFac[r.facility].nightsSold+=r.nights||0;
     });
     // Calculate total days in the filtered period
-    const allDates=withRooms.map(r=>tzFmt(r.checkin)).filter(Boolean);
+    const allDates=withRooms.map(r=>tzFmt(getDateField(r))).filter(Boolean);
     const minDate=allDates.length?allDates.sort()[0]:null;
     const maxDate=allDates.length?allDates.sort().pop():null;
     const totalDays=minDate&&maxDate?Math.max(1,Math.round((new Date(maxDate)-new Date(minDate))/864e5)+1):1;
@@ -961,7 +964,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
     // Daily RevPAR trend
     const byDay={};
-    withRooms.forEach(r=>{const d=tzFmt(r.checkin);if(!d)return;if(!byDay[d])byDay[d]={rev:0,nightsSold:0};byDay[d].rev+=r.totalRev||0;byDay[d].nightsSold+=r.nights||0});
+    withRooms.forEach(r=>{const d=tzFmt(getDateField(r));if(!d)return;if(!byDay[d])byDay[d]={rev:0,nightsSold:0};byDay[d].rev+=r.totalRev||0;byDay[d].nightsSold+=r.nights||0});
     const dailyTrend=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,v])=>({date:d,revpar:TOTAL_ROOMS>0?Math.round(v.rev/TOTAL_ROOMS):0,occ:TOTAL_ROOMS>0?+((v.nightsSold/TOTAL_ROOMS)*100).toFixed(1):0}));
 
     return{monthTrend,dailyTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
