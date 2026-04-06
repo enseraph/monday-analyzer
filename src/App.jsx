@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.38";
+const APP_VERSION="1.39";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -18,7 +18,7 @@ const DL={
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
-  revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3]]),
+  revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3]]),
   pace:mkL([["pace-chart",0,0,12,5],["pace-summary",0,5,6,4]]),
@@ -120,7 +120,7 @@ pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
     losTab:"LOS",losTitle:"Length of Stay Distribution",losByNight:"Reservations by Nights",losBySeg:"LOS by Segment",losByCountry:"Avg LOS by Country",losDetail:"LOS Detail",losNights:"Nights",losAvgRev:"Avg Rev/Night",los7plus:"7+",
     revpar:"RevPAR",revparTitle:"Revenue Per Available Room",revparByFac:"RevPAR by Facility",revparTrend:"Monthly RevPAR Trend",revparOcc:"Occupancy",revparAvail:"Available",revparSold:"Sold",revparRate:"RevPAR",occRate:"Occ %",
-    presets:"Presets",saveView:"Save View",presetName:"Preset name",presetSaved:"Saved!",presetDelete:"Delete",presetLoad:"Load",noPresets:"No saved presets",downloadPDF:"Download PDF",dowFilter:"Day of Week",allDOW:"All days",monthlyDOW:"Check-in/Check-out by Month",
+    presets:"Presets",saveView:"Save View",presetName:"Preset name",presetSaved:"Saved!",presetDelete:"Delete",presetLoad:"Load",noPresets:"No saved presets",downloadPDF:"Download PDF",dowFilter:"Day of Week",allDOW:"All days",monthlyDOW:"Check-in/Check-out by Month",revByDOW:"Revenue by Day of Week",revByDOWMonth:"Revenue by DOW — Monthly",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -218,7 +218,7 @@ pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggl
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
     losTab:"泊数分布",losTitle:"泊数分布",losByNight:"泊数別予約数",losBySeg:"タイプ別泊数",losByCountry:"国別平均泊数",losDetail:"泊数詳細",losNights:"泊数",losAvgRev:"平均単価/泊",los7plus:"7+",
     revpar:"RevPAR",revparTitle:"客室あたり売上",revparByFac:"施設別RevPAR",revparTrend:"月別RevPAR推移",revparOcc:"稼働率",revparAvail:"販売可能",revparSold:"販売済",revparRate:"RevPAR",occRate:"稼働率",
-    presets:"プリセット",saveView:"ビュー保存",presetName:"プリセット名",presetSaved:"保存済!",presetDelete:"削除",presetLoad:"読込",noPresets:"保存済プリセットなし",downloadPDF:"PDF出力",dowFilter:"曜日",allDOW:"全曜日",monthlyDOW:"月別チェックイン/チェックアウト",
+    presets:"プリセット",saveView:"ビュー保存",presetName:"プリセット名",presetSaved:"保存済!",presetDelete:"削除",presetLoad:"読込",noPresets:"保存済プリセットなし",downloadPDF:"PDF出力",dowFilter:"曜日",allDOW:"全曜日",monthlyDOW:"月別チェックイン/チェックアウト",revByDOW:"曜日別売上",revByDOWMonth:"曜日別売上（月別）",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -534,6 +534,22 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const segD=useMemo(()=>!agg?[]:SEG_ORDER.filter(s=>agg.byS[s]).map(s=>({segment:s,count:agg.byS[s].n,avgRev:Math.round(agg.byS[s].rev/agg.byS[s].n),avgLOS:+(avg(agg.byS[s].nights)).toFixed(2),avgLead:+(avg(agg.byS[s].lead)).toFixed(1)})),[agg]);
   const moD=useMemo(()=>!agg?[]:Object.entries(agg.byM).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const dowD=useMemo(()=>!agg?[]:DOW_FULL.map((d,i)=>({day:dL[i],checkin:agg.byD[d]?.ci||0,checkout:agg.byD[d]?.co||0})),[agg,dL]);
+  // Revenue by DOW
+  const revDowD=useMemo(()=>{
+    if(!filtered.length)return[];
+    const byDow={};
+    filtered.forEach(r=>{if(r.checkinDow)byDow[r.checkinDow]=(byDow[r.checkinDow]||0)+(r.totalRev||0)});
+    return DOW_FULL.map((d,i)=>({day:dL[i],rev:byDow[d]||0}));
+  },[filtered,dL]);
+  // Revenue by DOW by month (line chart: X=DOW, one line per month)
+  const revDowMonthD=useMemo(()=>{
+    if(!filtered.length)return{data:[],months:[]};
+    const byMonthDow={};
+    filtered.forEach(r=>{const m=getM(r);if(!m||!r.checkinDow)return;if(!byMonthDow[m])byMonthDow[m]={};byMonthDow[m][r.checkinDow]=(byMonthDow[m][r.checkinDow]||0)+(r.totalRev||0)});
+    const months=Object.keys(byMonthDow).sort();
+    const data=DOW_FULL.map((d,i)=>{const row={day:dL[i]};months.forEach(m=>{row[m]=byMonthDow[m]?.[d]||0});return row});
+    return{data,months};
+  },[filtered,monthMode,tz,dL]);
   const monthDowD=useMemo(()=>{
     if(!filtered.length)return{data:[],months:[],ciData:[],coData:[]};
     // Group by month × day-of-week
@@ -1689,6 +1705,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-rv"><CC grid title={t.monthlyRev} id="ch-rv" nm="monthly_rev" h={300} data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
           <div key="ch-rmm"><CC grid title={t.revByMarketMonth} id="ch-rmm" nm="rev_mkt_month" h={300} data={revMktMo.data}><BarChart data={revMktMo.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revMktMo.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC></div>
           <div key="ch-drev"><CC grid title={t.dailyRev} id="ch-drev" nm="daily_rev" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-rdow"><CC grid title={t.revByDOW} id="ch-rdow" nm="rev_dow" data={revDowD}><BarChart data={revDowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-rdowm"><CC grid title={t.revByDOWMonth} id="ch-rdowm" nm="rev_dow_month" data={revDowMonthD.data}><LineChart data={revDowMonthD.data}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revDowMonthD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
         </DraggableGrid></>}
 
         {/* CANCELLATIONS */}
