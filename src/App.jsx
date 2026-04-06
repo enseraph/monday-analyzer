@@ -329,8 +329,9 @@ function shortFac(n){
 function processRow(row,headers){
   const g=c=>row[headers.indexOf(c)]??"";
   let facility=g("施設名");
-  // Normalize garbled encoding variants of 舞浜ビューⅠ
+  // Normalize facility name variants
   if(facility.includes("舞浜ビュー")&&!facility.includes("舞浜ビューⅠ"))facility=facility.replace(/舞浜ビュー.*$/,"舞浜ビューⅠ");
+  if(facility.includes("（旧："))facility=facility.replace(/\s*（旧：.*）\s*$/,"");
   const a1=parseInt(g("大人1(人数)"))||0,a2=parseInt(g("大人2(人数)"))||0,adults=a1+a2;
   let kids=0;
   const childCountCols=["子供1(人数)","子供2(人数)","子供3(人数)","子供4(人数)","子供5(人数)","子供6(人数)","子供7(人数)","子供8(人数)","子供9(人数)"];
