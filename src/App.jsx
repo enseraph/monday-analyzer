@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.45";
+const APP_VERSION="1.46";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -17,7 +17,7 @@ const DL={
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
-  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-detail",0,7,12,14]]),
+  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-fac",0,7,6,7],["mb-fac-tbl",6,7,6,7],["mb-detail",0,14,12,14]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
@@ -126,7 +126,7 @@ memberTab:"Member",memberTitle:"Member & Repeat Analysis",memberDisclaimer:"Note
 memberRepeatRate:"Repeat Rate",memberFirstTimer:"First-timer",memberRepeater:"Repeater",memberByCountryType:"Repeat Rate: Japanese vs Foreign",
 memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Repeat Guest Detail",
 memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
-memberJP:"Japanese",memberIntl:"International",memberName:"Name",
+memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -229,7 +229,7 @@ memberTab:"会員",memberTitle:"会員・リピート分析",memberDisclaimer:"�
 memberRepeatRate:"リピート率",memberFirstTimer:"初回",memberRepeater:"リピーター",memberByCountryType:"リピート率: 国内 vs 海外",
 memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"リピーター詳細",
 memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
-memberJP:"国内",memberIntl:"海外",memberName:"氏名",
+memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -1043,7 +1043,23 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       idx:i+1,name:v.guestName||"—",country:v.country,rank:v.rank,segment:v.segment,bookings:v.count,rev:v.rev
     }));
 
-    return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows};
+    // By facility: repeat rate per facility
+    const byFac={};
+    withEmail.forEach(r=>{
+      if(!byFac[r.facility])byFac[r.facility]={emails:{},totalBookings:0,rev:0};
+      byFac[r.facility].totalBookings++;
+      byFac[r.facility].rev+=r.totalRev||0;
+      if(!byFac[r.facility].emails[r.email])byFac[r.facility].emails[r.email]=0;
+      byFac[r.facility].emails[r.email]++;
+    });
+    const facRows=Object.entries(byFac).map(([f,v])=>{
+      const guests=Object.keys(v.emails).length;
+      const rpt=Object.values(v.emails).filter(c=>c>=2).length;
+      return{facility:f,name:shortFac(f),guests,repeaters:rpt,rate:guests>0?+((rpt/guests)*100).toFixed(1):0,bookings:v.totalBookings,rev:v.rev};
+    }).sort((a,b)=>b.repeaters-a.repeaters);
+    const facByRate=[...facRows].sort((a,b)=>b.rate-a.rate);
+
+    return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows,facRows,facByRate};
   },[filtered]);
 
   // ─── DYNAMIC INSIGHTS ───
@@ -1790,6 +1806,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="mb-jpintl"><CC grid title={t.memberByCountryType} id="mb-jpintl" nm="member_jpintl" data={memberRpt.jpIntlData}><BarChart data={memberRpt.jpIntlData}><CartesianGrid {...gl}/><XAxis dataKey="type" tick={tk}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}><Cell fill="#c9a84c"/><Cell fill="#4ea8de"/></Bar></BarChart></CC></div>
             <div key="mb-rank"><CC grid title={t.memberByRank} id="mb-rank" nm="member_rank" data={memberRpt.rankRows}><ComposedChart data={memberRpt.rankRows}><CartesianGrid {...gl}/><XAxis dataKey="rank" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><YAxis yAxisId="count" orientation="right" tick={false} axisLine={false}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="rate" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeatRate}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberTotal} opacity={0.4} yAxisId="count"/></ComposedChart></CC></div>
             <div key="mb-seg"><CC grid title={t.memberBySegment} id="mb-seg" nm="member_seg" data={memberRpt.segRows}><BarChart data={memberRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}>{memberRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
+            <div key="mb-fac"><CC grid title={t.memberByFac} id="mb-fac" nm="member_fac" data={memberRpt.facByRate}><BarChart data={memberRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#34d399" radius={[0,4,4,0]} name={t.memberRepeatRate}/></BarChart></CC></div>
+            <div key="mb-fac-tbl"><SortTbl
+              data={memberRpt.facRows}
+              columns={[{key:"name",label:t.thFacility},{key:"guests",label:t.memberTotal},{key:"repeaters",label:t.memberRepeatCount},{key:"rate",label:t.memberRepeatRate},{key:"bookings",label:t.reservations}]}
+              renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{fmtN(r.guests)}</td><td style={{...S.td,...S.m}}>{fmtN(r.repeaters)}</td><td style={{...S.td,...S.m,color:r.rate>20?"#34d399":TH.text}}>{r.rate}%</td><td style={{...S.td,...S.m}}>{fmtN(r.bookings)}</td></tr>}
+              title={t.memberByFac}
+            /></div>
             <div key="mb-detail"><SortTbl
               data={memberRpt.detailRows}
               columns={[{key:"idx",label:"#"},{key:"name",label:t.memberName},{key:"country",label:t.drCountry},{key:"rank",label:t.thRank},{key:"segment",label:t.thSegment},{key:"bookings",label:t.reservations},{key:"rev",label:t.totalRevenue}]}
