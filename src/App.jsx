@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.56";
+const APP_VERSION="1.57";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -490,7 +490,7 @@ export default function App(){
   // Translate data-level labels (region, segment, type, rank, country)
   const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Couple (1M+1F)":"カップル(1M+1F)","Duo (Male)":"男性ペア","Duo (Female)":"女性ペア","Family (1 child)":"ファミリー(子1)","Family (2 children)":"ファミリー(子2)","Family (3+ children)":"ファミリー(子3+)","Group (All Male)":"グループ(全男性)","Group (All Female)":"グループ(全女性)","Group (Mixed)":"グループ(混合)","Overall":"全体","Japanese":"日本","Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
-  useEffect(()=>{const h=()=>setIsMobile(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h)},[]);
+  useEffect(()=>{let raf=0;const h=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const m=window.innerWidth<768;setIsMobile(p=>p===m?p:m)})};window.addEventListener("resize",h);return()=>{window.removeEventListener("resize",h);if(raf)cancelAnimationFrame(raf)}},[]);
   const[allData,setAllData]=useState([]);const[allH,setAllH]=useState([]);const[fL,setFL]=useState([]);const[errs,setErrs]=useState([]);const[proc,setProc]=useState(false);
   const[fR,setFR]=useState("All");const[fC,setFC]=useState([]);const[fDT,setFDT]=useState("booking");const[fDF,setFDF]=useState("");const[fDTo,setFDTo]=useState("");const[fS,setFS]=useState([]);const[fP,setFP]=useState([]);
   const[fCancel,setFCancel]=useState("all"); // "confirmed" | "cancelled" | "all"
@@ -534,20 +534,25 @@ const[drSingle,setDrSingle]=useState("");
   useEffect(()=>{
     if(allData.length>0)return; // skip if user already uploaded files
     setSheetStatus("loading");
+    const CACHE_KEY="monday_csv_cache",CACHE_TTL=5*60*1000;
+    const parseAndSet=(text,fromCache)=>{
+      const res=Papa.parse(text,{header:false,skipEmptyLines:true});
+      if(!res.data||res.data.length<2){setSheetStatus("error");return false}
+      const h=res.data[0];
+      const miss=REQUIRED_COLS.filter(c=>!h.includes(c));
+      if(miss.length){setSheetStatus("error");return false}
+      const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
+      const processed=applyEmailIntlOverride(rows.map(r=>processRow(r,h)));
+      setAllH(h);setAllData(processed);
+      setFL([{name:"Google Sheets (live)"+(fromCache?" (cached)":""),rows:rows.length,encoding:"UTF-8"}]);
+      setSheetStatus("done");
+      return true;
+    };
+    // Try cache first for instant warm starts
+    try{const c=localStorage.getItem(CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text,true))return}}catch{}
     fetch(GSHEET_CSV_URL)
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
-      .then(text=>{
-        const res=Papa.parse(text,{header:false,skipEmptyLines:true});
-        if(!res.data||res.data.length<2){setSheetStatus("error");return}
-        const h=res.data[0];
-        const miss=REQUIRED_COLS.filter(c=>!h.includes(c));
-        if(miss.length){setSheetStatus("error");return}
-        const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
-        const processed=applyEmailIntlOverride(rows.map(r=>processRow(r,h)));
-        setAllH(h);setAllData(processed);
-        setFL([{name:"Google Sheets (live)",rows:rows.length,encoding:"UTF-8"}]);
-        setSheetStatus("done");
-      })
+      .then(text=>{if(parseAndSet(text,false)){try{localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch{}}})
       .catch(()=>setSheetStatus("error"));
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -555,7 +560,27 @@ const[drSingle,setDrSingle]=useState("");
 
   const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([])};
 
-  const filtered=useMemo(()=>{let d=allData;if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));if(fR!=="All")d=d.filter(r=>r.region===fR);if(fC.length)d=d.filter(r=>fC.includes(r.country));if(fS.length)d=d.filter(r=>fS.includes(r.segment));if(fP.length)d=d.filter(r=>fP.includes(r.facility));if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));if(fDOW.length)d=d.filter(r=>fDOW.includes(r.checkinDow));if(fDF||fDTo){const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;d=d.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}return d},[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW]);
+  const filtered=useMemo(()=>{
+    const fCSet=fC.length?new Set(fC):null,fSSet=fS.length?new Set(fS):null,fPSet=fP.length?new Set(fP):null,fBSet=fBrands.length?new Set(fBrands):null,fGSet=fGeo.length?new Set(fGeo):null,fDSet=fDOW.length?new Set(fDOW):null;
+    const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
+    const dateField=fDT==="checkin"?"checkin":fDT==="checkout"?"checkout":"bookingDate";
+    const out=[];
+    for(let i=0;i<allData.length;i++){const r=allData[i];
+      if(fCancel==="confirmed"&&r.isCancelled)continue;
+      if(fCancel==="cancelled"&&!r.isCancelled)continue;
+      if(fHType!=="All"&&r.hotelType!==fHType)continue;
+      if(fBSet&&!fBSet.has(r.brand))continue;
+      if(fR!=="All"&&r.region!==fR)continue;
+      if(fCSet&&!fCSet.has(r.country))continue;
+      if(fSSet&&!fSSet.has(r.segment))continue;
+      if(fPSet&&!fPSet.has(r.facility))continue;
+      if(fGSet&&!fGSet.has(GEO_REGION(r.country)))continue;
+      if(fDSet&&!fDSet.has(r.checkinDow))continue;
+      if(from||to){const dt=r[dateField];if(!dt)continue;if(from&&dt<from)continue;if(to&&dt>to)continue}
+      out.push(r);
+    }
+    return out;
+  },[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW]);
 
   const uC=useMemo(()=>[...new Set(allData.map(r=>r.country))].sort(),[allData]);
   const uP=useMemo(()=>[...new Set(allData.map(r=>r.facility))].sort(),[allData]);
@@ -746,7 +771,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   // ─── KVK CHART DATA ───
   const kvk=useMemo(()=>{
-    if(!agg)return null;
+    if(tab!=="kvk"||!agg)return null;
     // Market bars per region (excl Japan)
     const mkR=reg=>Object.entries(agg.rC[reg]||{}).filter(([c])=>c!=="Japan").sort((a,b)=>b[1]-a[1]).slice(0,10).map(([c,n])=>({country:c,count:n}));
     // Monthly stacked by top countries
@@ -794,11 +819,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const rankC=topRkC.map(c=>{const row={country:c};RANK_ORDER.forEach(rk=>{row[rk]=agg.rkC[c]?.[rk]||0});return row});
 
     return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,scale,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
-  },[agg,filtered,dL,lang,tz]);
+  },[tab,agg,filtered,dL,lang,tz]);
 
   // ─── COMPARE TAB ───
   const compareRpt=useMemo(()=>{
-    if(!allData.length||!cmpA.from||!cmpB.from)return null;
+    if(tab!=="compare"||!allData.length||!cmpA.from||!cmpB.from)return null;
     const applyFilters=d=>{
       if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);
       else if(fCancel==="cancelled")d=d.filter(r=>r.isCancelled);
@@ -843,11 +868,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
     const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
     return{a,b,pctChg,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
-  },[allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
+  },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
 
   // ─── PACE REPORT ───
   const paceRpt=useMemo(()=>{
-    if(!allData.length)return null;
+    if(tab!=="pace"||!allData.length)return null;
     // Apply global filters (same as Compare — all except date range)
     const applyFilters=d=>{
       if(fCancel==="confirmed")d=d.filter(r=>!r.isCancelled);
@@ -927,11 +952,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const projectedRev=todayDay>0?Math.round(curAtDay.rev/todayDay*daysInMonth):0;
 
     return{months,currentMonth,todayDay,chartData,summaryRows,curAtDay,lastAtDay,projectedCount,projectedRev,daysInMonth};
-  },[allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,paceMetric]);
+  },[tab,allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,paceMetric]);
 
   // ─── CANCELLATION RATE TRACKER ───
   const cancelRpt=useMemo(()=>{
-    if(!allData.length)return null;
+    if(tab!=="cancellations"||!allData.length)return null;
     // Apply all global filters EXCEPT fCancel (need both confirmed+cancelled)
     let base=[...allData];
     if(fHType!=="All")base=base.filter(r=>r.hotelType===fHType);
@@ -975,11 +1000,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const facByRate=[...facRows].sort((a,b)=>b.rate-a.rate);
 
     return{totalN,cancelledN,overallRate,lostRev,totalFee,monthTrend,countryRows,countryByRate,segRows,facRows,facByRate};
-  },[allData,fDT,fDF,fDTo,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,monthMode]);
+  },[tab,allData,fDT,fDF,fDTo,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,monthMode]);
 
   // ─── LOS DISTRIBUTION ───
   const losRpt=useMemo(()=>{
-    if(!filtered.length)return null;
+    if(tab!=="los"||!filtered.length)return null;
     const withNights=filtered.filter(r=>r.nights&&r.nights>0);
     if(!withNights.length)return null;
 
@@ -1023,11 +1048,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
     const overallAvg=+(withNights.reduce((a,r)=>a+r.nights,0)/withNights.length).toFixed(2);
     return{histData,segLOS,countryLOS,detailRows,overallAvg,totalWithNights:withNights.length};
-  },[filtered,monthMode]);
+  },[tab,filtered,monthMode]);
 
   // ─── REVPAR ───
   const revparRpt=useMemo(()=>{
-    if(!filtered.length)return null;
+    if(tab!=="revpar"||!filtered.length)return null;
     // Only include facilities with known room counts
     const withRooms=filtered.filter(r=>ROOM_INVENTORY[r.facility]);
 
@@ -1093,11 +1118,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dailyTrend=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,v])=>({date:d,revpar:TOTAL_ROOMS>0?Math.round(v.rev/TOTAL_ROOMS):0,occ:TOTAL_ROOMS>0?+((v.nightsSold/TOTAL_ROOMS)*100).toFixed(1):0}));
 
     return{monthTrend,dailyTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
-  },[filtered,monthMode,tz,tzFmt]);
+  },[tab,filtered,monthMode,tz,tzFmt]);
 
   // ─── MEMBER & REPEAT ANALYSIS ───
   const memberRpt=useMemo(()=>{
-    if(!filtered.length)return null;
+    if(tab!=="member"||!filtered.length)return null;
     const withEmail=filtered.filter(r=>r.email);
     if(!withEmail.length)return null;
 
@@ -1272,125 +1297,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       windowSegments:segments,bucketLabels,tightestRows,firstSecondRows,tightestChart,firstSecondChart,countryRptRows};
   },[filtered,allData]);
 
-  // ─── DYNAMIC INSIGHTS ───
-  const insights=useMemo(()=>{
-    if(!agg||!filtered.length)return{};
-    const ja=lang==="ja";
-    const n=agg.n,tr=agg.totalRev,ar=agg.avgRev;
-    // top market
-    const topMkt=mktD.length?mktD[0]:null;
-    // top segment
-    const topSeg=segD.length?segD.reduce((a,b)=>b.count>a.count?b:a,segD[0]):null;
-    // highest rev segment
-    const hiRevSeg=segD.length?segD.reduce((a,b)=>b.avgRev>a.avgRev?b:a,segD[0]):null;
-    // longest LOS segment
-    const hiLOSSeg=segD.length?segD.reduce((a,b)=>b.avgLOS>a.avgLOS?b:a,segD[0]):null;
-    // longest lead segment
-    const hiLeadSeg=segD.length?segD.reduce((a,b)=>b.avgLead>a.avgLead?b:a,segD[0]):null;
-    // peak DOW
-    const peakCI=dowD.length?dowD.reduce((a,b)=>b.checkin>a.checkin?b:a,dowD[0]):null;
-    // smartphone %
-    const spN=filtered.filter(r=>r.device==="スマートフォン").length;
-    const spPct=pct(spN,n);
-    // top room
-    const topRoom=rmD.length?rmD[0]:null;
-    const top3RoomPct=rmD.length>=3?pct(rmD[0].count+rmD[1].count+rmD[2].count,n):"—";
-    // top facility
-    const topFac=facD.length?facD[0]:null;
-    const hiRevFac=facD.length?facD.reduce((a,b)=>b.avgRev>a.avgRev?b:a,facD[0]):null;
-    const hiIntlFac=facD.length?facD.reduce((a,b)=>b.intlPct>a.intlPct?b:a,facD[0]):null;
-    // kanto vs kansai
-    const kN=kvk?kvk.kantoN:0,sN=kvk?kvk.kansaiN:0;
-    const kIntl=agg.rC.Kanto?pct(Object.entries(agg.rC.Kanto).filter(([c])=>c!=="Japan").reduce((a,[,v])=>a+v,0),kN):"—";
-    const sIntl=agg.rC.Kansai?pct(Object.entries(agg.rC.Kansai).filter(([c])=>c!=="Japan").reduce((a,[,v])=>a+v,0),sN):"—";
-    const kTop=kvk&&kvk.mkKanto.length?kvk.mkKanto[0].country:"—";
-    const sTop=kvk&&kvk.mkKansai.length?kvk.mkKansai[0].country:"—";
-    // highest rev market
-    const hiRevMkt=mktD.length?mktD.reduce((a,b)=>b.avgRev>a.avgRev?b:a,mktD[0]):null;
-    // highest LOS market
-    const hiLOSMkt=mktLOS.length?mktLOS[0]:null;
-
-    const b=(items)=>items.filter(Boolean).map(s=>"• "+s).join("\n");
-
-    return{
-      overview:b([
-        ja?`予約${fmtN(n)}件、売上合計${fmtY(tr)}、平均単価${fmtY(ar)}`:`${fmtN(n)} reservations, ${fmtY(tr)} total revenue, ${fmtY(ar)} avg/res`,
-        topMkt?(ja?`最大市場: ${tl(topMkt.country)}（${fmtN(topMkt.count)}件）`:`Top market: ${tl(topMkt.country)} (${fmtN(topMkt.count)})`):null,
-        topSeg?(ja?`最多タイプ: ${tl(topSeg.segment)}（${pct(topSeg.count,n)}）`:`Largest segment: ${tl(topSeg.segment)} (${pct(topSeg.count,n)})`):null,
-        ja?`海外比率: ${agg.intlPct.toFixed(1)}%、平均泊数: ${agg.avgNights.toFixed(1)}泊`:`International: ${agg.intlPct.toFixed(1)}%, avg stay: ${agg.avgNights.toFixed(1)} nights`,
-      ]),
-      kvk:b([
-        ja?`関東${fmtN(kN)}件 vs 関西${fmtN(sN)}件`:`Kanto ${fmtN(kN)} vs Kansai ${fmtN(sN)} reservations`,
-        ja?`海外比率: 関東${kIntl} / 関西${sIntl}`:`International: Kanto ${kIntl} / Kansai ${sIntl}`,
-        ja?`関東トップインバウンド: ${tl(kTop)}、関西: ${tl(sTop)}`:`Top inbound — Kanto: ${tl(kTop)}, Kansai: ${tl(sTop)}`,
-        kvk&&kvk.losSR.length?(()=>{const kL=kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length;const sL=kvk.losSR.reduce((a,s)=>a+s.Kansai,0)/kvk.losSR.length;return ja?`平均泊数: 関東${kL>0?kL.toFixed(1):"—"}泊 / 関西${sL>0?sL.toFixed(1):"—"}泊`:`Avg LOS: Kanto ${kL>0?kL.toFixed(1):"—"} / Kansai ${sL>0?sL.toFixed(1):"—"} nights`})():null,
-      ]),
-      markets:b([
-        topMkt?(ja?`最大市場: ${tl(topMkt.country)}（${fmtN(topMkt.count)}件）`:`#1 market: ${tl(topMkt.country)} (${fmtN(topMkt.count)})`):null,
-        hiRevMkt?(ja?`最高平均単価: ${tl(hiRevMkt.country)}（${fmtY(hiRevMkt.avgRev)}）`:`Highest avg revenue: ${tl(hiRevMkt.country)} (${fmtY(hiRevMkt.avgRev)})`):null,
-        hiLOSMkt?(ja?`最長平均泊数: ${tl(hiLOSMkt.country)}（${hiLOSMkt.avgLOS}泊）`:`Longest avg stay: ${tl(hiLOSMkt.country)} (${hiLOSMkt.avgLOS} nights)`):null,
-        ja?`国内${pct(filtered.filter(r=>r.country==="Japan").length,n)} / 海外${pct(filtered.filter(r=>r.country!=="Japan").length,n)}`:`Domestic ${pct(filtered.filter(r=>r.country==="Japan").length,n)} / International ${pct(filtered.filter(r=>r.country!=="Japan").length,n)}`,
-      ]),
-      segments:b([
-        topSeg?(ja?`最多: ${tl(topSeg.segment)}（${fmtN(topSeg.count)}件、${pct(topSeg.count,n)}）`:`Largest: ${tl(topSeg.segment)} (${fmtN(topSeg.count)}, ${pct(topSeg.count,n)})`):null,
-        hiRevSeg?(ja?`最高単価: ${tl(hiRevSeg.segment)}（${fmtY(hiRevSeg.avgRev)}）`:`Highest revenue: ${tl(hiRevSeg.segment)} (${fmtY(hiRevSeg.avgRev)}/res)`):null,
-        hiLOSSeg?(ja?`最長泊数: ${tl(hiLOSSeg.segment)}（${hiLOSSeg.avgLOS.toFixed(1)}泊）`:`Longest stay: ${tl(hiLOSSeg.segment)} (${hiLOSSeg.avgLOS.toFixed(1)} nights)`):null,
-        hiLeadSeg?(ja?`最長LT: ${tl(hiLeadSeg.segment)}（${hiLeadSeg.avgLead.toFixed(0)}日）`:`Longest lead: ${tl(hiLeadSeg.segment)} (${hiLeadSeg.avgLead.toFixed(0)} days)`):null,
-      ]),
-      booking:b([
-        ja?`平均リードタイム: ${agg.avgLead.toFixed(0)}日`:`Average lead time: ${agg.avgLead.toFixed(0)} days`,
-        peakCI?(ja?`チェックインピーク: ${peakCI.day}（${fmtN(peakCI.checkin)}件）`:`Peak check-in day: ${peakCI.day} (${fmtN(peakCI.checkin)})`):null,
-        ja?`スマホ予約: ${spPct}`:`Smartphone bookings: ${spPct}`,
-        moD.length>=2?(ja?`月次トレンド: ${moD[moD.length-1].count>moD[0].count?"増加傾向":"減少傾向"}`:`Monthly trend: ${moD[moD.length-1].count>moD[0].count?"increasing":"decreasing"}`):null,
-      ]),
-      revenue:b([
-        ja?`売上合計: ${fmtY(tr)}、平均単価: ${fmtY(ar)}`:`Total revenue: ${fmtY(tr)}, avg ${fmtY(ar)}/res`,
-        hiRevMkt?(ja?`最高単価市場: ${tl(hiRevMkt.country)}（${fmtY(hiRevMkt.avgRev)}）`:`Top market by avg rev: ${tl(hiRevMkt.country)} (${fmtY(hiRevMkt.avgRev)})`):null,
-        hiRevSeg?(ja?`最高単価タイプ: ${tl(hiRevSeg.segment)}（${fmtY(hiRevSeg.avgRev)}）`:`Top segment by avg rev: ${tl(hiRevSeg.segment)} (${fmtY(hiRevSeg.avgRev)})`):null,
-        moD.length>=2?(ja?`月次売上: ${moD[moD.length-1].rev>moD[0].rev?"増加傾向":"減少傾向"}`:`Revenue trend: ${moD[moD.length-1].rev>moD[0].rev?"increasing":"decreasing"}`):null,
-      ]),
-      rooms:b([
-        topRoom?(ja?`最多部屋タイプ: ${topRoom.room}（${pct(topRoom.count,n)}）`:`Top room type: ${topRoom.room} (${pct(topRoom.count,n)})`):null,
-        rmD.length>=3?(ja?`上位3タイプで${top3RoomPct}`:`Top 3 types account for ${top3RoomPct}`):null,
-      ]),
-      facilities:b([
-        topFac?(ja?`最多施設: ${topFac.name}（${fmtN(topFac.n)}件）`:`Top facility: ${topFac.name} (${fmtN(topFac.n)})`):null,
-        hiRevFac?(ja?`最高単価: ${hiRevFac.name}（${fmtY(hiRevFac.avgRev)}）`:`Highest avg rev: ${hiRevFac.name} (${fmtY(hiRevFac.avgRev)})`):null,
-        hiIntlFac?(ja?`最高海外比率: ${hiIntlFac.name}（${hiIntlFac.intlPct}%）`:`Most international: ${hiIntlFac.name} (${hiIntlFac.intlPct}%)`):null,
-        ja?`関東${facD.filter(f=>f.region==="Kanto").length}施設 / 関西${facD.filter(f=>f.region==="Kansai").length}施設`:`Kanto: ${facD.filter(f=>f.region==="Kanto").length} properties / Kansai: ${facD.filter(f=>f.region==="Kansai").length} properties`,
-      ]),
-      compare:compareRpt&&!compareRpt.empty?b([
-        ja?`期間A: ${fmtN(compareRpt.a.totalCount)}件、${fmtY(compareRpt.a.totalRev)}`:`Period A: ${fmtN(compareRpt.a.totalCount)} res, ${fmtY(compareRpt.a.totalRev)}`,
-        ja?`期間B: ${fmtN(compareRpt.b.totalCount)}件、${fmtY(compareRpt.b.totalRev)}`:`Period B: ${fmtN(compareRpt.b.totalCount)} res, ${fmtY(compareRpt.b.totalRev)}`,
-        ja?`差分: 予約${compareRpt.a.totalCount-compareRpt.b.totalCount>0?"+":""}${compareRpt.a.totalCount-compareRpt.b.totalCount}件、売上${compareRpt.a.totalRev-compareRpt.b.totalRev>0?"+":""}${fmtY(Math.abs(compareRpt.a.totalRev-compareRpt.b.totalRev))} (${compareRpt.pctChg(compareRpt.a.totalRev,compareRpt.b.totalRev)})`:`Delta: ${compareRpt.a.totalCount-compareRpt.b.totalCount>0?"+":""}${compareRpt.a.totalCount-compareRpt.b.totalCount} res, ${compareRpt.a.totalRev-compareRpt.b.totalRev>0?"+":""}${fmtY(Math.abs(compareRpt.a.totalRev-compareRpt.b.totalRev))} (${compareRpt.pctChg(compareRpt.a.totalRev,compareRpt.b.totalRev)})`,
-      ]):null,
-      pace:paceRpt?b([
-        ja?`当月(${paceRpt.currentMonth}): ${paceMetric==="count"?fmtN(paceRpt.curAtDay.count)+"件":fmtY(paceRpt.curAtDay.rev)}（${paceRpt.todayDay}日時点）`:`Current month (${paceRpt.currentMonth}): ${paceMetric==="count"?fmtN(paceRpt.curAtDay.count):fmtY(paceRpt.curAtDay.rev)} (day ${paceRpt.todayDay})`,
-        paceRpt.lastAtDay?(ja?`先月同日: ${paceMetric==="count"?fmtN(paceRpt.lastAtDay.count)+"件":fmtY(paceRpt.lastAtDay.rev)}（差分: ${paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count>0?"+":"")+(paceRpt.curAtDay.count-paceRpt.lastAtDay.count)+"件":(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev>0?"+":"")+fmtY(Math.abs(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev))}）`:`Last month at day ${paceRpt.todayDay}: ${paceMetric==="count"?fmtN(paceRpt.lastAtDay.count):fmtY(paceRpt.lastAtDay.rev)} (delta: ${paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count>0?"+":"")+(paceRpt.curAtDay.count-paceRpt.lastAtDay.count):(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev>0?"+":"")+fmtY(Math.abs(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev))})`):null,
-        ja?`月末予測: ${paceMetric==="count"?fmtN(paceRpt.projectedCount)+"件":fmtY(paceRpt.projectedRev)}`:`Projected month-end: ${paceMetric==="count"?fmtN(paceRpt.projectedCount):fmtY(paceRpt.projectedRev)}`,
-      ]):null,
-      cancellations:cancelRpt&&!cancelRpt.empty?b([
-        ja?`総キャンセル: ${fmtN(cancelRpt.cancelledN)}件 / ${fmtN(cancelRpt.totalN)}件（${cancelRpt.overallRate}%）`:`Total cancelled: ${fmtN(cancelRpt.cancelledN)} / ${fmtN(cancelRpt.totalN)} (${cancelRpt.overallRate}%)`,
-        ja?`失注売上: ${fmtY(cancelRpt.lostRev)}、徴収キャンセル料: ${fmtY(cancelRpt.totalFee)}`:`Lost revenue: ${fmtY(cancelRpt.lostRev)}, fees collected: ${fmtY(cancelRpt.totalFee)}`,
-        cancelRpt.segRows.length?(ja?`最高キャンセル率タイプ: ${tl(cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).segment)}（${cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).rate}%）`:`Highest cancel rate segment: ${tl(cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).segment)} (${cancelRpt.segRows.reduce((a,b)=>b.rate>a.rate?b:a,cancelRpt.segRows[0]).rate}%)`):null,
-      ]):null,
-      los:losRpt?b([
-        ja?`平均泊数: ${losRpt.overallAvg}泊（${fmtN(losRpt.totalWithNights)}件）`:`Average LOS: ${losRpt.overallAvg} nights (${fmtN(losRpt.totalWithNights)} reservations)`,
-        losRpt.detailRows.length?(ja?`最多: ${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).nights}泊（${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).share}%）`:`Most common: ${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).nights} nights (${losRpt.detailRows.reduce((a,r)=>r.count>a.count?r:a,losRpt.detailRows[0]).share}%)`):null,
-        losRpt.segLOS.length?(ja?`最長タイプ: ${tl(losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).segment)}（${losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).avgLOS}泊）`:`Longest segment: ${tl(losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).segment)} (${losRpt.segLOS.reduce((a,s)=>s.avgLOS>a.avgLOS?s:a,losRpt.segLOS[0]).avgLOS} nights)`):null,
-      ]):null,
-      revpar:revparRpt?b([
-        ja?`RevPAR: ¥${fmtN(revparRpt.overallRevpar)}、稼働率: ${revparRpt.overallOcc}%、ADR: ¥${fmtN(revparRpt.overallAdr)}`:`RevPAR: ¥${fmtN(revparRpt.overallRevpar)}, Occupancy: ${revparRpt.overallOcc}%, ADR: ¥${fmtN(revparRpt.overallAdr)}`,
-        ja?`販売可能室泊: ${fmtN(revparRpt.totalAvail)}、販売済: ${fmtN(revparRpt.totalNightsSold)}（${revparRpt.totalDays}日間）`:`Available: ${fmtN(revparRpt.totalAvail)} room-nights, Sold: ${fmtN(revparRpt.totalNightsSold)} (${revparRpt.totalDays} days)`,
-        revparRpt.facRows.length?(ja?`最高RevPAR: ${revparRpt.facRows[0].name}（¥${fmtN(revparRpt.facRows[0].revpar)}）`:`Top RevPAR: ${revparRpt.facRows[0].name} (¥${fmtN(revparRpt.facRows[0].revpar)})`):null,
-      ]):null,
-      member:memberRpt?b([
-        ja?`ユニーク客数: ${fmtN(memberRpt.totalGuests)}、リピーター: ${fmtN(memberRpt.repeatCount)}（${memberRpt.repeatRate}%）`:`Unique guests: ${fmtN(memberRpt.totalGuests)}, Repeaters: ${fmtN(memberRpt.repeatCount)} (${memberRpt.repeatRate}%)`,
-        ja?`リピーター平均予約数: ${memberRpt.avgBookings}回`:`Avg bookings per repeater: ${memberRpt.avgBookings}`,
-        memberRpt.jpIntlData.length?(ja?`国内リピート率: ${memberRpt.jpIntlData[0].rate}%、海外: ${memberRpt.jpIntlData[1].rate}%`:`Japanese repeat rate: ${memberRpt.jpIntlData[0].rate}%, International: ${memberRpt.jpIntlData[1].rate}%`):null,
-      ]):null,
-    };
-  },[agg,filtered,mktD,segD,dowD,rmD,facD,kvk,moD,mktLOS,lang,compareRpt,paceRpt,paceMetric,cancelRpt,losRpt,revparRpt,memberRpt]);
 
   // ─── DAILY REPORT ───
   useEffect(()=>{
@@ -1401,7 +1307,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   },[allData]);
 
   const dailyRpt=useMemo(()=>{
-    if(!allData.length||!drFrom)return null;
+    if(tab!=="daily"||!allData.length||!drFrom)return null;
     const from=drFrom,to=drTo||drFrom;
     // Shift range back 1 year for YoY
     const prevFrom=`${parseInt(from.slice(0,4))-1}${from.slice(4)}`;
@@ -1509,13 +1415,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       adrData,directRatio,drMonthKeys,
       couponRows,couponDetails,
       cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
-  },[allData,drFrom,drTo,tz]);
+  },[tab,allData,drFrom,drTo,tz]);
 
 
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
   const tH=[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty];
-  const tRows=useMemo(()=>{let rows=filtered.map(r=>{const o={};tC.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?tzFmt(r[c]):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[filtered,tSort]);
+  const tRows=useMemo(()=>{if(tab!=="data")return[];let rows=filtered.map(r=>{const o={};tC.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?tzFmt(r[c]):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[tab,filtered,tSort]);
   const paged=useMemo(()=>tRows.slice(tPage*PG,(tPage+1)*PG),[tRows,tPage]);const totPg=Math.ceil(tRows.length/PG);
 
   const expFilt=()=>{const h=["Facility","Region","Country","Segment","Check-in","Check-out","Nights","Lead","Rev","Room","Device","Rank","Party"];expCSV(filtered.map(r=>{const o={};tC.forEach((k,i)=>{o[h[i]]=(k==="checkin"||k==="checkout")?(r[k]?tzFmt(r[k]):""):r[k]??""});return o}),h,"filtered.csv")};
