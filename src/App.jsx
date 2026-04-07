@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.54";
+const APP_VERSION="1.55";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -437,6 +437,17 @@ function dlChart(id,fn,title){
 
 function dlTable(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v.toLocaleString();const s=String(v);return tr?tr(s):s};const pad=14,rowH=28,headH=36,titleH=44,font="12px 'DM Sans',sans-serif",headFont="bold 11px 'JetBrains Mono',monospace",titleFont="bold 14px 'DM Sans',sans-serif";const cv=document.createElement("canvas");const ctx=cv.getContext("2d");ctx.font=font;const colW=keys.map(k=>{const hdr=tKey(k).toUpperCase();ctx.font=headFont;let mx=ctx.measureText(hdr).width;ctx.font=font;data.forEach(r=>{const w=ctx.measureText(tVal(r[k])).width;if(w>mx)mx=w});return mx+pad*2});const totalW=colW.reduce((a,b)=>a+b,0)+2;const totalH=titleH+headH+data.length*rowH+2;cv.width=totalW*2;cv.height=totalH*2;ctx.scale(2,2);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,totalW,totalH);ctx.fillStyle="#1a1a2e";ctx.font=titleFont;ctx.fillText(title,pad,titleH-14);ctx.fillStyle="#f0f0f4";ctx.fillRect(0,titleH,totalW,headH);ctx.fillStyle="#4a4a6a";ctx.font=headFont;let x=1;keys.forEach((k,i)=>{ctx.fillText(tKey(k).toUpperCase(),x+pad,titleH+headH-10);x+=colW[i]});data.forEach((row,ri)=>{const y=titleH+headH+ri*rowH;if(ri%2===0){ctx.fillStyle="#fafaff";ctx.fillRect(0,y,totalW,rowH)}ctx.fillStyle="#333";ctx.font=font;let x2=1;keys.forEach((k,i)=>{ctx.fillText(tVal(row[k]),x2+pad,y+rowH-8);x2+=colW[i]})});ctx.strokeStyle="#e0e0e8";ctx.lineWidth=0.5;let lx=1;keys.forEach((_,i)=>{lx+=colW[i];ctx.beginPath();ctx.moveTo(lx,titleH);ctx.lineTo(lx,totalH);ctx.stroke()});const a=document.createElement("a");a.download=fn+"_table.png";a.href=cv.toDataURL("image/png");a.click()}
 
+// Email-based international override: if an email ever appears in a non-Japan reservation,
+// reclassify ALL of that email's reservations to the most frequent non-Japan country it used.
+function applyEmailIntlOverride(rows){
+  const emailIntl={}; // email -> {country: count}
+  rows.forEach(r=>{if(r.email&&r.country&&r.country!=="Japan"){if(!emailIntl[r.email])emailIntl[r.email]={};emailIntl[r.email][r.country]=(emailIntl[r.email][r.country]||0)+1}});
+  const emailTop={};
+  Object.entries(emailIntl).forEach(([e,m])=>{emailTop[e]=Object.entries(m).sort((a,b)=>b[1]-a[1])[0][0]});
+  rows.forEach(r=>{if(r.email&&emailTop[r.email]&&r.country==="Japan")r.country=emailTop[r.email]});
+  return rows;
+}
+
 function expCSV(rows,headers,fn){const csv=[headers.join(","),...rows.map(r=>headers.map(h=>{const v=r[h];if(v==null)return"";const s=String(v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s}).join(","))].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download=fn;a.click()}
 
 function expXLS(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v;return tr?tr(String(v)):String(v)};const rows=data.map(r=>"<tr>"+keys.map(k=>"<td>"+tVal(r[k])+"</td>").join("")+"</tr>").join("");const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:spreadsheet"><head><meta charset="utf-8"/></head><body><table><thead><tr>${keys.map(k=>"<th>"+tKey(k)+"</th>").join("")}</tr></thead><tbody>${rows}</tbody></table></body></html>`;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+html],{type:"application/vnd.ms-excel;charset=utf-8"}));a.download=(fn||title||"export")+".xls";a.click()}
@@ -531,7 +542,7 @@ const[drSingle,setDrSingle]=useState("");
         const miss=REQUIRED_COLS.filter(c=>!h.includes(c));
         if(miss.length){setSheetStatus("error");return}
         const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
-        const processed=rows.map(r=>processRow(r,h));
+        const processed=applyEmailIntlOverride(rows.map(r=>processRow(r,h)));
         setAllH(h);setAllData(processed);
         setFL([{name:"Google Sheets (live)",rows:rows.length,encoding:"UTF-8"}]);
         setSheetStatus("done");
@@ -539,7 +550,7 @@ const[drSingle,setDrSingle]=useState("");
       .catch(()=>setSheetStatus("error"));
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(nd);setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
+  const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(applyEmailIntlOverride(nd));setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
 
   const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([])};
 
@@ -1301,13 +1312,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         ja?`予約${fmtN(n)}件、売上合計${fmtY(tr)}、平均単価${fmtY(ar)}`:`${fmtN(n)} reservations, ${fmtY(tr)} total revenue, ${fmtY(ar)} avg/res`,
         topMkt?(ja?`最大市場: ${tl(topMkt.country)}（${fmtN(topMkt.count)}件）`:`Top market: ${tl(topMkt.country)} (${fmtN(topMkt.count)})`):null,
         topSeg?(ja?`最多タイプ: ${tl(topSeg.segment)}（${pct(topSeg.count,n)}）`:`Largest segment: ${tl(topSeg.segment)} (${pct(topSeg.count,n)})`):null,
-        ja?`海外比率: ${pct(agg.intlPct*n/100,n)}、平均泊数: ${agg.avgNights.toFixed(1)}泊`:`International: ${pct(agg.intlPct*n/100,n)}, avg stay: ${agg.avgNights.toFixed(1)} nights`,
+        ja?`海外比率: ${agg.intlPct.toFixed(1)}%、平均泊数: ${agg.avgNights.toFixed(1)}泊`:`International: ${agg.intlPct.toFixed(1)}%, avg stay: ${agg.avgNights.toFixed(1)} nights`,
       ]),
       kvk:b([
         ja?`関東${fmtN(kN)}件 vs 関西${fmtN(sN)}件`:`Kanto ${fmtN(kN)} vs Kansai ${fmtN(sN)} reservations`,
         ja?`海外比率: 関東${kIntl} / 関西${sIntl}`:`International: Kanto ${kIntl} / Kansai ${sIntl}`,
         ja?`関東トップインバウンド: ${tl(kTop)}、関西: ${tl(sTop)}`:`Top inbound — Kanto: ${tl(kTop)}, Kansai: ${tl(sTop)}`,
-        kvk&&kvk.losSR.length?(ja?`平均泊数: 関東${kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length>0?(kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length).toFixed(1):"—"}泊 / 関西${(kvk.losSR.reduce((a,s)=>a+s.Kansai,0)/kvk.losSR.length).toFixed(1)}泊`:`Avg LOS: Kanto ${(kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length).toFixed(1)} / Kansai ${(kvk.losSR.reduce((a,s)=>a+s.Kansai,0)/kvk.losSR.length).toFixed(1)} nights`):null,
+        kvk&&kvk.losSR.length?(()=>{const kL=kvk.losSR.reduce((a,s)=>a+s.Kanto,0)/kvk.losSR.length;const sL=kvk.losSR.reduce((a,s)=>a+s.Kansai,0)/kvk.losSR.length;return ja?`平均泊数: 関東${kL>0?kL.toFixed(1):"—"}泊 / 関西${sL>0?sL.toFixed(1):"—"}泊`:`Avg LOS: Kanto ${kL>0?kL.toFixed(1):"—"} / Kansai ${sL>0?sL.toFixed(1):"—"} nights`})():null,
       ]),
       markets:b([
         topMkt?(ja?`最大市場: ${tl(topMkt.country)}（${fmtN(topMkt.count)}件）`:`#1 market: ${tl(topMkt.country)} (${fmtN(topMkt.count)})`):null,
