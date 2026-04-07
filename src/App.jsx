@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.49";
+const APP_VERSION="1.50";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -17,7 +17,7 @@ const DL={
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
-  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-fac",0,7,6,7],["mb-fac-tbl",6,7,6,7],["mb-tight-chart",0,14,6,5],["mb-tight-tbl",6,14,6,5],["mb-fs-chart",0,19,6,5],["mb-fs-tbl",6,19,6,5],["mb-detail",0,24,12,14]]),
+  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-cntry-stack",0,3,12,5],["mb-cntry-counts",0,8,12,5],["mb-rank",0,13,6,4],["mb-seg",6,13,6,3],["mb-fac",0,17,6,7],["mb-fac-tbl",6,17,6,7],["mb-tight-chart",0,24,6,5],["mb-tight-tbl",6,24,6,5],["mb-fs-chart",0,29,6,5],["mb-fs-tbl",6,29,6,5],["mb-detail",0,34,12,14]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
@@ -126,7 +126,7 @@ memberTab:"Member",memberTitle:"Member & Repeat Analysis",memberDisclaimer:"Note
 memberRepeatRate:"Repeat Rate",memberFirstTimer:"First-timer",memberRepeater:"Repeater",memberByCountryType:"Repeat Rate: Japanese vs Foreign",
 memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Repeat Guest Detail",
 memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
-memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",memberTightest:"Repeat Rate by Tightest Window",memberTightestSub:"Each guest counted once in their shortest repeat gap. Date filters do not apply.",memberFirstSecond:"Return Rate (1st → 2nd Stay)",memberFirstSecondSub:"Time between first and second stay. Date filters do not apply.",memberWindow:"Window",
+memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",memberTightest:"Repeat Rate by Tightest Window",memberTightestSub:"Each guest counted once in their shortest repeat gap. Date filters do not apply.",memberFirstSecond:"Return Rate (1st → 2nd Stay)",memberFirstSecondSub:"Time between first and second stay. Date filters do not apply.",memberWindow:"Window",memberCountryStack:"Repeaters vs First-Timers by Country (% Stack)",memberCountryCounts:"Guest Counts by Country (Repeaters vs First-Timers)",
 segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
@@ -230,7 +230,7 @@ memberTab:"会員",memberTitle:"会員・リピート分析",memberDisclaimer:"�
 memberRepeatRate:"リピート率",memberFirstTimer:"初回",memberRepeater:"リピーター",memberByCountryType:"リピート率: 国内 vs 海外",
 memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"リピーター詳細",
 memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
-memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",memberTightest:"最短リピート間隔別",memberTightestSub:"各ゲストは最短リピート間隔の枠で1回のみカウント。日付フィルターは適用されません。",memberFirstSecond:"リターン率（初回→2回目）",memberFirstSecondSub:"初回と2回目の宿泊間隔。日付フィルターは適用されません。",memberWindow:"期間",
+memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",memberTightest:"最短リピート間隔別",memberTightestSub:"各ゲストは最短リピート間隔の枠で1回のみカウント。日付フィルターは適用されません。",memberFirstSecond:"リターン率（初回→2回目）",memberFirstSecondSub:"初回と2回目の宿泊間隔。日付フィルターは適用されません。",memberWindow:"期間",memberCountryStack:"国別リピーター/初回客（％積み上げ）",memberCountryCounts:"国別ゲスト数（リピーター/初回客）",
 segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
@@ -1196,8 +1196,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const tightestChart=buildChartData(tightestTable);
     const firstSecondChart=buildChartData(firstSecondTable);
 
+    // Repeaters vs non-repeaters by country (uses filtered emailCount, top 15 countries by total guests)
+    const countryGuests={};
+    Object.values(emailCount).forEach(v=>{
+      if(!countryGuests[v.country])countryGuests[v.country]={firstTimers:0,repeaters:0};
+      if(v.count>=2)countryGuests[v.country].repeaters++;
+      else countryGuests[v.country].firstTimers++;
+    });
+    const countryRptRows=Object.entries(countryGuests)
+      .map(([c,v])=>{const total=v.firstTimers+v.repeaters;return{country:c,firstTimers:v.firstTimers,repeaters:v.repeaters,total,rate:total>0?+((v.repeaters/total)*100).toFixed(1):0}})
+      .sort((a,b)=>b.total-a.total)
+      .slice(0,15);
+
     return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows,facRows,facByRate,
-      windowSegments:segments,bucketLabels,tightestRows,firstSecondRows,tightestChart,firstSecondChart};
+      windowSegments:segments,bucketLabels,tightestRows,firstSecondRows,tightestChart,firstSecondChart,countryRptRows};
   },[filtered,allData]);
 
   // ─── DYNAMIC INSIGHTS ───
@@ -1950,6 +1962,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           {memberRpt?<DraggableGrid {...dgProps("member")}>
             <div key="mb-overview"><CC grid title={t.memberRepeatRate} id="mb-overview" nm="member_overview" data={memberRpt.overviewPie}><PieChart><Pie data={memberRpt.overviewPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x2=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y2=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);const label=name==="repeat"?t.memberRepeater:t.memberFirstTimer;return<text x={x2} y={y2} textAnchor={x2>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${label} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}><Cell fill="#34d399"/><Cell fill="#4ea8de"/></Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
             <div key="mb-jpintl"><CC grid title={t.memberByCountryType} id="mb-jpintl" nm="member_jpintl" data={memberRpt.jpIntlData}><BarChart data={memberRpt.jpIntlData}><CartesianGrid {...gl}/><XAxis dataKey="type" tick={tk}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}><Cell fill="#c9a84c"/><Cell fill="#4ea8de"/></Bar></BarChart></CC></div>
+            <div key="mb-cntry-stack"><CC grid title={t.memberCountryStack} id="mb-cntry-stack" nm="member_cntry_stack" data={memberRpt.countryRptRows}><BarChart data={memberRpt.countryRptRows.map(r=>({country:r.country,firstTimerPct:r.total>0?+((r.firstTimers/r.total)*100).toFixed(1):0,repeaterPct:r.rate}))}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT formatter={v=>v+"%"}/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="firstTimerPct" stackId="a" fill="#4ea8de" name={t.memberFirstTimer}/><Bar dataKey="repeaterPct" stackId="a" fill="#34d399" name={t.memberRepeater}/></BarChart></CC></div>
+            <div key="mb-cntry-counts"><CC grid title={t.memberCountryCounts} id="mb-cntry-counts" nm="member_cntry_counts" data={memberRpt.countryRptRows}><BarChart data={memberRpt.countryRptRows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tk}/><Tooltip content={<CT/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="firstTimers" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberFirstTimer}/><Bar dataKey="repeaters" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeater}/></BarChart></CC></div>
             <div key="mb-rank"><CC grid title={t.memberByRank} id="mb-rank" nm="member_rank" data={memberRpt.rankRows}><ComposedChart data={memberRpt.rankRows}><CartesianGrid {...gl}/><XAxis dataKey="rank" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><YAxis yAxisId="count" orientation="right" tick={false} axisLine={false}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="rate" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeatRate}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberTotal} opacity={0.4} yAxisId="count"/></ComposedChart></CC></div>
             <div key="mb-seg"><CC grid title={t.memberBySegment} id="mb-seg" nm="member_seg" data={memberRpt.segRows}><BarChart data={memberRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}>{memberRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
             <div key="mb-fac"><CC grid title={t.memberByFac} id="mb-fac" nm="member_fac" data={memberRpt.facByRate}><BarChart data={memberRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#34d399" radius={[0,4,4,0]} name={t.memberRepeatRate}/></BarChart></CC></div>
