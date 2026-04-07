@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.50";
+const APP_VERSION="1.51";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -29,13 +29,14 @@ const DL={
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
-function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle}){
+function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle,locked,onLockToggle,lockLabel}){
   const saved=loadLayouts(tabId);const layouts=saved||DL[tabId];const{containerRef,width}=useContainerWidth();
   const validChildren=Array.isArray(children)?children.flat().filter(c=>c&&c.key):children?[children]:[];
   const validKeys=new Set(validChildren.map(c=>c.key));
   const safeLayouts={};
   Object.entries(layouts).forEach(([bp,items])=>{safeLayouts[bp]=items.filter(item=>validKeys.has(item.i))});
-  return(<div ref={containerRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}><button style={btnStyle} onClick={onReset}>{resetLabel}</button></div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer} width={width} {...RGL_PROPS} layouts={safeLayouts} onLayoutChange={(_,all)=>saveLayouts(tabId,all)}>{validChildren}</Responsive>}</div>);
+  const rglProps={...RGL_PROPS,isDraggable:!locked,isResizable:!locked};
+  return(<div ref={containerRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6,gap:6}}>{onLockToggle&&<button style={{...btnStyle,...(locked?{background:"rgba(52,211,153,0.15)",borderColor:"#34d399",color:"#34d399"}:{})}} onClick={onLockToggle}>{locked?"🔒 ":"🔓 "}{lockLabel}</button>}<button style={btnStyle} onClick={onReset}>{resetLabel}</button></div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer+(locked?"-l":"")} width={width} {...rglProps} layouts={safeLayouts} onLayoutChange={(_,all)=>{if(!locked)saveLayouts(tabId,all)}}>{validChildren}</Responsive>}</div>);
 }
 
 // ─── Google Sheets Backend ───
@@ -128,7 +129,7 @@ memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Rep
 memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
 memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",memberTightest:"Repeat Rate by Tightest Window",memberTightestSub:"Each guest counted once in their shortest repeat gap. Date filters do not apply.",memberFirstSecond:"Return Rate (1st → 2nd Stay)",memberFirstSecondSub:"Time between first and second stay. Date filters do not apply.",memberWindow:"Window",memberCountryStack:"Repeaters vs First-Timers by Country (% Stack)",memberCountryCounts:"Guest Counts by Country (Repeaters vs First-Timers)",
 segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
-    resetLayout:"Reset Layout",
+    resetLayout:"Reset Layout",lockLayout:"Lock",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
     drCountry:"Country",drRegion:"Region",drCount:"Res",drRevenue:"Revenue",drADR:"ADR",drShare:"Share",drGrandTotal:"Grand total",
@@ -232,7 +233,7 @@ memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"�
 memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
 memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",memberTightest:"最短リピート間隔別",memberTightestSub:"各ゲストは最短リピート間隔の枠で1回のみカウント。日付フィルターは適用されません。",memberFirstSecond:"リターン率（初回→2回目）",memberFirstSecondSub:"初回と2回目の宿泊間隔。日付フィルターは適用されません。",memberWindow:"期間",memberCountryStack:"国別リピーター/初回客（％積み上げ）",memberCountryCounts:"国別ゲスト数（リピーター/初回客）",
 segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
-    resetLayout:"レイアウトリセット",
+    resetLayout:"レイアウトリセット",lockLayout:"ロック",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
     drCountry:"国籍",drRegion:"地域",drCount:"件数",drRevenue:"売上",drADR:"ADR",drShare:"シェア",drGrandTotal:"合計",
@@ -388,7 +389,47 @@ function decodeBuffer(buf){
   return{text:new TextDecoder("utf-8",{fatal:false}).decode(b),encoding:"UTF-8 (lossy)"}
 }
 
-function dlChart(id,fn,title){const el=document.getElementById(id);if(!el)return;const svg=el.querySelector("svg");if(!svg)return;const bbox=svg.getBoundingClientRect();const w=Math.round(bbox.width),h=Math.round(bbox.height);if(w<10||h<10)return;const c=svg.cloneNode(true);c.setAttribute("xmlns","http://www.w3.org/2000/svg");c.setAttribute("width",w);c.setAttribute("height",h);c.setAttribute("viewBox",`0 0 ${w} ${h}`);c.style.width=w+"px";c.style.height=h+"px";const d=new XMLSerializer().serializeToString(c);const cv=document.createElement("canvas");const ctx=cv.getContext("2d");const img=new Image();const titleH=title?48:0;const u=URL.createObjectURL(new Blob([d],{type:"image/svg+xml;charset=utf-8"}));img.onload=()=>{cv.width=w*2;cv.height=(h+titleH)*2;ctx.scale(2,2);if(title){ctx.fillStyle="#1a1a2e";ctx.font="bold 14px 'DM Sans',sans-serif";ctx.fillText(title,12,titleH-14)}ctx.drawImage(img,0,titleH,w,h);const a=document.createElement("a");a.download=fn+".png";a.href=cv.toDataURL("image/png");a.click();URL.revokeObjectURL(u)};img.src=u}
+function dlChart(id,fn,title){
+  const el=document.getElementById(id);if(!el)return;
+  const svg=el.querySelector("svg");if(!svg)return;
+  const bbox=svg.getBoundingClientRect();
+  const w=Math.round(bbox.width),h=Math.round(bbox.height);
+  if(w<10||h<10){alert("Chart not ready for export — make sure the chart is visible and try again.");return}
+  // Inline computed styles into the cloned SVG so colors/fonts render correctly
+  const inlineStyles=(src,dst)=>{
+    const cs=getComputedStyle(src);
+    const props=["fill","stroke","stroke-width","stroke-dasharray","stroke-opacity","fill-opacity","opacity","font","font-family","font-size","font-weight","text-anchor","dominant-baseline"];
+    let s="";
+    props.forEach(p=>{const v=cs.getPropertyValue(p);if(v)s+=`${p}:${v};`});
+    if(s)dst.setAttribute("style",s);
+    const srcKids=src.children,dstKids=dst.children;
+    for(let i=0;i<srcKids.length;i++)inlineStyles(srcKids[i],dstKids[i]);
+  };
+  const c=svg.cloneNode(true);
+  inlineStyles(svg,c);
+  c.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  c.setAttribute("width",w);
+  c.setAttribute("height",h);
+  c.setAttribute("viewBox",`0 0 ${w} ${h}`);
+  const d=new XMLSerializer().serializeToString(c);
+  const cv=document.createElement("canvas");
+  const ctx=cv.getContext("2d");
+  const img=new Image();
+  const titleH=title?48:0;
+  const u="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(d);
+  img.onload=()=>{
+    cv.width=w*2;cv.height=(h+titleH)*2;ctx.scale(2,2);
+    ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,h+titleH);
+    if(title){ctx.fillStyle="#1a1a2e";ctx.font="bold 14px 'DM Sans',sans-serif";ctx.fillText(title,12,titleH-14)}
+    ctx.drawImage(img,0,titleH,w,h);
+    const a=document.createElement("a");
+    a.download=fn+".png";
+    a.href=cv.toDataURL("image/png");
+    a.click();
+  };
+  img.onerror=()=>{alert("Failed to export chart. Try reloading the page.")};
+  img.src=u;
+}
 
 function dlTable(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v.toLocaleString();const s=String(v);return tr?tr(s):s};const pad=14,rowH=28,headH=36,titleH=44,font="12px 'DM Sans',sans-serif",headFont="bold 11px 'JetBrains Mono',monospace",titleFont="bold 14px 'DM Sans',sans-serif";const cv=document.createElement("canvas");const ctx=cv.getContext("2d");ctx.font=font;const colW=keys.map(k=>{const hdr=tKey(k).toUpperCase();ctx.font=headFont;let mx=ctx.measureText(hdr).width;ctx.font=font;data.forEach(r=>{const w=ctx.measureText(tVal(r[k])).width;if(w>mx)mx=w});return mx+pad*2});const totalW=colW.reduce((a,b)=>a+b,0)+2;const totalH=titleH+headH+data.length*rowH+2;cv.width=totalW*2;cv.height=totalH*2;ctx.scale(2,2);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,totalW,totalH);ctx.fillStyle="#1a1a2e";ctx.font=titleFont;ctx.fillText(title,pad,titleH-14);ctx.fillStyle="#f0f0f4";ctx.fillRect(0,titleH,totalW,headH);ctx.fillStyle="#4a4a6a";ctx.font=headFont;let x=1;keys.forEach((k,i)=>{ctx.fillText(tKey(k).toUpperCase(),x+pad,titleH+headH-10);x+=colW[i]});data.forEach((row,ri)=>{const y=titleH+headH+ri*rowH;if(ri%2===0){ctx.fillStyle="#fafaff";ctx.fillRect(0,y,totalW,rowH)}ctx.fillStyle="#333";ctx.font=font;let x2=1;keys.forEach((k,i)=>{ctx.fillText(tVal(row[k]),x2+pad,y+rowH-8);x2+=colW[i]})});ctx.strokeStyle="#e0e0e8";ctx.lineWidth=0.5;let lx=1;keys.forEach((_,i)=>{lx+=colW[i];ctx.beginPath();ctx.moveTo(lx,titleH);ctx.lineTo(lx,totalH);ctx.stroke()});const a=document.createElement("a");a.download=fn+"_table.png";a.href=cv.toDataURL("image/png");a.click()}
 
@@ -1518,8 +1559,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   };
   const G={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(400px,1fr))",gap:14};
   const[layoutVer,setLayoutVer]=useState(0);
+  const[layoutLocked,setLayoutLocked]=useState(()=>localStorage.getItem("rgl_locked")==="1");
+  const toggleLock=useCallback(()=>{setLayoutLocked(l=>{const n=!l;localStorage.setItem("rgl_locked",n?"1":"0");return n})},[]);
   const resetLay=useCallback(tabId=>{clearLayout(tabId);setLayoutVer(v=>v+1)},[]);
-  const dgProps=tabId=>({tabId,layoutVer,onReset:()=>resetLay(tabId),resetLabel:t.resetLayout,btnStyle:{...S.btn,fontSize:10}});
+  const dgProps=tabId=>({tabId,layoutVer,onReset:()=>resetLay(tabId),resetLabel:t.resetLayout,btnStyle:{...S.btn,fontSize:10},locked:layoutLocked,onLockToggle:toggleLock,lockLabel:t.lockLayout});
   const tk={fill:TH.tickFill,fontSize:11},tks={fill:TH.tickFill,fontSize:10},gl={strokeDasharray:"3 3",stroke:TH.gridLine};
   const tlTick={fill:TH.tickFill,fontSize:11,formatter:v=>tl(v)};
   const TlTick=({x,y,payload,anchor})=><text x={x} y={y} textAnchor={anchor||"middle"} fill={TH.tickFill} fontSize={11} dy={12}>{tl(payload.value)}</text>;
@@ -1589,8 +1632,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       {/* KPIs */}
       {agg&&<div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
         <div style={S.kpi}><div style={S.kl}>{t.reservations}</div><div style={S.kv}>{fmtN(agg.n)}</div></div>
-        <div style={S.kpi}><div style={S.kl}>{t.totalRevenue}</div><div style={S.kv}>{fmtY(agg.totalRev)}</div></div>
-        <div style={S.kpi}><div style={S.kl}>{t.avgRevRes}</div><div style={S.kv}>{fmtY(Math.round(agg.avgRev))}</div></div>
+        <div style={S.kpi}><div style={S.kl}>{t.totalRevenue}</div><div style={S.kv}>¥{fmtN(agg.totalRev)}</div></div>
+        <div style={S.kpi}><div style={S.kl}>{t.avgRevRes}</div><div style={S.kv}>¥{fmtN(Math.round(agg.avgRev))}</div></div>
         <div style={S.kpi}><div style={S.kl}>{t.avgLOS}</div><div style={S.kv}>{agg.avgNights.toFixed(1)}{t.nu}</div></div>
         <div style={S.kpi}><div style={S.kl}>{t.avgLeadTime}</div><div style={S.kv}>{agg.avgLead.toFixed(0)}{t.du}</div></div>
         <div style={S.kpi}><div style={S.kl}>{t.intlPct}</div><div style={S.kv}>{agg.intlPct.toFixed(1)}%</div></div>
@@ -1608,7 +1651,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {dailyRpt&&!dailyRpt.empty?<>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>{t.drCount}</div><div style={S.kv}>{fmtN(dailyRpt.totalCount)}</div></div>
-            <div style={S.kpi}><div style={S.kl}>{t.drRevenue}</div><div style={S.kv}>{fmtY(dailyRpt.totalRev)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.drRevenue}</div><div style={S.kv}>¥{fmtN(dailyRpt.totalRev)}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.drADR}</div><div style={S.kv}>¥{fmtN(dailyRpt.totalADR)}</div></div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
@@ -2028,8 +2071,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                     <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>{t.cancelCancelled}</div><div style={S.kv}>{cancelRpt?fmtN(cancelRpt.cancelledN):"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.cancelRate}</div><div style={S.kv}>{cancelRpt?cancelRpt.overallRate+"%":"—"}</div></div>
-            <div style={S.kpi}><div style={S.kl}>{t.cancelRevLost}</div><div style={S.kv}>{cancelRpt?fmtY(cancelRpt.lostRev):"—"}</div></div>
-            <div style={S.kpi}><div style={S.kl}>{t.cancelFeePct}</div><div style={S.kv}>{cancelRpt?fmtY(cancelRpt.totalFee):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.cancelRevLost}</div><div style={S.kv}>{cancelRpt?"¥"+fmtN(cancelRpt.lostRev):"—"}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.cancelFeePct}</div><div style={S.kv}>{cancelRpt?"¥"+fmtN(cancelRpt.totalFee):"—"}</div></div>
           </div>
           {cancelRpt&&!cancelRpt.empty?<DraggableGrid {...dgProps("cancellations")}>
             <div key="canc-trend"><CC grid title={t.cancelTrend} id="canc-trend" nm="cancel_trend" data={cancelRpt.monthTrend}><ComposedChart data={cancelRpt.monthTrend}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><YAxis yAxisId="rate" orientation="right" tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.cancelTotal} opacity={0.5}/><Bar dataKey="cancelled" fill="#ef4444" radius={[4,4,0,0]} name={t.cancelCancelled}/><Line type="monotone" dataKey="rate" stroke={TH.gold} strokeWidth={2} yAxisId="rate" dot={{fill:TH.gold,r:3}} name={t.cancelRatePct}/></ComposedChart></CC></div>
