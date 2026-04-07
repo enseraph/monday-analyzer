@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.55";
+const APP_VERSION="1.56";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -354,7 +354,8 @@ function shortFac(n){
 }
 
 function processRow(row,headers){
-  const g=c=>row[headers.indexOf(c)]??"";
+  const hIdx=processRow._cache&&processRow._cache.h===headers?processRow._cache.idx:(()=>{const m={};headers.forEach((h,i)=>{m[h]=i});processRow._cache={h:headers,idx:m};return m})();
+  const g=c=>{const i=hIdx[c];return i==null?"":(row[i]??"")};
   let facility=g("施設名");
   // Normalize facility name variants
   if(facility.includes("舞浜ビュー")&&!facility.includes("舞浜ビューⅠ"))facility=facility.replace(/舞浜ビュー.*$/,"舞浜ビューⅠ");
@@ -817,12 +818,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
     if(!dataA.length&&!dataB.length)return{empty:true};
     const aggregate=data=>{
-      const totalCount=data.length;const totalRev=data.reduce((a,r)=>a+(r.totalRev||0),0);
-      const totalNights=data.reduce((a,r)=>a+(r.nights||0),0);const adr=totalNights>0?Math.round(totalRev/totalNights):0;
-      const byCountry={};data.forEach(r=>{if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=r.totalRev||0});
-      const bySegment={};data.forEach(r=>{if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev||0});
-      const byFacility={};data.forEach(r=>{if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev||0});
-      return{totalCount,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
+      let totalRev=0,totalNights=0;
+      const byCountry={},bySegment={},byFacility={};
+      data.forEach(r=>{
+        const rev=r.totalRev||0;totalRev+=rev;totalNights+=r.nights||0;
+        if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=rev;
+        if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=rev;
+        if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=rev;
+      });
+      const adr=totalNights>0?Math.round(totalRev/totalNights):0;
+      return{totalCount:data.length,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
     const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"new":"0%");
@@ -1571,7 +1576,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       </tbody></table></div>
     </div>;
   };
-  const G={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(400px,1fr))",gap:14};
   const[layoutVer,setLayoutVer]=useState(0);
   const[layoutLocked,setLayoutLocked]=useState(()=>localStorage.getItem("rgl_locked")==="1");
   const toggleLock=useCallback(()=>{setLayoutLocked(l=>{const n=!l;localStorage.setItem("rgl_locked",n?"1":"0");return n})},[]);
