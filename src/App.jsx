@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.57";
+const APP_VERSION="1.58";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -1295,7 +1295,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
     return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows,facRows,facByRate,
       windowSegments:segments,bucketLabels,tightestRows,firstSecondRows,tightestChart,firstSecondChart,countryRptRows};
-  },[filtered,allData]);
+  },[tab,filtered,allData]);
 
 
   // ─── DAILY REPORT ───
