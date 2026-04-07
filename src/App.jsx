@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.47";
+const APP_VERSION="1.48";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -127,6 +127,7 @@ memberRepeatRate:"Repeat Rate",memberFirstTimer:"First-timer",memberRepeater:"Re
 memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Repeat Guest Detail",
 memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
 memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",memberTightest:"Repeat Rate by Tightest Window",memberTightestSub:"Each guest counted once in their shortest repeat gap. Date filters do not apply.",memberFirstSecond:"Return Rate (1st → 2nd Stay)",memberFirstSecondSub:"Time between first and second stay. Date filters do not apply.",memberWindow:"Window",
+segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -230,6 +231,7 @@ memberRepeatRate:"リピート率",memberFirstTimer:"初回",memberRepeater:"リ
 memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"リピーター詳細",
 memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
 memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",memberTightest:"最短リピート間隔別",memberTightestSub:"各ゲストは最短リピート間隔の枠で1回のみカウント。日付フィルターは適用されません。",memberFirstSecond:"リターン率（初回→2回目）",memberFirstSecondSub:"初回と2回目の宿泊間隔。日付フィルターは適用されません。",memberWindow:"期間",
+segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -261,6 +263,8 @@ const PHONE_MAP={"+1":"United States","+81":"Japan","+886":"Taiwan","+61":"Austr
 const COUNTRY_MAP={"United States":"United States","Canada":"Canada","Taiwan":"Taiwan","Republic of China":"Taiwan","Australia":"Australia","Hong Kong":"Hong Kong","Singapore":"Singapore","Republic of Korea":"South Korea","Indonesia":"Indonesia","Thailand":"Thailand","Malaysia":"Malaysia","United Kingdom":"UK","Philippines":"Philippines","France":"France","China":"China","New Zealand":"New Zealand","India":"India","Spain":"Spain","Germany":"Germany","Brazil":"Brazil","Italy":"Italy","Ireland":"Ireland","Switzerland":"Switzerland","Israel":"Israel","United Arab Emirates":"UAE","Chile":"Chile","Argentina":"Argentina","Netherlands":"Netherlands","Denmark":"Denmark","Austria":"Austria","Brunei Darussalam":"Brunei","Finland":"Finland","Poland":"Poland","Norway":"Norway","Belarus":"Belarus","South Africa":"South Africa","Russian Federation":"Russia","Belgium":"Belgium","Romania":"Romania","Czech Republic":"Czech Republic","Estonia":"Estonia","Nigeria":"Nigeria","Luxembourg":"Luxembourg","Uruguay":"Uruguay","Viet Nam":"Vietnam","Sweden":"Sweden","Japan":"Japan","Other":"Other","その他":"Other","Mexico":"Mexico"};
 const SEG_ORDER=["Solo","Couple","Family","Group"];
 const SEG_COLORS={Solo:"#7ec8e3",Couple:"#c084fc",Family:"#f59e0b",Group:"#34d399"};
+const SEG_ORDER_DETAILED=["Solo","Couple (1M+1F)","Duo (Male)","Duo (Female)","Family (1 child)","Family (2 children)","Family (3+ children)","Group (All Male)","Group (All Female)","Group (Mixed)"];
+const SEG_COLORS_DETAILED={"Solo":"#7ec8e3","Couple (1M+1F)":"#c084fc","Duo (Male)":"#4ea8de","Duo (Female)":"#e07b54","Family (1 child)":"#fbbf24","Family (2 children)":"#f59e0b","Family (3+ children)":"#d97706","Group (All Male)":"#1d4ed8","Group (All Female)":"#be123c","Group (Mixed)":"#34d399"};
 const DOW_FULL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const DOW_SHORT=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DOW_JA=["月","火","水","木","金","土","日"];
@@ -303,6 +307,27 @@ function getHotelType(f){if(f.includes("Apart")||f.includes("TABI")||f.includes(
 function getBrand(f){if(f.includes("イチホテル"))return"ICHI";if(f.includes("GRAND"))return"GRAND MONday";if(f.includes("TABI"))return"TABI";if(f.includes("Apart"))return"MONday Apart";return"hotel MONday"}
 function getCountry(p,ph,l){if(p){if(JP_PREFS.includes(p))return"Japan";if(COUNTRY_MAP[p])return COUNTRY_MAP[p]}if(ph){for(const[c,co]of Object.entries(PHONE_MAP))if(ph===c)return co}if(l){if(l==="日本語")return"Japan";if(l==="英語")return"International (EN)";if(l.includes("中国語"))return"Taiwan/HK (ZH)";if(l==="韓国語")return"South Korea"}return"Unknown"}
 function getSegment(a,k){const t=a+k;if(k>0)return"Family";if(t===1)return"Solo";if(t===2)return"Couple";if(t>=3)return"Group";return"Unknown"}
+function getSegmentDetailed(male,female,kids){
+  const adults=male+female;
+  if(kids>0){
+    if(kids===1)return"Family (1 child)";
+    if(kids===2)return"Family (2 children)";
+    return"Family (3+ children)";
+  }
+  if(adults===1)return"Solo";
+  if(adults===2){
+    if(male===1&&female===1)return"Couple (1M+1F)";
+    if(male===2&&female===0)return"Duo (Male)";
+    if(male===0&&female===2)return"Duo (Female)";
+    return"Couple (1M+1F)";
+  }
+  if(adults>=3){
+    if(male>0&&female===0)return"Group (All Male)";
+    if(male===0&&female>0)return"Group (All Female)";
+    return"Group (Mixed)";
+  }
+  return"Unknown";
+}
 function parseYen(v){if(!v)return 0;try{return parseInt(String(v).replace(/,/g,"").replace(/"/g,""))||0}catch{return 0}}
 function simplifyRoom(r){if(!r)return"Other";if(r.includes("ファミリー"))return"Family Room";if(r.includes("スイート")||r.toLowerCase().includes("suite"))return"Suite";if(r.includes("ジャパニーズ")||r.includes("和"))return"Japanese Room";if(r.includes("デラックスツイン"))return"Dlx Twin";if(r.includes("デラックスダブル"))return"Dlx Double";if(r.includes("スタンダードツイン"))return"Std Twin";if(r.includes("スタンダードダブル"))return"Std Double";if(r.includes("スタンダードトリプル"))return"Std Triple";if(r.includes("コンパクトツイン"))return"Compact Twin";if(r.includes("コーナーツイン"))return"Corner Twin";if(r.includes("シングル"))return"Single";if(r.includes("ツイン"))return"Twin";if(r.includes("ダブル"))return"Double";if(r.includes("トリプル"))return"Triple";if(r.includes("おまかせ"))return"Room Assigned";if(r.includes("スタンダード"))return"Standard";return"Other"}
 function fmtY(v){return v>=1e6?"¥"+(v/1e6).toFixed(1)+"M":v>=1000?"¥"+(v/1000).toFixed(0)+"K":"¥"+v}
@@ -353,7 +378,7 @@ function processRow(row,headers){
   const getPlanType=pn=>{const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"};
   const planType=getPlanType(planName);
   const checkinMonth=checkin?`${checkin.getFullYear()}-${String(checkin.getMonth()+1).padStart(2,"0")}`:null;
-  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email,guestName}
+  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email,guestName,male:a1,female:a2,segmentDetailed:getSegmentDetailed(a1,a2,kids)}
 }
 
 function decodeBuffer(buf){
@@ -406,7 +431,7 @@ export default function App(){
   },[tz]);
   const t=T[lang];const dL=lang==="ja"?DOW_JA:DOW_SHORT;
   // Translate data-level labels (region, segment, type, rank, country)
-  const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
+  const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Couple (1M+1F)":"カップル(1M+1F)","Duo (Male)":"男性ペア","Duo (Female)":"女性ペア","Family (1 child)":"ファミリー(子1)","Family (2 children)":"ファミリー(子2)","Family (3+ children)":"ファミリー(子3+)","Group (All Male)":"グループ(全男性)","Group (All Female)":"グループ(全女性)","Group (Mixed)":"グループ(混合)","Overall":"全体","Japanese":"日本","Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
   useEffect(()=>{const h=()=>setIsMobile(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h)},[]);
   const[allData,setAllData]=useState([]);const[allH,setAllH]=useState([]);const[fL,setFL]=useState([]);const[errs,setErrs]=useState([]);const[proc,setProc]=useState(false);
@@ -415,6 +440,7 @@ export default function App(){
   const[fHType,setFHType]=useState("All"); // "All" | "Hotel" | "Apart"
   const[fBrands,setFBrands]=useState([]);
 const[fGeo,setFGeo]=useState([]);
+const[segDetailed,setSegDetailed]=useState(false);
 const[fDOW,setFDOW]=useState([]);
   const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
@@ -548,6 +574,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   // ─── CHART DATA ───
   const mktD=useMemo(()=>!agg?[]:Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,count:v.n,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const segD=useMemo(()=>!agg?[]:SEG_ORDER.filter(s=>agg.byS[s]).map(s=>({segment:s,count:agg.byS[s].n,avgRev:Math.round(agg.byS[s].rev/agg.byS[s].n),avgLOS:+(avg(agg.byS[s].nights)).toFixed(2),avgLead:+(avg(agg.byS[s].lead)).toFixed(1)})),[agg]);
+  // Detailed segment breakdown computed directly from filtered (not in agg)
+  const segDetailedD=useMemo(()=>{
+    if(!filtered.length)return[];
+    const byS={};
+    filtered.forEach(r=>{const s=r.segmentDetailed||"Unknown";if(!byS[s])byS[s]={count:0,rev:0,nights:[],lead:[]};byS[s].count++;byS[s].rev+=r.totalRev||0;if(r.nights)byS[s].nights.push(r.nights);if(r.leadTime!=null)byS[s].lead.push(r.leadTime)});
+    return SEG_ORDER_DETAILED.filter(s=>byS[s]).map(s=>({segment:s,count:byS[s].count,avgRev:Math.round(byS[s].rev/byS[s].count),avgLOS:+(avg(byS[s].nights)).toFixed(2),avgLead:+(avg(byS[s].lead)).toFixed(1)}));
+  },[filtered]);
   const moD=useMemo(()=>!agg?[]:Object.entries(agg.byM).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const dowD=useMemo(()=>!agg?[]:DOW_FULL.map((d,i)=>({day:dL[i],checkin:agg.byD[d]?.ci||0,checkout:agg.byD[d]?.co||0})),[agg,dL]);
   // Helper: get the selected date field for a reservation
@@ -1850,14 +1883,22 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         /></div></div>}
 
         {/* SEGMENTS */}
-        {tab==="segments"&&<><DraggableGrid {...dgProps("segments")}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><div key={id}><CC grid title={ti} id={id} nm={id} data={segD}><BarChart data={segD}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>)}
+        {tab==="segments"&&<>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14}}>
+            <span style={{fontSize:11,color:TH.textMuted,fontWeight:600}}>{t.segBreakdownMode}:</span>
+            <div style={{display:"flex",gap:3}}>
+              <button style={{...S.btn,...(segDetailed===false?S.ba:{})}} onClick={()=>setSegDetailed(false)}>{t.segSimple}</button>
+              <button style={{...S.btn,...(segDetailed===true?S.ba:{})}} onClick={()=>setSegDetailed(true)}>{t.segDetailedLabel}</button>
+            </div>
+          </div>
+          {(()=>{const sd=segDetailed?segDetailedD:segD;const sc=segDetailed?SEG_COLORS_DETAILED:SEG_COLORS;return(<DraggableGrid {...dgProps("segments")}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><div key={id}><CC grid title={ti} id={id} nm={id} data={sd}><BarChart data={sd}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={({x,y,payload})=><text x={x} y={y} textAnchor={segDetailed?"end":"middle"} fill={TH.tickFill} fontSize={segDetailed?8:11} dy={12} transform={segDetailed?`rotate(-30,${x},${y})`:undefined}>{tl(payload.value)}</text>} height={segDetailed?60:30} interval={0}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{sd.map((e,i)=><Cell key={i} fill={sc[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>)}
           <div key="sg-seg-mo">{kvk&&<CC grid title={t.kvkSegByMonth} id="sg-seg-mo" nm="seg_month" data={kvk.segMo}><BarChart data={kvk.segMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>{SEG_ORDER.map((s,i)=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
           <div key="sg-seg-co">{kvk&&<CC grid title={t.kvkSegByCountry} id="sg-seg-co" nm="seg_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
           <div key="sg-ld-sg">{kvk&&<CC grid title={t.kvkLeadBySeg} id="sg-ld-sg" nm="lead_seg" data={kvk.leadSeg}><BarChart data={kvk.leadSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#4ea8de" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(78,168,222,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}</div>
           <div key="sg-ld-mo">{kvk&&<CC grid title={t.kvkLeadByMonth} id="sg-ld-mo" nm="lead_month" data={kvk.leadMo}><BarChart data={kvk.leadMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#c9a84c" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(201,168,76,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}</div>
           <div key="sg-adr">{kvk&&<CC grid title={t.kvkADRBySeg} id="sg-adr" nm="adr_seg" data={kvk.adrSeg}><BarChart data={kvk.adrSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" radius={[4,4,0,0]} name="ADR">{kvk.adrSeg.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC>}</div>
 
-        </DraggableGrid></>}
+        </DraggableGrid>)})()}</>}
 
         {/* BOOKING */}
         {tab==="booking"&&<><DraggableGrid {...dgProps("booking")}>
@@ -1888,17 +1929,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{fmtN(r.guests)}</td><td style={{...S.td,...S.m}}>{fmtN(r.repeaters)}</td><td style={{...S.td,...S.m,color:r.rate>20?"#34d399":TH.text}}>{r.rate}%</td><td style={{...S.td,...S.m}}>{fmtN(r.bookings)}</td></tr>}
               title={t.memberByFac}
             /></div>
-            <div key="mb-tight-chart"><CC grid title={t.memberTightest} id="mb-tight-chart" nm="member_tightest" data={memberRpt.tightestChart}><BarChart data={memberRpt.tightestChart}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={{fill:TH.tickFill,fontSize:9}} angle={isMobile?-45:0} textAnchor={isMobile?"end":"middle"} height={isMobile?60:30} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend wrapperStyle={{fontSize:10}}/>{memberRpt.bucketLabels.map((label,i)=><Bar key={label} dataKey={label} stackId="a" fill={["#34d399","#4ea8de","#c084fc","#c9a84c"][i]} name={label}/>)}</BarChart></CC></div>
+            <div key="mb-tight-chart"><CC grid title={t.memberTightest} id="mb-tight-chart" nm="member_tightest" data={memberRpt.tightestChart}><BarChart data={memberRpt.tightestChart}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={({x,y,payload})=><text x={x} y={y} textAnchor={isMobile?"end":"middle"} fill={TH.tickFill} fontSize={9} dy={12} transform={isMobile?`rotate(-45,${x},${y})`:undefined}>{tl(payload.value)}</text>} height={isMobile?60:30} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/>{memberRpt.bucketLabels.map((label,i)=><Bar key={label} dataKey={label} stackId="a" fill={["#34d399","#4ea8de","#c084fc","#c9a84c"][i]} name={label}/>)}</BarChart></CC></div>
             <div key="mb-tight-tbl"><SortTbl
               data={memberRpt.tightestRows}
-              columns={[{key:"window",label:t.memberWindow},...memberRpt.windowSegments.map(s=>({key:s,label:s}))]}
+              columns={[{key:"window",label:t.memberWindow},...memberRpt.windowSegments.map(s=>({key:s,label:tl(s)}))]}
               renderRow={r=><tr key={r.window}><td style={{...S.td,fontWeight:600}}>{r.window}</td>{memberRpt.windowSegments.map(s=><td key={s} style={{...S.td,...S.m,color:r[s]>5?"#34d399":TH.text}}>{r[s]}%</td>)}</tr>}
               title={t.memberTightest}
             /></div>
-            <div key="mb-fs-chart"><CC grid title={t.memberFirstSecond} id="mb-fs-chart" nm="member_firstsecond" data={memberRpt.firstSecondChart}><BarChart data={memberRpt.firstSecondChart}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={{fill:TH.tickFill,fontSize:9}} angle={isMobile?-45:0} textAnchor={isMobile?"end":"middle"} height={isMobile?60:30} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend wrapperStyle={{fontSize:10}}/>{memberRpt.bucketLabels.map((label,i)=><Bar key={label} dataKey={label} stackId="a" fill={["#34d399","#4ea8de","#c084fc","#c9a84c"][i]} name={label}/>)}</BarChart></CC></div>
+            <div key="mb-fs-chart"><CC grid title={t.memberFirstSecond} id="mb-fs-chart" nm="member_firstsecond" data={memberRpt.firstSecondChart}><BarChart data={memberRpt.firstSecondChart}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={({x,y,payload})=><text x={x} y={y} textAnchor={isMobile?"end":"middle"} fill={TH.tickFill} fontSize={9} dy={12} transform={isMobile?`rotate(-45,${x},${y})`:undefined}>{tl(payload.value)}</text>} height={isMobile?60:30} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/>{memberRpt.bucketLabels.map((label,i)=><Bar key={label} dataKey={label} stackId="a" fill={["#34d399","#4ea8de","#c084fc","#c9a84c"][i]} name={label}/>)}</BarChart></CC></div>
             <div key="mb-fs-tbl"><SortTbl
               data={memberRpt.firstSecondRows}
-              columns={[{key:"window",label:t.memberWindow},...memberRpt.windowSegments.map(s=>({key:s,label:s}))]}
+              columns={[{key:"window",label:t.memberWindow},...memberRpt.windowSegments.map(s=>({key:s,label:tl(s)}))]}
               renderRow={r=><tr key={r.window}><td style={{...S.td,fontWeight:600}}>{r.window}</td>{memberRpt.windowSegments.map(s=><td key={s} style={{...S.td,...S.m,color:r[s]>5?"#34d399":TH.text}}>{r[s]}%</td>)}</tr>}
               title={t.memberFirstSecond}
             /></div>
