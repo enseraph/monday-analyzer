@@ -3,8 +3,8 @@
 ## Project
 React dashboard (single JSX file) for JHAT/MONday Group hotel reservation data.
 - **Repo**: https://github.com/enseraph/monday-analyzer
-- **Live (public, GitHub Pages)**: https://enseraph.github.io/monday-analyzer/
 - **Live (auth-protected, Cloudflare)**: https://monday-analyzer.jhat.workers.dev/
+- **GitHub Pages**: unpublished (repo Settings → Pages → Unpublish site). `.github/workflows/deploy.yml` can be deleted to stop future Actions runs.
 - **Main file**: `src/App.jsx` (~2100 lines)
 - **Stack**: Vite + React + Recharts + react-grid-layout + html-to-image
 - **Data source**: Google Sheets CSV (auto-fetched on load), manual CSV upload as fallback
@@ -14,7 +14,22 @@ React dashboard (single JSX file) for JHAT/MONday Group hotel reservation data.
 - Cloudflare Access protects the Workers URL — Google IdP + email allowlist policy
 - Team domain: `jhat-pd.cloudflareaccess.com`
 - Workers subdomain: `jhat` (changed from default `c-katsuse`)
-- Auto-deploys on git push (same as GitHub Pages, parallel deployment)
+- Auto-deploys on git push via wrangler (independent of GitHub Pages)
+
+## Planned: Ads-extended version (not yet implemented)
+A second deployment (`monday-analyzer-ads`) will include Google Ads / Meta Ads metrics (cost, ROAS, CAC, etc.) on top of everything in the base version.
+
+**Approach**: build-time feature flag via Vite env var. Single repo, single branch, no merging.
+- `const ADS = import.meta.env.VITE_ADS_ENABLED === 'true'` at top of `App.jsx`
+- `.env.base` (`VITE_ADS_ENABLED=false`) and `.env.ads` (`VITE_ADS_ENABLED=true`)
+- Ads-only code lives in `src/ads/` (adsData.js, adsMetrics.js, adsTab.jsx, adsCharts.jsx)
+- `App.jsx` has thin `if (ADS)` / `ADS && ...` / `...(ADS ? [...] : [])` bridges only
+- Vite inlines the env constant → dead-code elimination strips all ads branches from base build (verify: `grep -i roas dist/assets/*.js` returns nothing)
+- Two wrangler configs: `wrangler.base.toml` (worker: `monday-analyzer`) and `wrangler.ads.toml` (worker: `monday-analyzer-ads`)
+- package.json scripts: `build:base`, `build:ads`, `deploy:base`, `deploy:ads`, `deploy:all`
+- Workflow: shared fix → edit once, `deploy:all`. Ads-only change → edit `src/ads/`, `deploy:ads`. Each version deploys independently.
+- Guardrail: after any `App.jsx` edit, run `npm run build:base && npm run build:ads` before pushing.
+- NOT YET SCAFFOLDED — user will signal when to implement.
 
 ## Google Sheet
 - Published CSV URL: `https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_G18beGfHLBfeWlS9biwDrt73kQhC0i8RLvIPkybgCejNffzMnsBp7AfmrrS8suD69dQxCyTWEOzh/pub?gid=0&single=true&output=csv`
