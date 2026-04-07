@@ -15,7 +15,7 @@ class ErrorBoundary extends Component {
         <h2>Dashboard Error</h2>
         <pre style={{whiteSpace:'pre-wrap',fontSize:12}}>{this.state.error.message}</pre>
         <pre style={{whiteSpace:'pre-wrap',fontSize:10,color:'#888',marginTop:10}}>{this.state.error.stack}</pre>
-        <button onClick={()=>{localStorage.clear();window.location.reload()}} style={{marginTop:20,padding:'8px 16px',cursor:'pointer'}}>Clear Cache & Reload</button>
+        <button onClick={()=>{Object.keys(localStorage).filter(k=>k.startsWith('rgl_')||k==='monday_presets').forEach(k=>localStorage.removeItem(k));window.location.reload()}} style={{marginTop:20,padding:'8px 16px',cursor:'pointer'}}>Clear Cache & Reload</button>
       </div>
     )
     return this.props.children

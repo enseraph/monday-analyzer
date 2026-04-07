@@ -7,7 +7,7 @@
   input[type="date"],
   input[type="file"],
   input[type="text"],
-  label { visibility: hidden; height: 0; overflow: hidden; margin: 0; padding: 0; }
+  label { display: none !important; }
 
   /* But keep content buttons visible (table sort headers etc) */
   th { visibility: visible !important; height: auto !important; overflow: visible !important; }

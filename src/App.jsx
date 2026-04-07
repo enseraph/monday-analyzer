@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.53";
+const APP_VERSION="1.54";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -256,7 +256,7 @@ segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
   }
 };
 
-const HEADER_JP={country:"国",count:"件数",avgRev:"平均単価",avgLOS:"平均泊数",avgLead:"平均LT",segment:"タイプ",month:"月",day:"曜日",room:"部屋",device:"端末",region:"エリア",avg:"平均",median:"中央値",adr:"ADR",rev:"売上",n:"件数",name:"施設名",intlPct:"海外%",topSeg:"主タイプ",Kanto:"関東",Kansai:"関西",Hotel:"ホテル",Apart:"アパート",date:"日付",metric:"指標",avgRev:"平均単価"};
+const HEADER_JP={country:"国",count:"件数",avgRev:"平均単価",avgLOS:"平均泊数",avgLead:"平均LT",segment:"タイプ",month:"月",day:"曜日",room:"部屋",device:"端末",region:"エリア",avg:"平均",median:"中央値",adr:"ADR",rev:"売上",n:"件数",name:"施設名",intlPct:"海外%",topSeg:"主タイプ",Kanto:"関東",Kansai:"関西",Hotel:"ホテル",Apart:"アパート",date:"日付",metric:"指標"};
 
 // ─── CONSTANTS ───
 const KANSAI_KW=["京都丸太町","京都烏丸二条","京都駅","京都駅鴨川","京都五条","大阪難波"];
@@ -307,7 +307,7 @@ const TOTAL_ROOMS=Object.values(ROOM_INVENTORY).reduce((a,b)=>a+b,0);
 function getRegion(f){return KANSAI_KW.some(k=>f.includes(k))?"Kansai":"Kanto"}
 function getHotelType(f){if(f.includes("Apart")||f.includes("TABI")||f.includes("GRAND"))return"Apart";return"Hotel"}
 function getBrand(f){if(f.includes("イチホテル"))return"ICHI";if(f.includes("GRAND"))return"GRAND MONday";if(f.includes("TABI"))return"TABI";if(f.includes("Apart"))return"MONday Apart";return"hotel MONday"}
-function getCountry(p,ph,l){if(p){if(JP_PREFS.includes(p))return"Japan";if(COUNTRY_MAP[p])return COUNTRY_MAP[p]}if(ph){for(const[c,co]of Object.entries(PHONE_MAP))if(ph===c)return co}if(l){if(l==="日本語")return"Japan";if(l==="英語")return"International (EN)";if(l.includes("中国語"))return"Taiwan/HK (ZH)";if(l==="韓国語")return"South Korea"}return"Unknown"}
+function getCountry(p,ph,l){if(p){if(JP_PREFS.includes(p))return"Japan";if(COUNTRY_MAP[p])return COUNTRY_MAP[p]}if(ph&&PHONE_MAP[ph])return PHONE_MAP[ph];if(l){if(l==="日本語")return"Japan";if(l==="英語")return"International (EN)";if(l.includes("中国語"))return"Taiwan/HK (ZH)";if(l==="韓国語")return"South Korea"}return"Unknown"}
 function getSegment(a,k){const t=a+k;if(k>0)return"Family";if(t===1)return"Solo";if(t===2)return"Couple";if(t>=3)return"Group";return"Unknown"}
 function getSegmentDetailed(male,female,kids){
   const adults=male+female;
@@ -458,7 +458,7 @@ export default function App(){
     // Reset cache if timezone changed
     if(tzCache.current.tz!==tz){tzCache.current={tz,fmt:null,map:new Map()}}
     // Cache key: timestamp + format
-    const key=dt.getTime()+(fmt||"");
+    const key=dt.getTime()+"|"+(fmt||"");
     const cached=tzCache.current.map.get(key);
     if(cached!==undefined)return cached;
     let result;
@@ -581,7 +581,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(getM(r)){const mm=getM(r);if(!byM[mm])byM[mm]={n:0,rev:0};byM[mm].n++;byM[mm].rev+=r.totalRev}
       if(!byF[r.facility])byF[r.facility]={n:0,rev:0,intl:0,nights:[],region:r.region,segs:{}};byF[r.facility].n++;byF[r.facility].rev+=r.totalRev;if(r.country!=="Japan")byF[r.facility].intl++;if(r.nights)byF[r.facility].nights.push(r.nights);byF[r.facility].segs[r.segment]=(byF[r.facility].segs[r.segment]||0)+1;
       if(r.checkinDow){if(!byD[r.checkinDow])byD[r.checkinDow]={ci:0,co:0};byD[r.checkinDow].ci++}
-      if(r.checkoutDow){if(!byD[r.checkoutDow])byD[r.checkoutDow]=byD[r.checkoutDow]||{ci:0,co:0};byD[r.checkoutDow].co++}
+      if(r.checkoutDow){if(!byD[r.checkoutDow])byD[r.checkoutDow]={ci:0,co:0};byD[r.checkoutDow].co++}
       if(!byRm[r.roomSimple])byRm[r.roomSimple]=0;byRm[r.roomSimple]++;
 
       // KvK region breakdowns
@@ -1030,8 +1030,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const[y2,m2]=m.split("-").map(Number);
       const daysInMonth=new Date(y2,m2,0).getDate();
       // Total rooms across all facilities that had bookings
-      const totalRooms=Object.keys(ROOM_INVENTORY).reduce((a,f)=>a+ROOM_INVENTORY[f],0);
-      const avail=totalRooms*daysInMonth;
+      const avail=TOTAL_ROOMS*daysInMonth;
       const occ=avail>0?+((v.nightsSold/avail)*100).toFixed(1):0;
       const revpar=avail>0?Math.round(v.rev/avail):0;
       const adr=v.nightsSold>0?Math.round(v.rev/v.nightsSold):0;
@@ -1046,9 +1045,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       byFac[r.facility].nightsSold+=r.nights||0;
     });
     // Calculate total days in the filtered period
-    const allDates=withRooms.map(r=>tzFmt(getDateField(r))).filter(Boolean);
-    const minDate=allDates.length?allDates.sort()[0]:null;
-    const maxDate=allDates.length?allDates.sort().pop():null;
+    const allDates=withRooms.map(r=>tzFmt(getDateField(r))).filter(Boolean).sort();
+    const minDate=allDates.length?allDates[0]:null;
+    const maxDate=allDates.length?allDates[allDates.length-1]:null;
     const totalDays=minDate&&maxDate?Math.max(1,Math.round((new Date(maxDate)-new Date(minDate))/864e5)+1):1;
 
     const facRows=Object.entries(byFac).map(([f,v])=>{
@@ -1198,7 +1197,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const firstSecond=g.dates[1]-g.dates[0];
       return{tightest,firstSecond};
     };
-    const bucketIdx=ms=>{for(let i=0;i<buckets.length;i++)if(ms<=buckets[i])return i;return-1};
+    const bucketIdx=ms=>{for(let i=0;i<buckets.length;i++)if(ms<=buckets[i])return i;return buckets.length-1};
 
     // Initialize result tables
     const tightestTable={},firstSecondTable={};
