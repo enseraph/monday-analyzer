@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.46";
+const APP_VERSION="1.47";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -17,7 +17,7 @@ const DL={
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-ml",0,4,6,4],["ch-mld",6,4,6,4],["ch-msc",0,8,12,4],["ch-rkc",0,12,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
-  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-fac",0,7,6,7],["mb-fac-tbl",6,7,6,7],["mb-detail",0,14,12,14]]),
+  member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-rank",0,3,6,4],["mb-seg",6,3,6,3],["mb-fac",0,7,6,7],["mb-fac-tbl",6,7,6,7],["mb-tight-chart",0,14,6,5],["mb-tight-tbl",6,14,6,5],["mb-fs-chart",0,19,6,5],["mb-fs-tbl",6,19,6,5],["mb-detail",0,24,12,14]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
@@ -126,7 +126,7 @@ memberTab:"Member",memberTitle:"Member & Repeat Analysis",memberDisclaimer:"Note
 memberRepeatRate:"Repeat Rate",memberFirstTimer:"First-timer",memberRepeater:"Repeater",memberByCountryType:"Repeat Rate: Japanese vs Foreign",
 memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Repeat Guest Detail",
 memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
-memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",
+memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",memberTightest:"Repeat Rate by Tightest Window",memberTightestSub:"Each guest counted once in their shortest repeat gap. Date filters do not apply.",memberFirstSecond:"Return Rate (1st → 2nd Stay)",memberFirstSecondSub:"Time between first and second stay. Date filters do not apply.",memberWindow:"Window",
     resetLayout:"Reset Layout",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -229,7 +229,7 @@ memberTab:"会員",memberTitle:"会員・リピート分析",memberDisclaimer:"�
 memberRepeatRate:"リピート率",memberFirstTimer:"初回",memberRepeater:"リピーター",memberByCountryType:"リピート率: 国内 vs 海外",
 memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"リピーター詳細",
 memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
-memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",
+memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",memberTightest:"最短リピート間隔別",memberTightestSub:"各ゲストは最短リピート間隔の枠で1回のみカウント。日付フィルターは適用されません。",memberFirstSecond:"リターン率（初回→2回目）",memberFirstSecondSub:"初回と2回目の宿泊間隔。日付フィルターは適用されません。",memberWindow:"期間",
     resetLayout:"レイアウトリセット",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -1060,8 +1060,82 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     }).sort((a,b)=>b.repeaters-a.repeaters);
     const facByRate=[...facRows].sort((a,b)=>b.rate-a.rate);
 
-    return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows,facRows,facByRate};
-  },[filtered]);
+    // ─── Repeat Window Analysis (uses ALL data, not filtered) ───
+    const allWithEmail=allData.filter(r=>r.email&&r.bookingDate);
+    // Group bookings by email
+    const guestBookings={};
+    allWithEmail.forEach(r=>{
+      if(!guestBookings[r.email])guestBookings[r.email]={dates:[],country:r.country};
+      guestBookings[r.email].dates.push(r.bookingDate.getTime());
+    });
+    Object.values(guestBookings).forEach(g=>g.dates.sort((a,b)=>a-b));
+    // Determine top 7 foreign countries by reservation count (excluding Japan)
+    const foreignCounts={};
+    allWithEmail.forEach(r=>{if(r.country!=="Japan")foreignCounts[r.country]=(foreignCounts[r.country]||0)+1});
+    const top7Foreign=Object.entries(foreignCounts).sort((a,b)=>b[1]-a[1]).slice(0,7).map(([c])=>c);
+    const segmentOf=country=>{
+      if(country==="Japan")return"Japanese";
+      if(top7Foreign.includes(country))return country;
+      return"Other";
+    };
+    const segments=["Overall","Japanese",...top7Foreign,"Other"];
+    // Bucket boundaries in milliseconds
+    const MO=30*864e5,buckets=[3*MO,6*MO,12*MO,24*MO];
+    const bucketLabels=["≤3mo","3–6mo","6–12mo","12–24mo"];
+    // Helper: get tightest gap (min) and first-to-second gap
+    const computeGuestStats=g=>{
+      if(g.dates.length<2)return{tightest:null,firstSecond:null};
+      let tightest=Infinity;
+      for(let i=1;i<g.dates.length;i++){const gap=g.dates[i]-g.dates[i-1];if(gap<tightest)tightest=gap}
+      const firstSecond=g.dates[1]-g.dates[0];
+      return{tightest,firstSecond};
+    };
+    const bucketIdx=ms=>{for(let i=0;i<buckets.length;i++)if(ms<=buckets[i])return i;return-1};
+
+    // Initialize result tables
+    const tightestTable={},firstSecondTable={};
+    segments.forEach(s=>{
+      tightestTable[s]={total:0,buckets:[0,0,0,0]};
+      firstSecondTable[s]={total:0,buckets:[0,0,0,0]};
+    });
+
+    Object.values(guestBookings).forEach(g=>{
+      const segments2=["Overall",segmentOf(g.country)];
+      const stats=computeGuestStats(g);
+      segments2.forEach(seg=>{
+        if(!tightestTable[seg])return;
+        tightestTable[seg].total++;
+        firstSecondTable[seg].total++;
+        if(stats.tightest!==null){const idx=bucketIdx(stats.tightest);if(idx>=0)tightestTable[seg].buckets[idx]++}
+        if(stats.firstSecond!==null){const idx=bucketIdx(stats.firstSecond);if(idx>=0)firstSecondTable[seg].buckets[idx]++}
+      });
+    });
+
+    // Build row-oriented data for tables: rows=windows, columns=segments
+    const buildRows=tbl=>bucketLabels.map((label,i)=>{
+      const row={window:label};
+      segments.forEach(s=>{
+        const t=tbl[s];
+        row[s]=t.total>0?+((t.buckets[i]/t.total)*100).toFixed(1):0;
+      });
+      return row;
+    });
+    const tightestRows=buildRows(tightestTable);
+    const firstSecondRows=buildRows(firstSecondTable);
+
+    // Build chart data: stacked bars, X=segment, stacks=window buckets
+    const buildChartData=tbl=>segments.map(s=>{
+      const t=tbl[s];
+      const row={segment:s};
+      bucketLabels.forEach((label,i)=>{row[label]=t.total>0?+((t.buckets[i]/t.total)*100).toFixed(1):0});
+      return row;
+    });
+    const tightestChart=buildChartData(tightestTable);
+    const firstSecondChart=buildChartData(firstSecondTable);
+
+    return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows,facRows,facByRate,
+      windowSegments:segments,bucketLabels,tightestRows,firstSecondRows,tightestChart,firstSecondChart};
+  },[filtered,allData]);
 
   // ─── DYNAMIC INSIGHTS ───
   const insights=useMemo(()=>{
@@ -1813,6 +1887,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               columns={[{key:"name",label:t.thFacility},{key:"guests",label:t.memberTotal},{key:"repeaters",label:t.memberRepeatCount},{key:"rate",label:t.memberRepeatRate},{key:"bookings",label:t.reservations}]}
               renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{fmtN(r.guests)}</td><td style={{...S.td,...S.m}}>{fmtN(r.repeaters)}</td><td style={{...S.td,...S.m,color:r.rate>20?"#34d399":TH.text}}>{r.rate}%</td><td style={{...S.td,...S.m}}>{fmtN(r.bookings)}</td></tr>}
               title={t.memberByFac}
+            /></div>
+            <div key="mb-tight-chart"><CC grid title={t.memberTightest} id="mb-tight-chart" nm="member_tightest" data={memberRpt.tightestChart}><BarChart data={memberRpt.tightestChart}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={{fill:TH.tickFill,fontSize:9}} angle={isMobile?-45:0} textAnchor={isMobile?"end":"middle"} height={isMobile?60:30} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend wrapperStyle={{fontSize:10}}/>{memberRpt.bucketLabels.map((label,i)=><Bar key={label} dataKey={label} stackId="a" fill={["#34d399","#4ea8de","#c084fc","#c9a84c"][i]} name={label}/>)}</BarChart></CC></div>
+            <div key="mb-tight-tbl"><SortTbl
+              data={memberRpt.tightestRows}
+              columns={[{key:"window",label:t.memberWindow},...memberRpt.windowSegments.map(s=>({key:s,label:s}))]}
+              renderRow={r=><tr key={r.window}><td style={{...S.td,fontWeight:600}}>{r.window}</td>{memberRpt.windowSegments.map(s=><td key={s} style={{...S.td,...S.m,color:r[s]>5?"#34d399":TH.text}}>{r[s]}%</td>)}</tr>}
+              title={t.memberTightest}
+            /></div>
+            <div key="mb-fs-chart"><CC grid title={t.memberFirstSecond} id="mb-fs-chart" nm="member_firstsecond" data={memberRpt.firstSecondChart}><BarChart data={memberRpt.firstSecondChart}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={{fill:TH.tickFill,fontSize:9}} angle={isMobile?-45:0} textAnchor={isMobile?"end":"middle"} height={isMobile?60:30} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend wrapperStyle={{fontSize:10}}/>{memberRpt.bucketLabels.map((label,i)=><Bar key={label} dataKey={label} stackId="a" fill={["#34d399","#4ea8de","#c084fc","#c9a84c"][i]} name={label}/>)}</BarChart></CC></div>
+            <div key="mb-fs-tbl"><SortTbl
+              data={memberRpt.firstSecondRows}
+              columns={[{key:"window",label:t.memberWindow},...memberRpt.windowSegments.map(s=>({key:s,label:s}))]}
+              renderRow={r=><tr key={r.window}><td style={{...S.td,fontWeight:600}}>{r.window}</td>{memberRpt.windowSegments.map(s=><td key={s} style={{...S.td,...S.m,color:r[s]>5?"#34d399":TH.text}}>{r[s]}%</td>)}</tr>}
+              title={t.memberFirstSecond}
             /></div>
             <div key="mb-detail"><SortTbl
               data={memberRpt.detailRows}
