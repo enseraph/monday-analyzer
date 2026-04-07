@@ -23,6 +23,10 @@ React dashboard (single JSX file) for JHAT/MONday Group hotel reservation data.
 - Data covers May 2024 onward
 
 ## Key Architecture
+- **CSV cache**: 5-min localStorage cache (`monday_csv_cache`) for instant warm starts
+- **Email-based intl override**: `applyEmailIntlOverride()` runs after parse — any email seen on a non-Japan reservation has ALL its rows reclassified to its top intl country (fixes intl guests booking via JP interface)
+- **Tab-gated reports**: `dailyRpt`/`compareRpt`/`paceRpt`/`cancelRpt`/`losRpt`/`revparRpt`/`memberRpt`/`kvk`/`tRows` all start with `if(tab!=="<id>")return null;` and include `tab` in deps. Filter changes recompute only the visible report. ⚠ When adding a new report memo, MUST gate it AND add `tab` to its deps array.
+- **`insights` useMemo deleted** — was computed but never read. Don't reintroduce unless actually rendered.
 - **i18n**: EN/JA bilingual, `T.en`/`T.ja` objects, `tl()` translator (also handles Overall/Japanese/Couple variants)
 - **Theme**: dark/light mode via `TH` palette object, persisted to localStorage
 - **Timezone**: selectable via dropdown (JST/EST/PST/UTC/etc.), `tzFmt()` helper with cached `Intl.DateTimeFormat` instance + result Map for performance. Persisted to localStorage.
@@ -97,8 +101,9 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.53 (increment by 0.01)
+Current: 1.59 (increment by 0.01)
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
+`DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 
 ## Important Patterns
 - **Timezone**: All date-to-string conversions go through `tzFmt()` which uses cached `Intl.DateTimeFormat` + result `Map`. NEVER use `toISOString()` for date display (UTC shift). NEVER create `new Intl.DateTimeFormat` in a loop.
