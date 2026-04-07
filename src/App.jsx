@@ -4,7 +4,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.58";
+const APP_VERSION="1.59";
+// Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
+const DATA_LAG_DAYS=1;
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -1779,9 +1781,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div><div style={S.fl}>{t.to}</div><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.to} onChange={e=>setCmpB(p=>({...p,to:e.target.value}))}/></div>
             </div>
             <div style={{display:"flex",gap:4}}>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear(),m=now.getMonth(),d=now.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(now);const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,d);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const dow=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(dow===0?6:dow-1));const sun=new Date(mon);sun.setDate(mon.getDate()+6);const prevMon=new Date(mon);prevMon.setDate(mon.getDate()-7);const prevSun=new Date(sun);prevSun.setDate(sun.getDate()-7);setCmpA({from:tzFmt(mon),to:tzFmt(sun)});setCmpB({from:tzFmt(prevMon),to:tzFmt(prevSun)})}}>{t.cmpWeekVsWeek}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const now=new Date();const y=now.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(now);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,now.getMonth(),now.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear(),m=end.getMonth(),d=end.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(end);const days=d-1;const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,1);bEnd.setDate(bEnd.getDate()+days);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const start=new Date(end);start.setDate(end.getDate()-6);const prevEnd=new Date(start);prevEnd.setDate(start.getDate()-1);const prevStart=new Date(prevEnd);prevStart.setDate(prevEnd.getDate()-6);setCmpA({from:tzFmt(start),to:tzFmt(end)});setCmpB({from:tzFmt(prevStart),to:tzFmt(prevEnd)})}}>{t.cmpWeekVsWeek}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(end);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,end.getMonth(),end.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
             </div>
           </div>
           {compareRpt&&!compareRpt.empty?<>
