@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
+import { toPng } from "html-to-image";
 
-const APP_VERSION="1.51";
+const APP_VERSION="1.52";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -35,8 +36,8 @@ function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle,loc
   const validKeys=new Set(validChildren.map(c=>c.key));
   const safeLayouts={};
   Object.entries(layouts).forEach(([bp,items])=>{safeLayouts[bp]=items.filter(item=>validKeys.has(item.i))});
-  const rglProps={...RGL_PROPS,isDraggable:!locked,isResizable:!locked};
-  return(<div ref={containerRef}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6,gap:6}}>{onLockToggle&&<button style={{...btnStyle,...(locked?{background:"rgba(52,211,153,0.15)",borderColor:"#34d399",color:"#34d399"}:{})}} onClick={onLockToggle}>{locked?"🔒 ":"🔓 "}{lockLabel}</button>}<button style={btnStyle} onClick={onReset}>{resetLabel}</button></div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer+(locked?"-l":"")} width={width} {...rglProps} layouts={safeLayouts} onLayoutChange={(_,all)=>{if(!locked)saveLayouts(tabId,all)}}>{validChildren}</Responsive>}</div>);
+  const rglProps={...RGL_PROPS,isDraggable:!locked,isResizable:!locked,draggableHandle:locked?".__never__":".rgl-drag"};
+  return(<div ref={containerRef} className={locked?"rgl-locked":""}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6,gap:6}}>{onLockToggle&&<button style={{...btnStyle,...(locked?{background:"rgba(52,211,153,0.15)",borderColor:"#34d399",color:"#34d399"}:{})}} onClick={onLockToggle}>{locked?"🔒 ":"🔓 "}{lockLabel}</button>}<button style={btnStyle} onClick={onReset}>{resetLabel}</button></div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer+(locked?"-locked":"-unlocked")} width={width} {...rglProps} layouts={safeLayouts} onLayoutChange={(_,all)=>{if(!locked)saveLayouts(tabId,all)}}>{validChildren}</Responsive>}</div>);
 }
 
 // ─── Google Sheets Backend ───
@@ -391,44 +392,47 @@ function decodeBuffer(buf){
 
 function dlChart(id,fn,title){
   const el=document.getElementById(id);if(!el)return;
-  const svg=el.querySelector("svg");if(!svg)return;
-  const bbox=svg.getBoundingClientRect();
-  const w=Math.round(bbox.width),h=Math.round(bbox.height);
-  if(w<10||h<10){alert("Chart not ready for export — make sure the chart is visible and try again.");return}
-  // Inline computed styles into the cloned SVG so colors/fonts render correctly
-  const inlineStyles=(src,dst)=>{
-    const cs=getComputedStyle(src);
-    const props=["fill","stroke","stroke-width","stroke-dasharray","stroke-opacity","fill-opacity","opacity","font","font-family","font-size","font-weight","text-anchor","dominant-baseline"];
-    let s="";
-    props.forEach(p=>{const v=cs.getPropertyValue(p);if(v)s+=`${p}:${v};`});
-    if(s)dst.setAttribute("style",s);
-    const srcKids=src.children,dstKids=dst.children;
-    for(let i=0;i<srcKids.length;i++)inlineStyles(srcKids[i],dstKids[i]);
-  };
-  const c=svg.cloneNode(true);
-  inlineStyles(svg,c);
-  c.setAttribute("xmlns","http://www.w3.org/2000/svg");
-  c.setAttribute("width",w);
-  c.setAttribute("height",h);
-  c.setAttribute("viewBox",`0 0 ${w} ${h}`);
-  const d=new XMLSerializer().serializeToString(c);
-  const cv=document.createElement("canvas");
-  const ctx=cv.getContext("2d");
-  const img=new Image();
-  const titleH=title?48:0;
-  const u="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(d);
-  img.onload=()=>{
-    cv.width=w*2;cv.height=(h+titleH)*2;ctx.scale(2,2);
-    ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,h+titleH);
-    if(title){ctx.fillStyle="#1a1a2e";ctx.font="bold 14px 'DM Sans',sans-serif";ctx.fillText(title,12,titleH-14)}
-    ctx.drawImage(img,0,titleH,w,h);
-    const a=document.createElement("a");
-    a.download=fn+".png";
-    a.href=cv.toDataURL("image/png");
-    a.click();
-  };
-  img.onerror=()=>{alert("Failed to export chart. Try reloading the page.")};
-  img.src=u;
+  // Find the actual chart container — could be the recharts wrapper
+  const target=el.querySelector(".recharts-wrapper")||el;
+  toPng(target,{
+    backgroundColor:"#ffffff",
+    pixelRatio:2,
+    cacheBust:true,
+    style:{background:"#ffffff"},
+    filter:n=>{
+      // Skip the tooltip element (it's positioned absolutely and can show stale state)
+      if(n.classList&&(n.classList.contains("recharts-tooltip-wrapper")||n.classList.contains("recharts-tooltip-cursor")))return false;
+      return true;
+    }
+  }).then(dataUrl=>{
+    if(title){
+      // Add a title bar above the chart by drawing both onto a new canvas
+      const img=new Image();
+      img.onload=()=>{
+        const titleH=48;
+        const cv=document.createElement("canvas");
+        cv.width=img.width;
+        cv.height=img.height+titleH*2;
+        const ctx=cv.getContext("2d");
+        ctx.fillStyle="#ffffff";
+        ctx.fillRect(0,0,cv.width,cv.height);
+        ctx.fillStyle="#1a1a2e";
+        ctx.font="bold 28px 'DM Sans',sans-serif";
+        ctx.fillText(title,24,titleH+16);
+        ctx.drawImage(img,0,titleH*2);
+        const a=document.createElement("a");
+        a.download=fn+".png";
+        a.href=cv.toDataURL("image/png");
+        a.click();
+      };
+      img.src=dataUrl;
+    }else{
+      const a=document.createElement("a");
+      a.download=fn+".png";
+      a.href=dataUrl;
+      a.click();
+    }
+  }).catch(err=>{console.error("Chart export failed:",err);alert("Chart export failed. See console for details.")});
 }
 
 function dlTable(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v.toLocaleString();const s=String(v);return tr?tr(s):s};const pad=14,rowH=28,headH=36,titleH=44,font="12px 'DM Sans',sans-serif",headFont="bold 11px 'JetBrains Mono',monospace",titleFont="bold 14px 'DM Sans',sans-serif";const cv=document.createElement("canvas");const ctx=cv.getContext("2d");ctx.font=font;const colW=keys.map(k=>{const hdr=tKey(k).toUpperCase();ctx.font=headFont;let mx=ctx.measureText(hdr).width;ctx.font=font;data.forEach(r=>{const w=ctx.measureText(tVal(r[k])).width;if(w>mx)mx=w});return mx+pad*2});const totalW=colW.reduce((a,b)=>a+b,0)+2;const totalH=titleH+headH+data.length*rowH+2;cv.width=totalW*2;cv.height=totalH*2;ctx.scale(2,2);ctx.fillStyle="#ffffff";ctx.fillRect(0,0,totalW,totalH);ctx.fillStyle="#1a1a2e";ctx.font=titleFont;ctx.fillText(title,pad,titleH-14);ctx.fillStyle="#f0f0f4";ctx.fillRect(0,titleH,totalW,headH);ctx.fillStyle="#4a4a6a";ctx.font=headFont;let x=1;keys.forEach((k,i)=>{ctx.fillText(tKey(k).toUpperCase(),x+pad,titleH+headH-10);x+=colW[i]});data.forEach((row,ri)=>{const y=titleH+headH+ri*rowH;if(ri%2===0){ctx.fillStyle="#fafaff";ctx.fillRect(0,y,totalW,rowH)}ctx.fillStyle="#333";ctx.font=font;let x2=1;keys.forEach((k,i)=>{ctx.fillText(tVal(row[k]),x2+pad,y+rowH-8);x2+=colW[i]})});ctx.strokeStyle="#e0e0e8";ctx.lineWidth=0.5;let lx=1;keys.forEach((_,i)=>{lx+=colW[i];ctx.beginPath();ctx.moveTo(lx,titleH);ctx.lineTo(lx,totalH);ctx.stroke()});const a=document.createElement("a");a.download=fn+"_table.png";a.href=cv.toDataURL("image/png");a.click()}

@@ -27,3 +27,5 @@
   right: 2px !important;
   cursor: ew-resize !important;
 }
+.rgl-locked .react-resizable-handle { display: none !important; }
+.rgl-locked .rgl-drag { cursor: default !important; }
