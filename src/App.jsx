@@ -3,7 +3,7 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 
-const APP_VERSION="1.48";
+const APP_VERSION="1.49";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -581,6 +581,36 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     filtered.forEach(r=>{const s=r.segmentDetailed||"Unknown";if(!byS[s])byS[s]={count:0,rev:0,nights:[],lead:[]};byS[s].count++;byS[s].rev+=r.totalRev||0;if(r.nights)byS[s].nights.push(r.nights);if(r.leadTime!=null)byS[s].lead.push(r.leadTime)});
     return SEG_ORDER_DETAILED.filter(s=>byS[s]).map(s=>({segment:s,count:byS[s].count,avgRev:Math.round(byS[s].rev/byS[s].count),avgLOS:+(avg(byS[s].nights)).toFixed(2),avgLead:+(avg(byS[s].lead)).toFixed(1)}));
   },[filtered]);
+
+  // Detailed versions of seg-by-month, seg-by-country, lead-by-seg, ADR-by-seg
+  const segDetailedExtras=useMemo(()=>{
+    if(!filtered.length)return{segMo:[],segCountry:[],leadSeg:[],adrSeg:[],activeSegs:[]};
+    // Find active detailed segments (those with at least 1 booking)
+    const activeSet=new Set();
+    filtered.forEach(r=>{if(r.segmentDetailed)activeSet.add(r.segmentDetailed)});
+    const activeSegs=SEG_ORDER_DETAILED.filter(s=>activeSet.has(s));
+
+    // Seg by month (stacked)
+    const monthsSet=new Set();filtered.forEach(r=>{const m=getM(r);if(m)monthsSet.add(m)});
+    const months=[...monthsSet].sort();
+    const segMo=months.map(m=>{const row={month:m};filtered.filter(r=>getM(r)===m).forEach(r=>{const s=r.segmentDetailed||"Unknown";row[s]=(row[s]||0)+1});return row});
+
+    // Seg by country (% by top 12 countries)
+    const byCountryCount={};filtered.forEach(r=>{byCountryCount[r.country]=(byCountryCount[r.country]||0)+1});
+    const topCforSeg=Object.entries(byCountryCount).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([c])=>c);
+    const cS={};filtered.forEach(r=>{if(!cS[r.country])cS[r.country]={};const s=r.segmentDetailed||"Unknown";cS[r.country][s]=(cS[r.country][s]||0)+1});
+    const segCountry=topCforSeg.map(c=>{const segs=cS[c]||{};const tot=Object.values(segs).reduce((a,b)=>a+b,0);const row={country:c};activeSegs.forEach(s=>{row[s]=tot>0?Math.round(100*(segs[s]||0)/tot):0});return row});
+
+    // Lead time by detailed segment (avg + median)
+    const segLead={};filtered.forEach(r=>{if(r.leadTime==null)return;const s=r.segmentDetailed||"Unknown";if(!segLead[s])segLead[s]=[];segLead[s].push(r.leadTime)});
+    const leadSeg=activeSegs.filter(s=>segLead[s]&&segLead[s].length).map(s=>({segment:s,avg:+avg(segLead[s]).toFixed(1),median:+med(segLead[s]).toFixed(1)}));
+
+    // ADR by detailed segment
+    const segADR={};filtered.forEach(r=>{if(!r.nights||r.nights<=0||!r.totalRev)return;const s=r.segmentDetailed||"Unknown";if(!segADR[s])segADR[s]=[];segADR[s].push(r.totalRev/r.nights)});
+    const adrSeg=activeSegs.filter(s=>segADR[s]&&segADR[s].length).map(s=>({segment:s,adr:Math.round(avg(segADR[s]))}));
+
+    return{segMo,segCountry,leadSeg,adrSeg,activeSegs};
+  },[filtered,monthMode,tz]);
   const moD=useMemo(()=>!agg?[]:Object.entries(agg.byM).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const dowD=useMemo(()=>!agg?[]:DOW_FULL.map((d,i)=>({day:dL[i],checkin:agg.byD[d]?.ci||0,checkout:agg.byD[d]?.co||0})),[agg,dL]);
   // Helper: get the selected date field for a reservation
@@ -1892,11 +1922,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             </div>
           </div>
           {(()=>{const sd=segDetailed?segDetailedD:segD;const sc=segDetailed?SEG_COLORS_DETAILED:SEG_COLORS;return(<DraggableGrid {...dgProps("segments")}>{[[t.segBreakdown,"count",t.reservations,"ch-sb"],[t.avgRevBySeg,"avgRev",t.avgRevRes,"ch-sr"],[t.avgLOSBySeg,"avgLOS",t.avgLOS,"ch-sl"],[t.avgLeadBySeg,"avgLead",t.avgLeadTime,"ch-slt"]].map(([ti,key,yL,id])=><div key={id}><CC grid title={ti} id={id} nm={id} data={sd}><BarChart data={sd}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={({x,y,payload})=><text x={x} y={y} textAnchor={segDetailed?"end":"middle"} fill={TH.tickFill} fontSize={segDetailed?8:11} dy={12} transform={segDetailed?`rotate(-30,${x},${y})`:undefined}>{tl(payload.value)}</text>} height={segDetailed?60:30} interval={0}/><YAxis tick={tk} tickFormatter={key==="avgRev"?fmtY:undefined}/><Tooltip content={<CT formatter={key==="avgRev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Bar dataKey={key} name={yL} radius={[4,4,0,0]}>{sd.map((e,i)=><Cell key={i} fill={sc[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>)}
-          <div key="sg-seg-mo">{kvk&&<CC grid title={t.kvkSegByMonth} id="sg-seg-mo" nm="seg_month" data={kvk.segMo}><BarChart data={kvk.segMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>{SEG_ORDER.map((s,i)=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
-          <div key="sg-seg-co">{kvk&&<CC grid title={t.kvkSegByCountry} id="sg-seg-co" nm="seg_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
-          <div key="sg-ld-sg">{kvk&&<CC grid title={t.kvkLeadBySeg} id="sg-ld-sg" nm="lead_seg" data={kvk.leadSeg}><BarChart data={kvk.leadSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#4ea8de" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(78,168,222,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}</div>
+          <div key="sg-seg-mo">{(()=>{const data=segDetailed?segDetailedExtras.segMo:(kvk?kvk.segMo:null);const segs=segDetailed?segDetailedExtras.activeSegs:SEG_ORDER;const colors=segDetailed?SEG_COLORS_DETAILED:SEG_COLORS;return data?<CC grid title={t.kvkSegByMonth} id="sg-seg-mo" nm="seg_month" data={data}><BarChart data={data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{segs.map((s,i)=><Bar key={s} dataKey={s} stackId="a" fill={colors[s]||PALETTE[i%PALETTE.length]} name={tl(s)}/>)}</BarChart></CC>:null})()}</div>
+          <div key="sg-seg-co">{(()=>{const data=segDetailed?segDetailedExtras.segCountry:(kvk?kvk.segCountry:null);const segs=segDetailed?segDetailedExtras.activeSegs:SEG_ORDER;const colors=segDetailed?SEG_COLORS_DETAILED:SEG_COLORS;return data?<CC grid title={t.kvkSegByCountry} id="sg-seg-co" nm="seg_country" h={Math.max(300,data.length*26)} data={data}><BarChart data={data} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend wrapperStyle={{fontSize:9}}/>{segs.map((s,i)=><Bar key={s} dataKey={s} stackId="a" fill={colors[s]||PALETTE[i%PALETTE.length]} name={tl(s)}/>)}</BarChart></CC>:null})()}</div>
+          <div key="sg-ld-sg">{(()=>{const data=segDetailed?segDetailedExtras.leadSeg:(kvk?kvk.leadSeg:null);return data?<CC grid title={t.kvkLeadBySeg} id="sg-ld-sg" nm="lead_seg" data={data}><BarChart data={data}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={({x,y,payload})=><text x={x} y={y} textAnchor={segDetailed?"end":"middle"} fill={TH.tickFill} fontSize={segDetailed?8:11} dy={12} transform={segDetailed?`rotate(-30,${x},${y})`:undefined}>{tl(payload.value)}</text>} height={segDetailed?60:30} interval={0}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#4ea8de" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(78,168,222,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>:null})()}</div>
           <div key="sg-ld-mo">{kvk&&<CC grid title={t.kvkLeadByMonth} id="sg-ld-mo" nm="lead_month" data={kvk.leadMo}><BarChart data={kvk.leadMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Legend/><Bar dataKey="avg" fill="#c9a84c" radius={[4,4,0,0]} name={t.avg}/><Bar dataKey="median" fill="rgba(201,168,76,0.4)" radius={[4,4,0,0]} name={t.median}/></BarChart></CC>}</div>
-          <div key="sg-adr">{kvk&&<CC grid title={t.kvkADRBySeg} id="sg-adr" nm="adr_seg" data={kvk.adrSeg}><BarChart data={kvk.adrSeg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" radius={[4,4,0,0]} name="ADR">{kvk.adrSeg.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC>}</div>
+          <div key="sg-adr">{(()=>{const data=segDetailed?segDetailedExtras.adrSeg:(kvk?kvk.adrSeg:null);const colors=segDetailed?SEG_COLORS_DETAILED:SEG_COLORS;return data?<CC grid title={t.kvkADRBySeg} id="sg-adr" nm="adr_seg" data={data}><BarChart data={data}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={({x,y,payload})=><text x={x} y={y} textAnchor={segDetailed?"end":"middle"} fill={TH.tickFill} fontSize={segDetailed?8:11} dy={12} transform={segDetailed?`rotate(-30,${x},${y})`:undefined}>{tl(payload.value)}</text>} height={segDetailed?60:30} interval={0}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" radius={[4,4,0,0]} name="ADR">{data.map((e,i)=><Cell key={i} fill={colors[e.segment]||PALETTE[i%PALETTE.length]}/>)}</Bar></BarChart></CC>:null})()}</div>
 
         </DraggableGrid>)})()}</>}
 
