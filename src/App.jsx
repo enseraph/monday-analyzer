@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.52";
+const APP_VERSION="1.53";
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -35,7 +35,7 @@ function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle,loc
   const validChildren=Array.isArray(children)?children.flat().filter(c=>c&&c.key):children?[children]:[];
   const validKeys=new Set(validChildren.map(c=>c.key));
   const safeLayouts={};
-  Object.entries(layouts).forEach(([bp,items])=>{safeLayouts[bp]=items.filter(item=>validKeys.has(item.i))});
+  Object.entries(layouts).forEach(([bp,items])=>{safeLayouts[bp]=items.filter(item=>validKeys.has(item.i)).map(it=>locked?{...it,static:true,isDraggable:false,isResizable:false}:it)});
   const rglProps={...RGL_PROPS,isDraggable:!locked,isResizable:!locked,draggableHandle:locked?".__never__":".rgl-drag"};
   return(<div ref={containerRef} className={locked?"rgl-locked":""}><div style={{display:"flex",justifyContent:"flex-end",marginBottom:6,gap:6}}>{onLockToggle&&<button style={{...btnStyle,...(locked?{background:"rgba(52,211,153,0.15)",borderColor:"#34d399",color:"#34d399"}:{})}} onClick={onLockToggle}>{locked?"🔒 ":"🔓 "}{lockLabel}</button>}<button style={btnStyle} onClick={onReset}>{resetLabel}</button></div>{width>0&&validChildren.length>0&&<Responsive key={tabId+layoutVer+(locked?"-locked":"-unlocked")} width={width} {...rglProps} layouts={safeLayouts} onLayoutChange={(_,all)=>{if(!locked)saveLayouts(tabId,all)}}>{validChildren}</Responsive>}</div>);
 }
