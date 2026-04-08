@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.62";
+const APP_VERSION="1.63";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -33,7 +33,7 @@ const DL={
   cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,9],["canc-detail",6,7,6,7]]),
   revpar:mkL([["rp-trend",0,0,12,4],["rp-daily",0,4,12,4],["rp-fac",0,8,6,7],["rp-detail",6,8,6,7]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
-  "tl-channel":mkL([["tl-mix",0,0,12,4],["tl-direct-trend",0,4,12,4],["tl-direct-trend-mo",0,8,12,4],["tl-fac-stack",0,12,12,7],["tl-fac-direct",0,19,6,5],["tl-canc-channel",6,19,6,4],["tl-dow",0,23,12,4],["tl-matrix",0,27,12,8]]),
+  "tl-channel":mkL([["tl-mix",0,0,12,4],["tl-direct-trend",0,4,12,4],["tl-fac-stack",0,8,12,7],["tl-fac-direct",0,15,6,5],["tl-canc-channel",6,15,6,4],["tl-dow",0,19,12,4],["tl-matrix",0,23,12,8]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
@@ -2303,24 +2303,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                   <Bar dataKey={tlMetric==="revenue"?"ota":"otaB"} stackId="a" fill={CHANNEL_COLORS.ota} name={t.tlOTA}/>
                 </BarChart>
               </CC></div>
-              {/* Direct share trend — daily */}
-              <div key="tl-direct-trend"><CC grid title={t.tlDirectShareTrend+" — "+t.tlGroupByDay} id="tl-direct-trend" nm="tl_direct_trend" data={tlChannelRpt.directShareSeries}>
-                <LineChart data={tlChannelRpt.directShareSeries}>
+              {/* Direct share trend (switches with Day/Month toggle) */}
+              <div key="tl-direct-trend"><CC grid title={t.tlDirectShareTrend+" — "+(tlGroupBy==="day"?t.tlGroupByDay:t.tlGroupByMonth)} id="tl-direct-trend" nm="tl_direct_trend" data={tlGroupBy==="day"?tlChannelRpt.directShareSeries:tlChannelRpt.directShareMonthlySeries}>
+                <LineChart data={tlGroupBy==="day"?tlChannelRpt.directShareSeries:tlChannelRpt.directShareMonthlySeries}>
                   <CartesianGrid {...gl}/>
                   <XAxis dataKey="date" tick={tks}/>
                   <YAxis tick={tk} tickFormatter={v=>v+"%"} domain={[0,100]}/>
                   <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
-                  <Line type="monotone" dataKey="share" stroke={CHANNEL_COLORS.direct} strokeWidth={2} dot={{fill:CHANNEL_COLORS.direct,r:3}} name={t.tlDirectShare}/>
-                </LineChart>
-              </CC></div>
-              {/* Direct share trend — monthly */}
-              <div key="tl-direct-trend-mo"><CC grid title={t.tlDirectShareTrend+" — "+t.tlGroupByMonth} id="tl-direct-trend-mo" nm="tl_direct_trend_mo" data={tlChannelRpt.directShareMonthlySeries}>
-                <LineChart data={tlChannelRpt.directShareMonthlySeries}>
-                  <CartesianGrid {...gl}/>
-                  <XAxis dataKey="date" tick={tks}/>
-                  <YAxis tick={tk} tickFormatter={v=>v+"%"} domain={[0,100]}/>
-                  <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
-                  <Line type="monotone" dataKey="share" stroke={CHANNEL_COLORS.direct} strokeWidth={2.5} dot={{fill:CHANNEL_COLORS.direct,r:4}} name={t.tlDirectShare}/>
+                  <Line type="monotone" dataKey="share" stroke={CHANNEL_COLORS.direct} strokeWidth={tlGroupBy==="day"?2:2.5} dot={{fill:CHANNEL_COLORS.direct,r:tlGroupBy==="day"?3:4}} name={t.tlDirectShare}/>
                 </LineChart>
               </CC></div>
               {/* Facility × Channel stacked horizontal */}
