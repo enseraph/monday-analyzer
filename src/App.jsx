@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.73";
+const APP_VERSION="1.74";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -818,7 +818,7 @@ const[drSingle,setDrSingle]=useState("");
     Promise.all(years.map(fetchOneYear))
       .then(batch=>{
         const all=[];const errors=[];
-        batch.forEach(b=>{if(b.rows.length)all.push(...b.rows);if(b.error)errors.push(b.yr+": "+b.error)});
+        batch.forEach(b=>{if(b.rows.length){for(let i=0;i<b.rows.length;i++)all.push(b.rows[i])}if(b.error)errors.push(b.yr+": "+b.error)});
         if(!all.length){console.error("[TL] all years failed:",errors);setTlStatus("error");return}
         if(errors.length)console.warn("[TL] partial load (some years failed):",errors);
         console.log(`[TL] loaded ${all.length} rows across ${batch.filter(b=>b.rows.length).length}/${years.length} years`);
