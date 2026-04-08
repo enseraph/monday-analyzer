@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.60";
+const APP_VERSION="1.61";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -1512,7 +1512,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     if(tab!=="tl-channel"||!tlData.length)return[];
     const fPSet=fP.length?new Set(fP):null;
     const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
-    const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
+    const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const out=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
