@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.70";
+const APP_VERSION="1.71";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -43,6 +43,7 @@ const DL={
   "tl-booking":mkL([["tlb-lead",0,0,6,3],["tlb-dow",6,0,6,3],["tlb-mdow",0,3,12,3]]),
   "tl-compare":mkL([["tlc-country",0,0,6,5],["tlc-rev",6,0,6,4],["tlc-seg",0,5,6,4],["tlc-count",6,4,6,4],["tlc-facility",0,9,12,4]]),
   "tl-pace":mkL([["tlp-chart",0,0,12,5],["tlp-summary",0,5,6,4]]),
+  "tl-adr":mkL([["tla-fac",0,0,12,7],["tla-country",0,7,12,5],["tla-seg",0,12,6,4],["tla-channel",6,12,6,4],["tla-bucket",0,16,6,4],["tla-mo",6,16,6,4]]),
   "tl-facilities":mkL([["tlf-res",0,0,6,7],["tlf-rev",6,0,6,7],["tlf-direct",0,7,6,7],["tlf-los",6,7,6,7]]),
   "tl-kvk":mkL([["tlkv-mk-kt",0,0,6,4],["tlkv-mk-ks",6,0,6,4],["tlkv-mk-mo",0,4,12,4],["tlkv-sg-rg",0,8,6,3],["tlkv-los-co",0,11,6,4],["tlkv-los-sr",6,11,6,3],["tlkv-dw-ci",0,15,6,4],["tlkv-dw-co",6,15,6,4],["tlkv-rev-sr",0,19,6,3],["tlkv-rev-co",6,19,6,4]]),
   "tl-markets":mkL([["tlmk-country",0,0,12,5],["tlmk-rev",0,5,6,4],["tlmk-los",6,5,6,4],["tlmk-lead",0,9,12,4]]),
@@ -282,7 +283,7 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     tlTopChannels:"Top Channels (full OTA breakdown)",tlTotalModifications:"Modifications",
     tlDailyReport:"Daily Report",tlRevenueTab:"Revenue",tlSegmentsTab:"Segments",tlMemberTab:"Member",
     tlOverviewTab:"Overview",tlLosTab:"LOS",tlBookingTab:"Booking Patterns",tlCompareTab:"Compare",
-    tlPaceTab:"Pace",tlFacilitiesTab:"Facilities",tlKvkTab:"Kanto vs Kansai",tlMarketsTab:"Markets",
+    tlPaceTab:"Pace",tlAdrTab:"ADR",tlFacilitiesTab:"Facilities",tlKvkTab:"Kanto vs Kansai",tlMarketsTab:"Markets",
     tlCancellationsTab:"Cancellations",tlDataTab:"Raw Data",
     tlTotalRevenue:"Total Revenue (ex-tax)",tlTotalBookings:"Total Bookings",tlTotalRoomNights:"Total Room-Nights",tlTotalCancellations:"Cancellations",
     tlDirectShare:"Direct Share %",
@@ -412,7 +413,7 @@ segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     tlTopChannels:"チャネル詳細（OTA別）",tlTotalModifications:"変更件数",
     tlDailyReport:"日報",tlRevenueTab:"売上",tlSegmentsTab:"タイプ",tlMemberTab:"会員",
     tlOverviewTab:"概要",tlLosTab:"泊数",tlBookingTab:"予約パターン",tlCompareTab:"比較",
-    tlPaceTab:"ペース",tlFacilitiesTab:"施設",tlKvkTab:"関東 vs 関西",tlMarketsTab:"市場",
+    tlPaceTab:"ペース",tlAdrTab:"ADR",tlFacilitiesTab:"施設",tlKvkTab:"関東 vs 関西",tlMarketsTab:"市場",
     tlCancellationsTab:"キャンセル",tlDataTab:"生データ",
     tlTotalRevenue:"売上合計（税抜）",tlTotalBookings:"予約件数",tlTotalRoomNights:"販売室数",tlTotalCancellations:"キャンセル数",
     tlDirectShare:"自社予約比率",
@@ -727,7 +728,6 @@ const[drSingle,setDrSingle]=useState("");
   const[fChannelBucket,setFChannelBucket]=useState([]); // ["ota","rta","direct"] subset
   const[fTlChannelName,setFTlChannelName]=useState([]); // full OTA-level filter
   const[fTlStatus,setFTlStatus]=useState("net"); // "net"|"all"|"cancelled"|"modified"
-  const[fTlPlanCode,setFTlPlanCode]=useState([]);
   const[tlGroupBy,setTlGroupBy]=useState("day"); // "day"|"month"
   const[tlMetric,setTlMetric]=useState("revenue"); // "revenue"|"bookings"
   const[tlCoverage,setTlCoverage]=useState(null); // {coverage,rowsWithCountry,totalRows}
@@ -868,7 +868,6 @@ const[drSingle,setDrSingle]=useState("");
 
   const uTlFac=useMemo(()=>[...new Set(tlData.map(r=>r.facility))].sort(),[tlData]);
   const uTlChannelName=useMemo(()=>[...new Set(tlData.map(r=>r.channel_name).filter(Boolean))].sort(),[tlData]);
-  const uTlPlanCode=useMemo(()=>[...new Set(tlData.map(r=>r.planCode).filter(Boolean))].sort(),[tlData]);
   const uC=useMemo(()=>[...new Set(allData.map(r=>r.country))].sort(),[allData]);
   const uP=useMemo(()=>[...new Set(allData.map(r=>r.facility))].sort(),[allData]);
   const uS=useMemo(()=>[...new Set(allData.map(r=>r.segment))].filter(s=>s!=="Unknown").sort(),[allData]);
@@ -1710,14 +1709,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const fPSet=fP.length?new Set(fP):null;
     const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
     const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
-    const fPCSet=fTlPlanCode.length?new Set(fTlPlanCode):null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const out=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
       if(fCBSet&&!fCBSet.has(r.channelBucket))continue;
       if(fCNSet&&!fCNSet.has(r.channel_name))continue;
-      if(fPCSet&&!fPCSet.has(r.planCode))continue;
       // Status filter: net (default) / all / cancelled / modified
       if(fTlStatus==="net"){
         // Net = 予約 not same-day-cancelled + 変更 that modifies prior-day bookings
@@ -1735,7 +1732,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       out.push(r);
     }
     return out;
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlPlanCode,fTlStatus,fDF,fDTo]);
+  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlStatus,fDF,fDTo]);
 
   // Cancel-rate and modification tracking need the FULL status dataset, not the Net-filtered view.
   // Re-filter tlData for stats that span all statuses (same dates/facility/channel filters but status=all).
@@ -1744,20 +1741,18 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const fPSet=fP.length?new Set(fP):null;
     const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
     const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
-    const fPCSet=fTlPlanCode.length?new Set(fTlPlanCode):null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const out=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
       if(fCBSet&&!fCBSet.has(r.channelBucket))continue;
       if(fCNSet&&!fCNSet.has(r.channel_name))continue;
-      if(fPCSet&&!fPCSet.has(r.planCode))continue;
       if(from&&r.date<from)continue;
       if(to&&r.date>to)continue;
       out.push(r);
     }
     return out;
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlPlanCode,fDF,fDTo]);
+  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fDF,fDTo]);
 
   const tlChannelRpt=useMemo(()=>{
     if(tab!=="tl-channel"||!tlFiltered.length)return null;
@@ -2146,6 +2141,48 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     }));
   },[tab,tlFiltered]);
 
+  // ─── TL ADR ───
+  // ADR = revenue / room-nights. Computed per-dimension; rows with 0 nights are excluded from the denominator.
+  const tlAdrRpt=useMemo(()=>{
+    if(tab!=="tl-adr"||!tlFiltered.length)return null;
+    const byFac={},byCountry={},bySeg={},byChannel={},byBucket={ota:{rev:0,nights:0,count:0},rta:{rev:0,nights:0,count:0},direct:{rev:0,nights:0,count:0}};
+    const byMonth={};
+    let totalRev=0,totalNights=0,totalCount=0;
+    for(let i=0;i<tlFiltered.length;i++){
+      const r=tlFiltered[i];if(r.status==="取消")continue;
+      const n=r.nights||0;if(n<=0)continue;
+      const rev=r.totalRev;totalRev+=rev;totalNights+=n;totalCount++;
+      // Facility
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,nights:0,count:0};
+      byFac[r.facility].rev+=rev;byFac[r.facility].nights+=n;byFac[r.facility].count++;
+      // Country
+      const c=r.country||"Unknown";
+      if(!byCountry[c])byCountry[c]={country:c,rev:0,nights:0,count:0};
+      byCountry[c].rev+=rev;byCountry[c].nights+=n;byCountry[c].count++;
+      // Segment
+      if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,nights:0,count:0};
+      bySeg[r.segment].rev+=rev;bySeg[r.segment].nights+=n;bySeg[r.segment].count++;
+      // Channel name (full OTA granularity)
+      if(!byChannel[r.channel_name])byChannel[r.channel_name]={channel:r.channel_name,bucket:r.channelBucket,rev:0,nights:0,count:0};
+      byChannel[r.channel_name].rev+=rev;byChannel[r.channel_name].nights+=n;byChannel[r.channel_name].count++;
+      // Channel bucket
+      if(byBucket[r.channelBucket]){byBucket[r.channelBucket].rev+=rev;byBucket[r.channelBucket].nights+=n;byBucket[r.channelBucket].count++}
+      // Month
+      const mKey=r.dateStr.slice(0,7);
+      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,nights:0,count:0};
+      byMonth[mKey].rev+=rev;byMonth[mKey].nights+=n;byMonth[mKey].count++;
+    }
+    const computeAdr=v=>({...v,adr:v.nights>0?Math.round(v.rev/v.nights):0});
+    const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
+    const countryRows=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
+    const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
+    const channelRows=Object.values(byChannel).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
+    const bucketRows=["ota","rta","direct"].filter(b=>byBucket[b].count).map(b=>({bucket:b,...computeAdr(byBucket[b])}));
+    const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
+    const overallAdr=totalNights>0?Math.round(totalRev/totalNights):0;
+    return{overallAdr,totalRev,totalNights,totalCount,facRows,countryRows,segRows,channelRows,bucketRows,monthRows};
+  },[tab,tlFiltered]);
+
   // ─── TL KvK ───
   const tlKvkRpt=useMemo(()=>{
     if(tab!=="tl-kvk"||!tlFiltered.length)return null;
@@ -2342,6 +2379,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     {id:"tl-booking",l:t.tlBookingTab,src:"tl"},
     {id:"tl-compare",l:t.tlCompareTab,src:"tl"},
     {id:"tl-pace",l:t.tlPaceTab,src:"tl"},
+    {id:"tl-adr",l:t.tlAdrTab,src:"tl"},
     {id:"tl-facilities",l:t.tlFacilitiesTab,src:"tl"},
     {id:"tl-kvk",l:t.tlKvkTab,src:"tl"},
     {id:"tl-markets",l:t.tlMarketsTab,src:"tl"},
@@ -2404,14 +2442,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {isTlTab&&<div><div style={S.fl}>{t.tlChannelBucket}</div><MS options={["ota","rta","direct"]} selected={fChannelBucket} onChange={setFChannelBucket} placeholder={t.all} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlChannelName}</div><MS options={uTlChannelName} selected={fTlChannelName} onChange={setFTlChannelName} placeholder={t.all} maxShow={1} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlStatus}</div><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[["net",t.tlStatusNet],["all",t.tlStatusAll],["cancelled",t.tlStatusCancelled],["modified",t.tlStatusModified]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlStatus===v?S.ba:{})}} onClick={()=>setFTlStatus(v)}>{l}</button>)}</div></div>}
-        {isTlTab&&<div><div style={S.fl}>{t.tlPlanCode}</div><MS options={uTlPlanCode} selected={fTlPlanCode} onChange={setFTlPlanCode} placeholder={t.all} maxShow={1} S={S} cl={t.clear}/></div>}
 {!isTlTab&&<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear}/></div>}
 {!isTlTab&&<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear}/></div>}
         {!isTlTab&&<div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></select></div>}
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
         {!isTlTab&&<div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>}
-        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlPlanCode([]);setFTlStatus("net");setActivePreset(null)}}>{t.reset}</button>
+        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setActivePreset(null)}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
@@ -3245,6 +3282,78 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               </LineChart>
             </CC></div>
             <div key="tlp-summary"><div style={{...S.card,height:"100%"}}><div style={{...S.ct,marginBottom:8}} className="rgl-drag">Month Totals</div><table style={S.tbl}><thead><tr><th style={S.th}>Month</th><th style={{...S.th,textAlign:"right"}}>Bookings</th><th style={{...S.th,textAlign:"right"}}>Revenue</th></tr></thead><tbody>{tlPaceRpt.paceData.map(m=><tr key={m.month}><td style={S.td}>{m.month}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(m.total.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(m.total.rev)}</td></tr>)}</tbody></table></div></div>
+          </DraggableGrid>
+        </div>}
+
+        {/* TL ADR */}
+        {tab==="tl-adr"&&tlAdrRpt&&<div>
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            <div style={{...S.kpi,borderColor:SOURCE_COLORS.tl}}><div style={S.kl}>Overall ADR (税抜)</div><div style={{...S.kv,color:SOURCE_COLORS.tl}}>¥{fmtN(tlAdrRpt.overallAdr)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.tlTotalRevenue}</div><div style={S.kv}>¥{fmtN(tlAdrRpt.totalRev)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.tlTotalRoomNights}</div><div style={S.kv}>{fmtN(tlAdrRpt.totalNights)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.tlTotalBookings}</div><div style={S.kv}>{fmtN(tlAdrRpt.totalCount)}</div></div>
+          </div>
+          <DraggableGrid {...dgProps("tl-adr")}>
+            <div key="tla-fac"><CC grid title="ADR by Facility (税抜)" id="tla-fac" nm="tl_adr_fac" h={Math.max(320,tlAdrRpt.facRows.length*24)} data={tlAdrRpt.facRows}>
+              <BarChart data={tlAdrRpt.facRows} layout="vertical">
+                <CartesianGrid {...gl}/>
+                <XAxis type="number" tick={tks} tickFormatter={fmtY}/>
+                <YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/>
+                <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                <Bar dataKey="adr" fill={SOURCE_COLORS.tl} radius={[0,4,4,0]} name="ADR"/>
+              </BarChart>
+            </CC></div>
+            <div key="tla-country"><CC grid title="ADR by Country (min 5 rsv, 税抜)" id="tla-country" nm="tl_adr_country" data={tlAdrRpt.countryRows}>
+              <BarChart data={tlAdrRpt.countryRows}>
+                <CartesianGrid {...gl}/>
+                <XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/>
+                <YAxis tick={tk} tickFormatter={fmtY}/>
+                <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>} labelFormatter={v=>tl(v)}/>
+                <Bar dataKey="adr" fill="#4ea8de" radius={[4,4,0,0]} name="ADR"/>
+              </BarChart>
+            </CC></div>
+            <div key="tla-seg"><CC grid title="ADR by Segment (税抜)" id="tla-seg" nm="tl_adr_seg" data={tlAdrRpt.segRows}>
+              <BarChart data={tlAdrRpt.segRows}>
+                <CartesianGrid {...gl}/>
+                <XAxis dataKey="segment" tick={<TlTick/>}/>
+                <YAxis tick={tk} tickFormatter={fmtY}/>
+                <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                <Bar dataKey="adr" name="ADR">
+                  {tlAdrRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}
+                </Bar>
+              </BarChart>
+            </CC></div>
+            <div key="tla-channel"><CC grid title="ADR by Channel (min 5 rsv, 税抜)" id="tla-channel" nm="tl_adr_channel" data={tlAdrRpt.channelRows}>
+              <BarChart data={tlAdrRpt.channelRows} layout="vertical">
+                <CartesianGrid {...gl}/>
+                <XAxis type="number" tick={tks} tickFormatter={fmtY}/>
+                <YAxis dataKey="channel" type="category" width={160} tick={tk} interval={0}/>
+                <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                <Bar dataKey="adr" radius={[0,4,4,0]} name="ADR">
+                  {tlAdrRpt.channelRows.map((c,i)=><Cell key={i} fill={CHANNEL_COLORS[c.bucket]||"#888"}/>)}
+                </Bar>
+              </BarChart>
+            </CC></div>
+            <div key="tla-bucket"><CC grid title="ADR by Channel Bucket (税抜)" id="tla-bucket" nm="tl_adr_bucket" data={tlAdrRpt.bucketRows}>
+              <BarChart data={tlAdrRpt.bucketRows}>
+                <CartesianGrid {...gl}/>
+                <XAxis dataKey="bucket" tick={tk} tickFormatter={v=>v.toUpperCase()}/>
+                <YAxis tick={tk} tickFormatter={fmtY}/>
+                <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                <Bar dataKey="adr" radius={[4,4,0,0]} name="ADR">
+                  {tlAdrRpt.bucketRows.map((b,i)=><Cell key={i} fill={CHANNEL_COLORS[b.bucket]||"#888"}/>)}
+                </Bar>
+              </BarChart>
+            </CC></div>
+            <div key="tla-mo"><CC grid title="Monthly ADR Trend (税抜)" id="tla-mo" nm="tl_adr_mo" data={tlAdrRpt.monthRows}>
+              <LineChart data={tlAdrRpt.monthRows}>
+                <CartesianGrid {...gl}/>
+                <XAxis dataKey="month" tick={tk}/>
+                <YAxis tick={tk} tickFormatter={fmtY}/>
+                <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                <Line type="monotone" dataKey="adr" stroke={SOURCE_COLORS.tl} strokeWidth={2} dot={{r:3}} name="ADR"/>
+              </LineChart>
+            </CC></div>
           </DraggableGrid>
         </div>}
 
