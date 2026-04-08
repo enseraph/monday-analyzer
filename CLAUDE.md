@@ -38,9 +38,14 @@ A second deployment (`monday-analyzer-ads`) will include Google Ads / Meta Ads m
 - Data covers May 2024 onward
 
 ## Key Architecture
+- **Two data sources**: YYB (reservation rows, `allData`, `processRow()`) + TL Lincoln (channel-level daily actuals, `tlData`, `parseTLRow()`). Each has its own publish URL constant (`GSHEET_CSV_URL` / `TL_GSHEET_CSV_URL`), separate `useEffect` fetch, separate localStorage cache key (`monday_csv_cache` / `monday_tl_csv_cache`).
+- **TL data is ex-tax** (n8n divides by 1.1 at parse). YYB also ex-tax. UI labels TL revenue as "売上 (税抜)" / "Revenue (ex-tax)" explicitly.
+- **Sectioned tab strip**: Tabs split into YYB and TL sections via `src` field on each TAB entry. Section chips (`YYB` / `TL`) + vertical divider + per-section accent color (gold / teal) on active tab underline. `SOURCE_COLORS` constant.
+- **Source banner**: always-on bar above filter row, dot + label, color matches active section. Reads `isTlTab = activeTabSrc === "tl"`.
+- **Morphing filter bar**: When `isTlTab`, hides YYB-only filters (status, hotel type, brand, region, country, segment, geo, DOW, date type, month mode) and shows TL-only filter (channel bucket multiselect). Property filter is shown in both modes but `uTlFac` is sourced from `tlData` on TL tabs. Date From/To carries over.
 - **CSV cache**: 5-min localStorage cache (`monday_csv_cache`) for instant warm starts
 - **Email-based intl override**: `applyEmailIntlOverride()` runs after parse — any email seen on a non-Japan reservation has ALL its rows reclassified to its top intl country (fixes intl guests booking via JP interface)
-- **Tab-gated reports**: `dailyRpt`/`compareRpt`/`paceRpt`/`cancelRpt`/`losRpt`/`revparRpt`/`memberRpt`/`kvk`/`tRows` all start with `if(tab!=="<id>")return null;` and include `tab` in deps. Filter changes recompute only the visible report. ⚠ When adding a new report memo, MUST gate it AND add `tab` to its deps array.
+- **Tab-gated reports**: `dailyRpt`/`compareRpt`/`paceRpt`/`cancelRpt`/`losRpt`/`revparRpt`/`memberRpt`/`kvk`/`tRows`/`tlFiltered`/`tlChannelRpt` all start with `if(tab!=="<id>")return null;` and include `tab` in deps. Filter changes recompute only the visible report. ⚠ When adding a new report memo, MUST gate it AND add `tab` to its deps array. v1.58 fix: each new memo's deps array MUST include `tab` (sed-based bulk edits in v1.57 missed `memberRpt` because its deps shape didn't match the regex).
 - **`insights` useMemo deleted** — was computed but never read. Don't reintroduce unless actually rendered.
 - **i18n**: EN/JA bilingual, `T.en`/`T.ja` objects, `tl()` translator (also handles Overall/Japanese/Couple variants)
 - **Theme**: dark/light mode via `TH` palette object, persisted to localStorage
@@ -116,7 +121,7 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.59 (increment by 0.01)
+Current: 1.60 (increment by 0.01)
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 

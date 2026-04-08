@@ -4,9 +4,13 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.59";
+const APP_VERSION="1.60";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
+// Source color accents — used by sectioned tab strip, source banner, TL chart palette
+const SOURCE_COLORS={yyb:"#c9a84c",tl:"#5eead4"};
+// Channel bucket colors for TL tab
+const CHANNEL_COLORS={direct:"#34d399",rta:"#5eead4",ota:"#4ea8de"};
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -29,6 +33,7 @@ const DL={
   cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,9],["canc-detail",6,7,6,7]]),
   revpar:mkL([["rp-trend",0,0,12,4],["rp-daily",0,4,12,4],["rp-fac",0,8,6,7],["rp-detail",6,8,6,7]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
+  "tl-channel":mkL([["tl-mix",0,0,12,4],["tl-direct-trend",0,4,12,4],["tl-fac-stack",0,8,12,7],["tl-fac-direct",0,15,6,5],["tl-canc-channel",6,15,6,4],["tl-dow",0,19,12,4],["tl-matrix",0,23,12,8]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
@@ -44,6 +49,25 @@ function DraggableGrid({tabId,children,layoutVer,onReset,resetLabel,btnStyle,loc
 
 // ─── Google Sheets Backend ───
 const GSHEET_CSV_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_G18beGfHLBfeWlS9biwDrt73kQhC0i8RLvIPkybgCejNffzMnsBp7AfmrrS8suD69dQxCyTWEOzh/pub?gid=0&single=true&output=csv";
+// TL-Lincoln daily channel-level actuals (reception-date based, ex-tax). Schema: date,facility_group,facility,channel_bucket,bookings,room_nights,cancellations,revenue
+const TL_GSHEET_CSV_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vTEfqhvFw_FGaGR0aRSZql3kNkefKXJbEX1MqPXuGH1eFZ_fFh0VAPti6dfE0VD2A4E-VX8XW5CrmH8/pub?gid=1607596964&single=true&output=csv";
+// Parse a TL row → {date:Date, facility, facilityGroup, channelBucket, bookings, roomNights, cancellations, revenue}
+function parseTLRow(row,hIdx){
+  const d=row[hIdx.date];if(!d)return null;
+  const dt=new Date(d+"T00:00:00");if(isNaN(dt))return null;
+  return{
+    date:dt,
+    dateStr:d,
+    facility:row[hIdx.facility]||"",
+    facilityGroup:row[hIdx.facility_group]||"",
+    channelBucket:(row[hIdx.channel_bucket]||"").toLowerCase(),
+    bookings:parseInt(row[hIdx.bookings])||0,
+    roomNights:parseInt(row[hIdx.room_nights])||0,
+    cancellations:parseInt(row[hIdx.cancellations])||0,
+    revenue:parseInt(row[hIdx.revenue])||0,
+  };
+}
+const TL_REQUIRED_COLS=["date","facility_group","facility","channel_bucket","bookings","room_nights","cancellations","revenue"];
 
 // ─── i18n ───
 const T = {
@@ -132,6 +156,24 @@ memberByRank:"By Membership Rank",memberBySegment:"By Segment",memberDetail:"Rep
 memberTotal:"Total Guests",memberRepeatCount:"Repeat Guests",memberAvgBookings:"Avg Bookings/Repeater",
 memberJP:"Japanese",memberIntl:"International",memberName:"Name",memberByFac:"Repeat Rate by Facility",memberTightest:"Repeat Rate by Tightest Window",memberTightestSub:"Each guest counted once in their shortest repeat gap. Date filters do not apply.",memberFirstSecond:"Return Rate (1st → 2nd Stay)",memberFirstSecondSub:"Time between first and second stay. Date filters do not apply.",memberWindow:"Window",memberCountryStack:"Repeaters vs First-Timers by Country (% Stack)",memberCountryCounts:"Guest Counts by Country (Repeaters vs First-Timers)",
 segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
+    // TL Channel Mix tab
+    tlChannelMix:"Channel Mix",
+    tlSourceLabel:"TL Lincoln (channel-level actuals, ex-tax)",
+    yybSourceLabel:"YYB (reservation rows)",
+    tlChannelBucket:"Channel",tlOTA:"OTA",tlRTA:"RTA",tlDirect:"Direct",
+    tlTotalRevenue:"Total Revenue (ex-tax)",tlTotalBookings:"Total Bookings",tlTotalRoomNights:"Total Room-Nights",tlTotalCancellations:"Cancellations",
+    tlDirectShare:"Direct Share %",
+    tlChannelMixDaily:"Channel Mix — Daily",tlChannelMixMonthly:"Channel Mix — Monthly",
+    tlDirectShareTrend:"Direct Share % Over Time",
+    tlFacByChannel:"Facility × Channel (Revenue, ex-tax)",
+    tlTopFacDirect:"Top Facilities by Direct Share %",
+    tlCancByChannel:"Cancellation Rate by Channel",
+    tlDOWByChannel:"Day-of-Week Pattern by Channel (Revenue)",
+    tlMatrix:"Facility × Channel Matrix",
+    tlNoData:"No TL data loaded yet. Check sheet publish URL or wait for backfill.",
+    tlGroupByDay:"Day",tlGroupByMonth:"Month",tlMetricRev:"Revenue",tlMetricBookings:"Bookings",
+    sourceBannerYYB:"DATA SOURCE: YYB (reservation-level)",
+    sourceBannerTL:"DATA SOURCE: TL Lincoln (channel-level, ex-tax)",
     resetLayout:"Reset Layout",lockLayout:"Lock",
     dailyReport:"Daily Report",
     drDate:"Booking Date",drFrom:"From",drTo:"To",drCountryTable:"By Country",drRegionTable:"By Region",
@@ -236,6 +278,24 @@ memberByRank:"会員ランク別",memberBySegment:"タイプ別",memberDetail:"�
 memberTotal:"ゲスト総数",memberRepeatCount:"リピーター数",memberAvgBookings:"平均予約数/リピーター",
 memberJP:"国内",memberIntl:"海外",memberName:"氏名",memberByFac:"施設別リピート率",memberTightest:"最短リピート間隔別",memberTightestSub:"各ゲストは最短リピート間隔の枠で1回のみカウント。日付フィルターは適用されません。",memberFirstSecond:"リターン率（初回→2回目）",memberFirstSecondSub:"初回と2回目の宿泊間隔。日付フィルターは適用されません。",memberWindow:"期間",memberCountryStack:"国別リピーター/初回客（％積み上げ）",memberCountryCounts:"国別ゲスト数（リピーター/初回客）",
 segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
+    // TL Channel Mix tab
+    tlChannelMix:"チャネルミックス",
+    tlSourceLabel:"TL Lincoln（チャネル別実績、税抜）",
+    yybSourceLabel:"YYB（予約データ）",
+    tlChannelBucket:"チャネル",tlOTA:"OTA",tlRTA:"RTA",tlDirect:"自社",
+    tlTotalRevenue:"売上合計（税抜）",tlTotalBookings:"予約件数",tlTotalRoomNights:"販売室数",tlTotalCancellations:"キャンセル数",
+    tlDirectShare:"自社予約比率",
+    tlChannelMixDaily:"チャネルミックス — 日別",tlChannelMixMonthly:"チャネルミックス — 月別",
+    tlDirectShareTrend:"自社予約比率の推移",
+    tlFacByChannel:"施設×チャネル（売上、税抜）",
+    tlTopFacDirect:"自社予約比率トップ施設",
+    tlCancByChannel:"チャネル別キャンセル率",
+    tlDOWByChannel:"曜日別パターン（チャネル別売上）",
+    tlMatrix:"施設×チャネル マトリクス",
+    tlNoData:"TLデータがまだ読み込まれていません。",
+    tlGroupByDay:"日",tlGroupByMonth:"月",tlMetricRev:"売上",tlMetricBookings:"予約数",
+    sourceBannerYYB:"データソース: YYB（予約レベル）",
+    sourceBannerTL:"データソース: TL Lincoln（チャネル別、税抜）",
     resetLayout:"レイアウトリセット",lockLayout:"ロック",
     dailyReport:"日次レポート",
     drDate:"予約日",drFrom:"開始日",drTo:"終了日",drCountryTable:"国籍別",drRegionTable:"地域別",
@@ -531,6 +591,11 @@ const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState("booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
+  const[tlData,setTlData]=useState([]);
+  const[tlStatus,setTlStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
+  const[fChannelBucket,setFChannelBucket]=useState([]); // ["ota","rta","direct"] subset
+  const[tlGroupBy,setTlGroupBy]=useState("day"); // "day"|"month"
+  const[tlMetric,setTlMetric]=useState("revenue"); // "revenue"|"bookings"
 
   // ─── Auto-fetch from Google Sheets on mount ───
   useEffect(()=>{
@@ -556,6 +621,28 @@ const[drSingle,setDrSingle]=useState("");
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
       .then(text=>{if(parseAndSet(text,false)){try{localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch{}}})
       .catch(()=>setSheetStatus("error"));
+  },[]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Auto-fetch TL Lincoln channel data on mount ───
+  useEffect(()=>{
+    setTlStatus("loading");
+    const TL_CACHE_KEY="monday_tl_csv_cache",CACHE_TTL=5*60*1000;
+    const parseAndSet=(text)=>{
+      const res=Papa.parse(text,{header:false,skipEmptyLines:true});
+      if(!res.data||res.data.length<2){setTlStatus("error");return false}
+      const h=res.data[0];
+      const miss=TL_REQUIRED_COLS.filter(c=>!h.includes(c));
+      if(miss.length){console.warn("TL CSV missing cols:",miss);setTlStatus("error");return false}
+      const hIdx={};h.forEach((c,i)=>{hIdx[c]=i});
+      const rows=res.data.slice(1).map(r=>parseTLRow(r,hIdx)).filter(Boolean);
+      setTlData(rows);setTlStatus("done");
+      return true;
+    };
+    try{const c=localStorage.getItem(TL_CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text))return}}catch{}
+    fetch(TL_GSHEET_CSV_URL)
+      .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
+      .then(text=>{if(parseAndSet(text)){try{localStorage.setItem(TL_CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch{}}})
+      .catch(()=>setTlStatus("error"));
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(applyEmailIntlOverride(nd));setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
@@ -584,6 +671,7 @@ const[drSingle,setDrSingle]=useState("");
     return out;
   },[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW]);
 
+  const uTlFac=useMemo(()=>[...new Set(tlData.map(r=>r.facility))].sort(),[tlData]);
   const uC=useMemo(()=>[...new Set(allData.map(r=>r.country))].sort(),[allData]);
   const uP=useMemo(()=>[...new Set(allData.map(r=>r.facility))].sort(),[allData]);
   const uS=useMemo(()=>[...new Set(allData.map(r=>r.segment))].filter(s=>s!=="Unknown").sort(),[allData]);
@@ -1419,6 +1507,88 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
   },[tab,allData,drFrom,drTo,tz]);
 
+  // ─── TL Channel Mix tab data ───
+  const tlFiltered=useMemo(()=>{
+    if(tab!=="tl-channel"||!tlData.length)return[];
+    const fPSet=fP.length?new Set(fP):null;
+    const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
+    const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
+    const out=[];
+    for(let i=0;i<tlData.length;i++){const r=tlData[i];
+      if(fPSet&&!fPSet.has(r.facility))continue;
+      if(fCBSet&&!fCBSet.has(r.channelBucket))continue;
+      if(from&&r.date<from)continue;
+      if(to&&r.date>to)continue;
+      out.push(r);
+    }
+    return out;
+  },[tab,tlData,fP,fChannelBucket,fDF,fDTo]);
+
+  const tlChannelRpt=useMemo(()=>{
+    if(tab!=="tl-channel"||!tlFiltered.length)return null;
+    const buckets=["ota","rta","direct"];
+    // Totals
+    let totalRev=0,totalBookings=0,totalRoomNights=0,totalCancellations=0;
+    const byBucket={ota:{rev:0,bookings:0,roomNights:0,cancellations:0},rta:{rev:0,bookings:0,roomNights:0,cancellations:0},direct:{rev:0,bookings:0,roomNights:0,cancellations:0}};
+    // Daily series, monthly series, by-facility
+    const byDay={},byMonth={},byFac={};
+    // DOW × bucket
+    const byDow={};
+    const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    DOW.forEach(d=>{byDow[d]={day:d,ota:0,rta:0,direct:0}});
+
+    tlFiltered.forEach(r=>{
+      const b=r.channelBucket;if(!byBucket[b])return;
+      totalRev+=r.revenue;totalBookings+=r.bookings;totalRoomNights+=r.roomNights;totalCancellations+=r.cancellations;
+      byBucket[b].rev+=r.revenue;byBucket[b].bookings+=r.bookings;byBucket[b].roomNights+=r.roomNights;byBucket[b].cancellations+=r.cancellations;
+      // Daily
+      const dKey=r.dateStr;
+      if(!byDay[dKey])byDay[dKey]={date:dKey,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0};
+      byDay[dKey][b]+=r.revenue;byDay[dKey][b+"B"]+=r.bookings;
+      // Monthly
+      const mKey=dKey.slice(0,7);
+      if(!byMonth[mKey])byMonth[mKey]={date:mKey,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0};
+      byMonth[mKey][b]+=r.revenue;byMonth[mKey][b+"B"]+=r.bookings;
+      // Facility
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,facilityGroup:r.facilityGroup,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0,otaC:0,rtaC:0,directC:0,total:0,totalB:0};
+      byFac[r.facility][b]+=r.revenue;byFac[r.facility][b+"B"]+=r.bookings;byFac[r.facility][b+"C"]+=r.cancellations;byFac[r.facility].total+=r.revenue;byFac[r.facility].totalB+=r.bookings;
+      // DOW (Mon=0)
+      const dow=DOW[(r.date.getDay()+6)%7];
+      byDow[dow][b]+=r.revenue;
+    });
+
+    const directShare=totalRev>0?+((byBucket.direct.rev/totalRev)*100).toFixed(1):0;
+
+    // Per-bucket KPIs / cancel rate
+    const cancelRateRows=buckets.map(b=>{
+      const denom=byBucket[b].bookings+byBucket[b].cancellations;
+      return{bucket:b,bookings:byBucket[b].bookings,cancellations:byBucket[b].cancellations,rate:denom>0?+((byBucket[b].cancellations/denom)*100).toFixed(1):0};
+    });
+
+    // Daily/monthly arrays sorted
+    const dailySeries=Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date));
+    const monthlySeries=Object.values(byMonth).sort((a,b)=>a.date.localeCompare(b.date));
+    // Direct share over time
+    const directShareSeries=dailySeries.map(d=>{const tot=d.ota+d.rta+d.direct;return{date:d.date,share:tot>0?+((d.direct/tot)*100).toFixed(1):0}});
+
+    // Facility list
+    const facList=Object.values(byFac).map(f=>{
+      const directPct=f.total>0?+((f.direct/f.total)*100).toFixed(1):0;
+      return{...f,name:shortFac(f.facility),directPct};
+    }).sort((a,b)=>b.total-a.total);
+    const facByDirect=[...facList].sort((a,b)=>b.directPct-a.directPct).slice(0,10);
+
+    return{
+      totalRev,totalBookings,totalRoomNights,totalCancellations,directShare,
+      byBucket,
+      dailySeries,monthlySeries,directShareSeries,
+      facList,facByDirect,
+      cancelRateRows,
+      dowRows:DOW.map(d=>byDow[d]),
+      bucketKeys:buckets,
+    };
+  },[tab,tlFiltered]);
+
 
   // Table
   const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
@@ -1495,7 +1665,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport},{id:"compare",l:t.compare},{id:"pace",l:t.pace},{id:"overview",l:t.overview},{id:"kvk",l:t.kvk},{id:"markets",l:t.sourceMarkets},{id:"segments",l:t.segments},{id:"booking",l:t.bookingPatterns},{id:"member",l:t.memberTab},{id:"los",l:t.losTab},{id:"revenue",l:t.revenue},{id:"cancellations",l:t.cancellations},/*{id:"revpar",l:t.revpar},*/{id:"rooms",l:t.roomTypes},{id:"facilities",l:t.facilities},{id:"data",l:t.rawData}];
+  const TABS=[{id:"daily",l:t.dailyReport,src:"yyb"},{id:"compare",l:t.compare,src:"yyb"},{id:"pace",l:t.pace,src:"yyb"},{id:"overview",l:t.overview,src:"yyb"},{id:"kvk",l:t.kvk,src:"yyb"},{id:"markets",l:t.sourceMarkets,src:"yyb"},{id:"segments",l:t.segments,src:"yyb"},{id:"booking",l:t.bookingPatterns,src:"yyb"},{id:"member",l:t.memberTab,src:"yyb"},{id:"los",l:t.losTab,src:"yyb"},{id:"revenue",l:t.revenue,src:"yyb"},{id:"cancellations",l:t.cancellations,src:"yyb"},{id:"rooms",l:t.roomTypes,src:"yyb"},{id:"facilities",l:t.facilities,src:"yyb"},{id:"data",l:t.rawData,src:"yyb"},{id:"tl-channel",l:t.tlChannelMix,src:"tl"}];
+  const activeTabSrc=(TABS.find(tb=>tb.id===tab)||{}).src||"yyb";
+  const isTlTab=activeTabSrc==="tl";
 
   if(!allData.length)return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -1539,24 +1711,26 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             {presetMsg&&<span style={{fontSize:10,color:"#34d399"}}>{presetMsg}</span>}
           </div>
         </div>
-        <div><div style={S.fl}>{t.statusFilter}</div><div style={{display:"flex",gap:3}}>{[["confirmed",t.statusConfirmed],["cancelled",t.statusCancelled],["all",t.statusAll]].map(([v,l])=><button key={v} style={{...S.btn,...(fCancel===v?S.ba:{})}} onClick={()=>setFCancel(v)}>{l}</button>)}</div></div>
-        <div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fHType===v?S.ba:{})}} onClick={()=>setFHType(v)}>{l}</button>)}</div></div>
-        <div><div style={S.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={S} cl={t.clear}/></div>
-        <div><div style={S.fl}>{t.region}</div><div style={{display:"flex",gap:3}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...S.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>
-        <div><div style={S.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={S} cl={t.clear}/></div>
-        <div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>
-        <div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>
-<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear}/></div>
-<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear}/></div>
-        <div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></select></div>
+        {!isTlTab&&<div><div style={S.fl}>{t.statusFilter}</div><div style={{display:"flex",gap:3}}>{[["confirmed",t.statusConfirmed],["cancelled",t.statusCancelled],["all",t.statusAll]].map(([v,l])=><button key={v} style={{...S.btn,...(fCancel===v?S.ba:{})}} onClick={()=>setFCancel(v)}>{l}</button>)}</div></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fHType===v?S.ba:{})}} onClick={()=>setFHType(v)}>{l}</button>)}</div></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={S} cl={t.clear}/></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.region}</div><div style={{display:"flex",gap:3}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...S.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={S} cl={t.clear}/></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.tlChannelBucket}</div><MS options={["ota","rta","direct"]} selected={fChannelBucket} onChange={setFChannelBucket} placeholder={t.all} S={S} cl={t.clear}/></div>}
+{!isTlTab&&<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear}/></div>}
+{!isTlTab&&<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear}/></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></select></div>}
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
-        <div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
-        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setActivePreset(null)}}>{t.reset}</button>
+        {!isTlTab&&<div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>}
+        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setActivePreset(null)}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
-      {agg&&<div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+      {agg&&!isTlTab&&<div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
         <div style={S.kpi}><div style={S.kl}>{t.reservations}</div><div style={S.kv}>{fmtN(agg.n)}</div></div>
         <div style={S.kpi}><div style={S.kl}>{t.totalRevenue}</div><div style={S.kv}>¥{fmtN(agg.totalRev)}</div></div>
         <div style={S.kpi}><div style={S.kl}>{t.avgRevRes}</div><div style={S.kv}>¥{fmtN(Math.round(agg.avgRev))}</div></div>
@@ -1565,7 +1739,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         <div style={S.kpi}><div style={S.kl}>{t.intlPct}</div><div style={S.kv}>{agg.intlPct.toFixed(1)}%</div></div>
       </div>}
       {/* Tabs */}
-      <div style={{display:"flex",gap:2,borderBottom:"1px solid "+TH.border,marginBottom:20,overflowX:"auto"}}>{TABS.map(tb=><button key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0)}} style={{...S.btn,border:"none",borderBottom:"2px solid "+(tab===tb.id?TH.gold:"transparent"),color:tab===tb.id?TH.gold:TH.textMuted,borderRadius:0,padding:"8px 14px",whiteSpace:"nowrap"}}>{tb.l}</button>)}</div>
+      <div style={{display:"flex",gap:2,borderBottom:"1px solid "+TH.border,marginBottom:8,overflowX:"auto",alignItems:"flex-end"}}>
+        <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:SOURCE_COLORS.yyb,padding:"10px 8px 10px 4px",textTransform:"uppercase",userSelect:"none",alignSelf:"center"}}>YYB</span>
+        {TABS.filter(tb=>tb.src==="yyb").map(tb=><button key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0)}} style={{...S.btn,border:"none",borderBottom:"2px solid "+(tab===tb.id?SOURCE_COLORS.yyb:"transparent"),color:tab===tb.id?SOURCE_COLORS.yyb:TH.textMuted,borderRadius:0,padding:"8px 14px",whiteSpace:"nowrap"}}>{tb.l}</button>)}
+        <span style={{borderLeft:"1px solid "+TH.border,height:24,margin:"0 8px",alignSelf:"center"}}/>
+        <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:SOURCE_COLORS.tl,padding:"10px 8px 10px 4px",textTransform:"uppercase",userSelect:"none",alignSelf:"center"}}>TL</span>
+        {TABS.filter(tb=>tb.src==="tl").map(tb=><button key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0)}} style={{...S.btn,border:"none",borderBottom:"2px solid "+(tab===tb.id?SOURCE_COLORS.tl:"transparent"),color:tab===tb.id?SOURCE_COLORS.tl:TH.textMuted,borderRadius:0,padding:"8px 14px",whiteSpace:"nowrap"}}>{tb.l}</button>)}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",marginBottom:14,borderRadius:6,background:isTlTab?"rgba(94,234,212,0.08)":"rgba(201,168,76,0.08)",border:"1px solid "+(isTlTab?"rgba(94,234,212,0.3)":"rgba(201,168,76,0.3)"),fontSize:10,color:isTlTab?SOURCE_COLORS.tl:SOURCE_COLORS.yyb,fontWeight:600,letterSpacing:0.5}}>
+        <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:isTlTab?SOURCE_COLORS.tl:SOURCE_COLORS.yyb}}/>
+        {isTlTab?t.sourceBannerTL:t.sourceBannerYYB}
+      </div>
 
       {/* DAILY REPORT */}
       {tab==="daily"&&<div>
@@ -2062,6 +2246,138 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             title={t.facilityPerf}
             exportFn={<button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.fullName,Region:f.region,Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button>}
           /></div>}
+
+        {/* TL CHANNEL MIX */}
+        {tab==="tl-channel"&&<div>
+          {tlStatus==="loading"&&<div style={{textAlign:"center",padding:40,color:TH.textMuted,fontSize:12}}>Loading TL data…</div>}
+          {tlStatus==="error"&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:14,marginBottom:16,textAlign:"center",fontSize:12,color:"#ef4444"}}>⚠ Failed to load TL Lincoln data. Check the publish URL.</div>}
+          {tlStatus==="done"&&!tlData.length&&<div style={{textAlign:"center",padding:40,color:TH.textMuted,fontSize:12}}>{t.tlNoData}</div>}
+          {tlChannelRpt?<>
+            {/* KPIs */}
+            <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={S.kpi}><div style={S.kl}>{t.tlTotalRevenue}</div><div style={S.kv}>¥{fmtN(tlChannelRpt.totalRev)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.tlTotalBookings}</div><div style={S.kv}>{fmtN(tlChannelRpt.totalBookings)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.tlTotalRoomNights}</div><div style={S.kv}>{fmtN(tlChannelRpt.totalRoomNights)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.tlTotalCancellations}</div><div style={S.kv}>{fmtN(tlChannelRpt.totalCancellations)}</div></div>
+              <div style={{...S.kpi,borderColor:SOURCE_COLORS.tl}}><div style={S.kl}>{t.tlDirectShare}</div><div style={{...S.kv,color:SOURCE_COLORS.tl}}>{tlChannelRpt.directShare}%</div></div>
+            </div>
+            {/* Group/metric toggles */}
+            <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5}}>{t.monthModeLabel}:</span>
+              <div style={{display:"flex",gap:3}}>
+                <button style={{...S.btn,...(tlGroupBy==="day"?S.ba:{})}} onClick={()=>setTlGroupBy("day")}>{t.tlGroupByDay}</button>
+                <button style={{...S.btn,...(tlGroupBy==="month"?S.ba:{})}} onClick={()=>setTlGroupBy("month")}>{t.tlGroupByMonth}</button>
+              </div>
+              <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5,marginLeft:10}}>Metric:</span>
+              <div style={{display:"flex",gap:3}}>
+                <button style={{...S.btn,...(tlMetric==="revenue"?S.ba:{})}} onClick={()=>setTlMetric("revenue")}>{t.tlMetricRev}</button>
+                <button style={{...S.btn,...(tlMetric==="bookings"?S.ba:{})}} onClick={()=>setTlMetric("bookings")}>{t.tlMetricBookings}</button>
+              </div>
+            </div>
+            <DraggableGrid {...dgProps("tl-channel")}>
+              {/* Stacked channel mix */}
+              <div key="tl-mix"><CC grid title={tlGroupBy==="day"?t.tlChannelMixDaily:t.tlChannelMixMonthly} id="tl-mix" nm="tl_mix" data={tlGroupBy==="day"?tlChannelRpt.dailySeries:tlChannelRpt.monthlySeries}>
+                <BarChart data={tlGroupBy==="day"?tlChannelRpt.dailySeries:tlChannelRpt.monthlySeries}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="date" tick={tks}/>
+                  <YAxis tick={tk} tickFormatter={tlMetric==="revenue"?fmtY:undefined}/>
+                  <Tooltip content={<CT formatter={tlMetric==="revenue"?(v=>"¥"+v.toLocaleString()):undefined}/>}/>
+                  <Legend wrapperStyle={{fontSize:10}}/>
+                  <Bar dataKey={tlMetric==="revenue"?"direct":"directB"} stackId="a" fill={CHANNEL_COLORS.direct} name={t.tlDirect}/>
+                  <Bar dataKey={tlMetric==="revenue"?"rta":"rtaB"} stackId="a" fill={CHANNEL_COLORS.rta} name={t.tlRTA}/>
+                  <Bar dataKey={tlMetric==="revenue"?"ota":"otaB"} stackId="a" fill={CHANNEL_COLORS.ota} name={t.tlOTA}/>
+                </BarChart>
+              </CC></div>
+              {/* Direct share trend */}
+              <div key="tl-direct-trend"><CC grid title={t.tlDirectShareTrend} id="tl-direct-trend" nm="tl_direct_trend" data={tlChannelRpt.directShareSeries}>
+                <LineChart data={tlChannelRpt.directShareSeries}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="date" tick={tks}/>
+                  <YAxis tick={tk} tickFormatter={v=>v+"%"} domain={[0,100]}/>
+                  <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
+                  <Line type="monotone" dataKey="share" stroke={CHANNEL_COLORS.direct} strokeWidth={2} dot={{fill:CHANNEL_COLORS.direct,r:3}} name={t.tlDirectShare}/>
+                </LineChart>
+              </CC></div>
+              {/* Facility × Channel stacked horizontal */}
+              <div key="tl-fac-stack"><CC grid title={t.tlFacByChannel} id="tl-fac-stack" nm="tl_fac_stack" h={Math.max(320,tlChannelRpt.facList.length*22)} data={tlChannelRpt.facList}>
+                <BarChart data={tlChannelRpt.facList} layout="vertical">
+                  <CartesianGrid {...gl}/>
+                  <XAxis type="number" tick={tks} tickFormatter={fmtY}/>
+                  <YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/>
+                  <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                  <Legend wrapperStyle={{fontSize:10}}/>
+                  <Bar dataKey="direct" stackId="a" fill={CHANNEL_COLORS.direct} name={t.tlDirect}/>
+                  <Bar dataKey="rta" stackId="a" fill={CHANNEL_COLORS.rta} name={t.tlRTA}/>
+                  <Bar dataKey="ota" stackId="a" fill={CHANNEL_COLORS.ota} name={t.tlOTA}/>
+                </BarChart>
+              </CC></div>
+              {/* Top facilities by direct share */}
+              <div key="tl-fac-direct"><CC grid title={t.tlTopFacDirect} id="tl-fac-direct" nm="tl_fac_direct" data={tlChannelRpt.facByDirect}>
+                <BarChart data={tlChannelRpt.facByDirect} layout="vertical">
+                  <CartesianGrid {...gl}/>
+                  <XAxis type="number" tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/>
+                  <YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/>
+                  <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
+                  <Bar dataKey="directPct" fill={CHANNEL_COLORS.direct} radius={[0,4,4,0]} name={t.tlDirectShare}/>
+                </BarChart>
+              </CC></div>
+              {/* Cancellation rate by channel */}
+              <div key="tl-canc-channel"><CC grid title={t.tlCancByChannel} id="tl-canc-channel" nm="tl_canc_channel" data={tlChannelRpt.cancelRateRows}>
+                <BarChart data={tlChannelRpt.cancelRateRows}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="bucket" tick={tks} tickFormatter={v=>v.toUpperCase()}/>
+                  <YAxis tick={tks} tickFormatter={v=>v+"%"}/>
+                  <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
+                  <Bar dataKey="rate" radius={[4,4,0,0]} name="Cancel %">
+                    {tlChannelRpt.cancelRateRows.map((r,i)=><Cell key={i} fill={CHANNEL_COLORS[r.bucket]||"#888"}/>)}
+                  </Bar>
+                </BarChart>
+              </CC></div>
+              {/* DOW pattern */}
+              <div key="tl-dow"><CC grid title={t.tlDOWByChannel} id="tl-dow" nm="tl_dow" data={tlChannelRpt.dowRows}>
+                <BarChart data={tlChannelRpt.dowRows}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="day" tick={tks}/>
+                  <YAxis tick={tk} tickFormatter={fmtY}/>
+                  <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
+                  <Legend wrapperStyle={{fontSize:10}}/>
+                  <Bar dataKey="direct" stackId="a" fill={CHANNEL_COLORS.direct} name={t.tlDirect}/>
+                  <Bar dataKey="rta" stackId="a" fill={CHANNEL_COLORS.rta} name={t.tlRTA}/>
+                  <Bar dataKey="ota" stackId="a" fill={CHANNEL_COLORS.ota} name={t.tlOTA}/>
+                </BarChart>
+              </CC></div>
+              {/* Matrix table */}
+              <div key="tl-matrix"><div style={{...S.card,height:"100%",overflow:"auto"}}>
+                <div style={{...S.ct,marginBottom:8}} className="rgl-drag">{t.tlMatrix}</div>
+                <table style={S.tbl}><thead><tr>
+                  <th style={S.th}>{t.property}</th>
+                  <th style={{...S.th,textAlign:"right"}}>OTA ¥</th>
+                  <th style={{...S.th,textAlign:"right"}}>RTA ¥</th>
+                  <th style={{...S.th,textAlign:"right"}}>Direct ¥</th>
+                  <th style={{...S.th,textAlign:"right"}}>Total ¥</th>
+                  <th style={{...S.th,textAlign:"right"}}>Direct %</th>
+                </tr></thead><tbody>
+                  {tlChannelRpt.facList.map(f=><tr key={f.facility}>
+                    <td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.ota)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rta)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right",color:CHANNEL_COLORS.direct}}>¥{fmtN(f.direct)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right",fontWeight:600}}>¥{fmtN(f.total)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right",color:f.directPct>30?CHANNEL_COLORS.direct:TH.text}}>{f.directPct}%</td>
+                  </tr>)}
+                  <tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}>
+                    <td style={S.td}>{t.drGrandTotal}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.ota.rev)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.rta.rev)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.direct.rev)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.totalRev)}</td>
+                    <td style={{...S.td,...S.m,textAlign:"right"}}>{tlChannelRpt.directShare}%</td>
+                  </tr>
+                </tbody></table>
+              </div></div>
+            </DraggableGrid>
+          </>:null}
+        </div>}
 
         {/* RAW DATA */}
         {tab==="data"&&<div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.rowsFiltered(fmtN(filtered.length))}</div><button style={S.bg} onClick={expFilt}>⬇ {t.exportFiltered}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{tH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tC[i],asc:p.col===tC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead><tbody>{paged.map((r,ri)=><tr key={ri}>{tC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","leadTime","totalRev","partySize"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="region"?<span style={S.tag(r[c]==="Kanto"?"#4ea8de":"#e07b54")}>{tl(r[c])}</span>:c==="isCancelled"?<span style={S.tag(r[c]?"#ef4444":"#34d399")}>{r[c]?t.statusCancelled:t.statusConfirmed}</span>:["segment","hotelType"].includes(c)?tl(String(r[c]??"")):String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>{totPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12}}><button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button><span style={{fontSize:12,color:"#a0977f"}}>{t.pageOf(tPage+1,totPg)}</span><button style={S.btn} onClick={()=>setTPage(p=>Math.min(totPg-1,p+1))} disabled={tPage>=totPg-1}>{t.next}</button></div>}</div>}
