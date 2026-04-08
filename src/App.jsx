@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.72";
+const APP_VERSION="1.73";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -766,60 +766,64 @@ const[drSingle,setDrSingle]=useState("");
       .catch(()=>setSheetStatus("error"));
   },[]);
 
-  // ─── Reusable TL fetch (multi-year) ───
+  // ─── Reusable TL fetch (multi-year, per-year defensive) ───
   const fetchTL=useCallback((useCache=true)=>{
     setTlStatus("loading");
     const CACHE_TTL=5*60*1000;
     const years=Object.keys(TL_GSHEET_CSV_URLS);
-    const parseYear=(text)=>{
-      const res=Papa.parse(text,{header:false,skipEmptyLines:true});
-      if(!res.data||res.data.length<2)return null;
-      const h=res.data[0];
-      const miss=TL_REQUIRED_COLS.filter(c=>!h.includes(c));
-      if(miss.length){console.warn("TL CSV missing cols:",miss);return null}
-      const hIdx={};h.forEach((c,i)=>{hIdx[c]=i});
-      return res.data.slice(1).map(r=>parseTLRow(r,hIdx)).filter(Boolean);
+    const parseYear=(text,yr)=>{
+      try{
+        const res=Papa.parse(text,{header:false,skipEmptyLines:true});
+        if(!res.data||res.data.length<2){console.warn(`[TL ${yr}] empty CSV`);return null}
+        const h=res.data[0];
+        const miss=TL_REQUIRED_COLS.filter(c=>!h.includes(c));
+        if(miss.length){console.warn(`[TL ${yr}] missing cols:`,miss);return null}
+        const hIdx={};h.forEach((c,i)=>{hIdx[c]=i});
+        const rows=[];
+        for(let i=1;i<res.data.length;i++){
+          try{const row=parseTLRow(res.data[i],hIdx);if(row)rows.push(row)}
+          catch(e){console.warn(`[TL ${yr}] row ${i} parse error:`,e.message)}
+        }
+        return rows;
+      }catch(e){console.error(`[TL ${yr}] parse failed:`,e);return null}
     };
     const finalize=(rows)=>{
-      // Enrich: same-day cancel detection + email-based country inference
       applyTLSameDayCancel(rows);
       setTlData(rows);setTlStatus("done");
     };
-    // Try cache for each year, fall back to network for missing years
-    const results={};let cacheHit=true;
-    if(useCache){
-      for(const yr of years){
+    // Per-year independent fetch — one bad year doesn't kill the rest
+    const fetchOneYear=(yr)=>{
+      // Try cache first
+      if(useCache){
         try{
           const c=localStorage.getItem("monday_tl_csv_cache_"+yr);
           if(c){
             const{ts,text}=JSON.parse(c);
-            if(Date.now()-ts<CACHE_TTL){const parsed=parseYear(text);if(parsed){results[yr]=parsed;continue}}
+            if(Date.now()-ts<CACHE_TTL){const parsed=parseYear(text,yr);if(parsed&&parsed.length)return Promise.resolve({yr,rows:parsed,fromCache:true})}
           }
-        }catch{}
-        cacheHit=false;break;
+        }catch(e){console.warn(`[TL ${yr}] cache read failed:`,e)}
       }
-      if(cacheHit&&Object.keys(results).length===years.length){
-        const all=[].concat(...years.map(yr=>results[yr]));
-        finalize(all);
-        return;
-      }
-    }
-    // Network: fetch every year in parallel
-    Promise.all(years.map(yr=>
-      fetch(TL_GSHEET_CSV_URLS[yr])
-        .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
+      return fetch(TL_GSHEET_CSV_URLS[yr])
+        .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()})
         .then(text=>{
-          const parsed=parseYear(text);
-          if(parsed){try{localStorage.setItem("monday_tl_csv_cache_"+yr,JSON.stringify({ts:Date.now(),text}))}catch{}}
-          return{yr,parsed,text};
+          const parsed=parseYear(text,yr);
+          if(parsed&&parsed.length){
+            try{localStorage.setItem("monday_tl_csv_cache_"+yr,JSON.stringify({ts:Date.now(),text}))}catch(e){console.warn(`[TL ${yr}] cache write failed (likely quota):`,e.message)}
+            return{yr,rows:parsed,fromCache:false};
+          }
+          return{yr,rows:[],fromCache:false};
         })
-    ))
+        .catch(e=>{console.error(`[TL ${yr}] fetch failed:`,e);return{yr,rows:[],error:e.message}});
+    };
+    Promise.all(years.map(fetchOneYear))
       .then(batch=>{
-        const all=[];for(const{parsed}of batch){if(parsed)all.push(...parsed)}
-        if(!all.length){setTlStatus("error");return}
+        const all=[];const errors=[];
+        batch.forEach(b=>{if(b.rows.length)all.push(...b.rows);if(b.error)errors.push(b.yr+": "+b.error)});
+        if(!all.length){console.error("[TL] all years failed:",errors);setTlStatus("error");return}
+        if(errors.length)console.warn("[TL] partial load (some years failed):",errors);
+        console.log(`[TL] loaded ${all.length} rows across ${batch.filter(b=>b.rows.length).length}/${years.length} years`);
         finalize(all);
-      })
-      .catch(e=>{console.error("TL fetch failed:",e);setTlStatus("error")});
+      });
   },[]);
 
   // Manual refresh: clear caches, refetch both, regardless of file uploads
