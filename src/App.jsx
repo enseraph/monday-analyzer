@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.79";
+const APP_VERSION="1.80";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -2196,7 +2196,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const series=days.map(d=>{cumCount+=d.count;cumRev+=d.rev;return{date:d.date,day:parseInt(d.date.slice(8,10)),count:cumCount,rev:cumRev}});
       return{month:m.month,series,total:{count:cumCount,rev:cumRev}};
     });
-    return{paceData};
+    // Flatten into a single chartData keyed by day-of-month with one column per month (like YYB pace)
+    // This prevents recharts from concatenating overlapping x values when multiple <Line> components each have their own data prop.
+    const months=paceData.map(m=>m.month);
+    const chartData=[];
+    for(let day=1;day<=31;day++){
+      const row={day};
+      paceData.forEach(m=>{
+        const d=m.series.find(s=>s.day===day);
+        row[m.month+"_count"]=d?d.count:null;
+        row[m.month+"_rev"]=d?d.rev:null;
+      });
+      chartData.push(row);
+    }
+    return{paceData,months,chartData};
   },[tab,tlData,fP,fChannelBucket,fTlChannelName]);
 
   // ─── TL Facilities ───
@@ -3423,9 +3436,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             </div>
           </div>
           <DraggableGrid {...dgProps("tl-pace")}>
-            <div key="tlp-chart"><CC grid title={`Cumulative ${paceMetric==="rev"?"Revenue":"Bookings"} by Reception Date (last 6 months)`} id="tlp-chart" nm="tl_pace" data={tlPaceRpt.paceData[0]?.series||[]}>
-              <LineChart data={tlPaceRpt.paceData[0]?.series||[]}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tks}/><YAxis tick={tk} tickFormatter={paceMetric==="rev"?fmtY:undefined}/><Tooltip content={<CT formatter={paceMetric==="rev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Legend/>
-                {tlPaceRpt.paceData.slice(0,6).map((m,i)=><Line key={m.month} type="monotone" data={m.series} dataKey={paceMetric==="rev"?"rev":"count"} stroke={PALETTE[i%PALETTE.length]} name={m.month} strokeWidth={1.5} dot={false}/>)}
+            <div key="tlp-chart"><CC grid title={`Cumulative ${paceMetric==="rev"?"Revenue":"Bookings"} by Reception Date (last 6 months)`} id="tlp-chart" nm="tl_pace" data={tlPaceRpt.chartData}>
+              <LineChart data={tlPaceRpt.chartData}><CartesianGrid {...gl}/><XAxis dataKey="day" type="number" domain={[1,31]} ticks={[1,5,10,15,20,25,31]} tick={tk} label={{value:"Day of Month",position:"insideBottom",offset:-5,fill:TH.tickFill,fontSize:10}}/><YAxis tick={tk} tickFormatter={paceMetric==="rev"?fmtY:undefined}/><Tooltip content={<CT formatter={paceMetric==="rev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Legend wrapperStyle={{fontSize:10}}/>
+                {tlPaceRpt.months.map((m,i)=><Line key={m} type="monotone" dataKey={m+"_"+(paceMetric==="rev"?"rev":"count")} stroke={PALETTE[i%PALETTE.length]} name={m} strokeWidth={1.5} dot={false} connectNulls={false}/>)}
               </LineChart>
             </CC></div>
             <div key="tlp-summary"><SortTbl
