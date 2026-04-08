@@ -129,7 +129,9 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.77 (audit medium-risk tier — separate TL/YYB sort+page state, jump-to-page inputs, TL filters in presets, visible last-loaded timestamp)
+Current: 1.78 (YYB ADR room-nights fix + TL brand/hotel-type filters + Japan always in TL ADR country list)
+
+**YYB rooms parsing**: `processRow` now reads `部屋数` column and stores as `r.rooms` (default 1). All YYB ADR calculations now use `nights × rooms` room-nights denominator, matching TL. Fixed a ~7% overstatement in hotel ADR caused by ~5% of bookings being multi-room group reservations.
 
 **LAYOUT_SCHEMA_VERSION** constant (separate from APP_VERSION) — bump ONLY when tab IDs or grid keys change, NOT on every minor version. App-version bumps no longer clear saved custom layouts.
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.

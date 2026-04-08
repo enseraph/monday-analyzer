@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.77";
+const APP_VERSION="1.78";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -483,7 +483,7 @@ const DOW_FULL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","S
 const DOW_SHORT=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DOW_JA=["月","火","水","木","金","土","日"];
 const PALETTE=["#4ea8de","#e07b54","#c084fc","#34d399","#f59e0b","#7ec8e3","#ef4444","#8b5cf6","#06b6d4","#f472b6","#a3e635","#fb923c","#64748b","#e879f9","#2dd4bf"];
-const REQUIRED_COLS=["施設名","予約受付日時","宿泊日（チェックイン）","チェックアウト日","泊数","部屋タイプ","大人1(人数)","大人2(人数)","宿泊料金合計","予約料金合計","都道府県","国番号（ 連絡先（主） ）","言語","予約方法","ランク名"];
+const REQUIRED_COLS=["施設名","予約受付日時","宿泊日（チェックイン）","チェックアウト日","泊数","部屋数","部屋タイプ","大人1(人数)","大人2(人数)","宿泊料金合計","予約料金合計","都道府県","国番号（ 連絡先（主） ）","言語","予約方法","ランク名"];
 const CHILD_COLS=[26,28,30,32,34,36,38,40,42];
 const RANK_ORDER=["No Rank","Regular","Gold","Platinum"];
 const RANK_COLORS=["#64748b","#4ea8de","#c9a84c","#e07b54"];
@@ -593,7 +593,7 @@ function processRow(row,headers){
   const getPlanType=pn=>{const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"};
   const planType=getPlanType(planName);
   const checkinMonth=checkin?`${checkin.getFullYear()}-${String(checkin.getMonth()+1).padStart(2,"0")}`:null;
-  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email,guestName,male:a1,female:a2,segmentDetailed:getSegmentDetailed(a1,a2,kids)}
+  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,rooms:parseInt(g("部屋数"))||1,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email,guestName,male:a1,female:a2,segmentDetailed:getSegmentDetailed(a1,a2,kids)}
 }
 
 function decodeBuffer(buf){
@@ -721,7 +721,7 @@ const[presetMsg,setPresetMsg]=useState("");
 const[activePreset,setActivePreset]=useState(null);
 const savePreset=name=>{
   if(!name.trim())return;
-  const p={name:name.trim(),filters:{fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,fDT,fDF,fDTo,monthMode,fChannelBucket,fTlChannelName,fTlStatus},saved:new Date().toISOString()};
+  const p={name:name.trim(),filters:{fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,fDT,fDF,fDTo,monthMode,fChannelBucket,fTlChannelName,fTlStatus,fTlBrand,fTlHotelType},saved:new Date().toISOString()};
   const updated=[...presets.filter(x=>x.name!==p.name),p];
   setPresets(updated);localStorage.setItem("monday_presets",JSON.stringify(updated));
   setPresetMsg(t.presetSaved);setTimeout(()=>setPresetMsg(""),2000);
@@ -733,6 +733,7 @@ const loadPreset=p=>{
   setFDOW(f.fDOW||[]);
   setFDT(f.fDT||"booking");setFDF(f.fDF||"");setFDTo(f.fDTo||"");setMonthMode(f.monthMode||"booking");
   setFChannelBucket(f.fChannelBucket||[]);setFTlChannelName(f.fTlChannelName||[]);setFTlStatus(f.fTlStatus||"net");
+  setFTlBrand(f.fTlBrand||[]);setFTlHotelType(f.fTlHotelType||"All");
   setActivePreset(p.name);
 };
 const deletePreset=name=>{
@@ -751,6 +752,8 @@ const[drSingle,setDrSingle]=useState("");
   const[fChannelBucket,setFChannelBucket]=useState([]); // ["ota","rta","direct"] subset
   const[fTlChannelName,setFTlChannelName]=useState([]); // full OTA-level filter
   const[fTlStatus,setFTlStatus]=useState("net"); // "net"|"all"|"cancelled"|"modified"
+  const[fTlBrand,setFTlBrand]=useState([]);
+  const[fTlHotelType,setFTlHotelType]=useState("All"); // "All"|"Hotel"|"Apart"
   const[tlGroupBy,setTlGroupBy]=useState("day"); // "day"|"month"
   const[tlMetric,setTlMetric]=useState("revenue"); // "revenue"|"bookings"
   const[tlCoverage,setTlCoverage]=useState(null); // {coverage,rowsWithCountry,totalRows}
@@ -901,6 +904,7 @@ const[drSingle,setDrSingle]=useState("");
 
   const uTlFac=useMemo(()=>[...new Set(tlData.map(r=>r.facility))].sort(),[tlData]);
   const uTlChannelName=useMemo(()=>[...new Set(tlData.map(r=>r.channel_name).filter(Boolean))].sort(),[tlData]);
+  const uTlBrand=useMemo(()=>[...new Set(tlData.map(r=>r.brand).filter(Boolean))].sort(),[tlData]);
   const uC=useMemo(()=>[...new Set(allData.map(r=>r.country))].sort(),[allData]);
   const uP=useMemo(()=>[...new Set(allData.map(r=>r.facility))].sort(),[allData]);
   const uS=useMemo(()=>[...new Set(allData.map(r=>r.segment))].filter(s=>s!=="Unknown").sort(),[allData]);
@@ -961,7 +965,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       // Lead by month
       if(getM(r)){const mm=getM(r);if(!mLead[mm])mLead[mm]=[];if(r.leadTime!=null)mLead[mm].push(r.leadTime)}
       // ADR by seg
-      if(r.nights&&r.nights>0&&r.totalRev>0){if(!segADR[r.segment])segADR[r.segment]=[];segADR[r.segment].push(r.totalRev/r.nights)}
+      if(r.nights&&r.nights>0&&r.totalRev>0){if(!segADR[r.segment])segADR[r.segment]=[];segADR[r.segment].push(r.totalRev/(r.nights*(r.rooms||1)))}
       // Rev by seg×region
       if(!rSR[reg][r.segment])rSR[reg][r.segment]=[];rSR[reg][r.segment].push(r.totalRev);
       // Rank by country
@@ -1007,7 +1011,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const leadSeg=activeSegs.filter(s=>segLead[s]&&segLead[s].length).map(s=>({segment:s,avg:+avg(segLead[s]).toFixed(1),median:+med(segLead[s]).toFixed(1)}));
 
     // ADR by detailed segment
-    const segADR={};filtered.forEach(r=>{if(!r.nights||r.nights<=0||!r.totalRev)return;const s=r.segmentDetailed||"Unknown";if(!segADR[s])segADR[s]=[];segADR[s].push(r.totalRev/r.nights)});
+    const segADR={};filtered.forEach(r=>{if(!r.nights||r.nights<=0||!r.totalRev)return;const s=r.segmentDetailed||"Unknown";if(!segADR[s])segADR[s]=[];segADR[s].push(r.totalRev/(r.nights*(r.rooms||1)))});
     const adrSeg=activeSegs.filter(s=>segADR[s]&&segADR[s].length).map(s=>({segment:s,adr:Math.round(avg(segADR[s]))}));
 
     return{segMo,segCountry,leadSeg,adrSeg,activeSegs};
@@ -1162,16 +1166,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
     if(!dataA.length&&!dataB.length)return{empty:true};
     const aggregate=data=>{
-      let totalRev=0,totalNights=0;
+      let totalRev=0,totalRoomNights=0;
       const byCountry={},bySegment={},byFacility={};
       data.forEach(r=>{
-        const rev=r.totalRev||0;totalRev+=rev;totalNights+=r.nights||0;
+        const rev=r.totalRev||0;totalRev+=rev;totalRoomNights+=(r.nights||0)*(r.rooms||1);
         if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=rev;
         if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=rev;
         if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=rev;
       });
-      const adr=totalNights>0?Math.round(totalRev/totalNights):0;
-      return{totalCount:data.length,totalRev,totalNights,adr,byCountry,bySegment,byFacility};
+      const adr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
+      return{totalCount:data.length,totalRev,totalNights:totalRoomNights,adr,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
     const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"new":"0%");
@@ -1375,13 +1379,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     // Only include facilities with known room counts
     const withRooms=filtered.filter(r=>ROOM_INVENTORY[r.facility]);
 
-    // Monthly trend: RevPAR, occupancy, ADR
+    // Monthly trend: RevPAR, occupancy, ADR — nightsSold = room-nights (nights × rooms)
     const byMonth={};
     withRooms.forEach(r=>{
       const m=getM(r);if(!m)return;
       if(!byMonth[m])byMonth[m]={rev:0,nightsSold:0,facilities:new Set()};
       byMonth[m].rev+=r.totalRev||0;
-      byMonth[m].nightsSold+=r.nights||0;
+      byMonth[m].nightsSold+=(r.nights||0)*(r.rooms||1);
       byMonth[m].facilities.add(r.facility);
     });
     // For each month, calculate available room-nights
@@ -1397,12 +1401,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       return{month:m,rev:v.rev,nightsSold:v.nightsSold,avail,occ,revpar,adr};
     });
 
-    // By facility
+    // By facility — nightsSold = room-nights
     const byFac={};
     withRooms.forEach(r=>{
       if(!byFac[r.facility])byFac[r.facility]={rev:0,nightsSold:0};
       byFac[r.facility].rev+=r.totalRev||0;
-      byFac[r.facility].nightsSold+=r.nights||0;
+      byFac[r.facility].nightsSold+=(r.nights||0)*(r.rooms||1);
     });
     // Calculate total days in the filtered period
     const allDates=withRooms.map(r=>tzFmt(getDateField(r))).filter(Boolean).sort();
@@ -1426,54 +1430,57 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     // Overall
     const totalAvail=TOTAL_ROOMS*totalDays;
     const totalRev=withRooms.reduce((a,r)=>a+(r.totalRev||0),0);
-    const totalNightsSold=withRooms.reduce((a,r)=>a+(r.nights||0),0);
+    const totalNightsSold=withRooms.reduce((a,r)=>a+((r.nights||0)*(r.rooms||1)),0);
     const overallRevpar=totalAvail>0?Math.round(totalRev/totalAvail):0;
     const overallOcc=totalAvail>0?+((totalNightsSold/totalAvail)*100).toFixed(1):0;
     const overallAdr=totalNightsSold>0?Math.round(totalRev/totalNightsSold):0;
 
     // Daily RevPAR trend
     const byDay={};
-    withRooms.forEach(r=>{const d=tzFmt(getDateField(r));if(!d)return;if(!byDay[d])byDay[d]={rev:0,nightsSold:0};byDay[d].rev+=r.totalRev||0;byDay[d].nightsSold+=r.nights||0});
+    withRooms.forEach(r=>{const d=tzFmt(getDateField(r));if(!d)return;if(!byDay[d])byDay[d]={rev:0,nightsSold:0};byDay[d].rev+=r.totalRev||0;byDay[d].nightsSold+=(r.nights||0)*(r.rooms||1)});
     const dailyTrend=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,v])=>({date:d,revpar:TOTAL_ROOMS>0?Math.round(v.rev/TOTAL_ROOMS):0,occ:TOTAL_ROOMS>0?+((v.nightsSold/TOTAL_ROOMS)*100).toFixed(1):0}));
 
     return{monthTrend,dailyTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
   },[tab,filtered,monthMode,tz,tzFmt]);
 
   // ─── YYB ADR ───
-  // YYB has no rooms count per reservation; each row is one booking with totalRev for the whole stay and nights = stay length.
-  // Empirically YYB reservations are predominantly single-room (reservations are per-party, not per-room), so ADR = rev / nights.
+  // ADR = revenue / room-nights, where room-nights = nights × rooms.
+  // The 部屋数 column was added to processRow in v1.78 after discovering that ~5% of hotel bookings are multi-room.
+  // Using rev/nights (as pre-v1.78) inflated hotel ADR by ~7% because multi-room group bookings distributed all their revenue across a single party's stay length.
   const adrRpt=useMemo(()=>{
     if(tab!=="adr"||!filtered.length)return null;
-    const byFac={},byCountry={},bySeg={},byRegion={Kanto:{rev:0,nights:0,count:0},Kansai:{rev:0,nights:0,count:0}},byMonth={};
-    let totalRev=0,totalNights=0,totalCount=0;
+    const byFac={},byCountry={},bySeg={},byRegion={Kanto:{rev:0,roomNights:0,count:0},Kansai:{rev:0,roomNights:0,count:0}},byMonth={};
+    let totalRev=0,totalRoomNights=0,totalCount=0;
     for(let i=0;i<filtered.length;i++){
       const r=filtered[i];
-      const n=r.nights||0;if(n<=0)continue;
-      const rev=r.totalRev||0;totalRev+=rev;totalNights+=n;totalCount++;
-      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,nights:0,count:0};
-      byFac[r.facility].rev+=rev;byFac[r.facility].nights+=n;byFac[r.facility].count++;
+      const n=r.nights||0,rm=r.rooms||0;
+      if(n<=0||rm<=0)continue;
+      const rn=n*rm;
+      const rev=r.totalRev||0;totalRev+=rev;totalRoomNights+=rn;totalCount++;
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,roomNights:0,count:0};
+      byFac[r.facility].rev+=rev;byFac[r.facility].roomNights+=rn;byFac[r.facility].count++;
       const c=r.country||"Unknown";
-      if(!byCountry[c])byCountry[c]={country:c,rev:0,nights:0,count:0};
-      byCountry[c].rev+=rev;byCountry[c].nights+=n;byCountry[c].count++;
+      if(!byCountry[c])byCountry[c]={country:c,rev:0,roomNights:0,count:0};
+      byCountry[c].rev+=rev;byCountry[c].roomNights+=rn;byCountry[c].count++;
       if(r.segment&&r.segment!=="Unknown"){
-        if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,nights:0,count:0};
-        bySeg[r.segment].rev+=rev;bySeg[r.segment].nights+=n;bySeg[r.segment].count++;
+        if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,roomNights:0,count:0};
+        bySeg[r.segment].rev+=rev;bySeg[r.segment].roomNights+=rn;bySeg[r.segment].count++;
       }
-      if(byRegion[r.region]){byRegion[r.region].rev+=rev;byRegion[r.region].nights+=n;byRegion[r.region].count++}
+      if(byRegion[r.region]){byRegion[r.region].rev+=rev;byRegion[r.region].roomNights+=rn;byRegion[r.region].count++}
       const mKey=tzFmt(r.bookingDate,"month");
       if(mKey){
-        if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,nights:0,count:0};
-        byMonth[mKey].rev+=rev;byMonth[mKey].nights+=n;byMonth[mKey].count++;
+        if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,roomNights:0,count:0};
+        byMonth[mKey].rev+=rev;byMonth[mKey].roomNights+=rn;byMonth[mKey].count++;
       }
     }
-    const computeAdr=v=>({...v,adr:v.nights>0?Math.round(v.rev/v.nights):0});
+    const computeAdr=v=>({...v,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0});
     const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
     const countryRows=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
     const regionRows=["Kanto","Kansai"].filter(r=>byRegion[r].count).map(r=>({region:r,...computeAdr(byRegion[r])}));
     const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
-    const overallAdr=totalNights>0?Math.round(totalRev/totalNights):0;
-    return{overallAdr,totalRev,totalNights,totalCount,facRows,countryRows,segRows,regionRows,monthRows};
+    const overallAdr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
+    return{overallAdr,totalRev,totalRoomNights,totalCount,facRows,countryRows,segRows,regionRows,monthRows};
   },[tab,filtered,tz,tzFmt]);
 
   // ─── MEMBER & REPEAT ANALYSIS ───
@@ -1676,28 +1683,28 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     if(!curData.length)return{empty:true};
     const byCountry={};
     curData.forEach(r=>{
-      if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0,nights:0};
+      if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0,roomNights:0};
       byCountry[r.country].count++;
       byCountry[r.country].rev+=r.totalRev||0;
-      byCountry[r.country].nights+=r.nights||0;
+      byCountry[r.country].roomNights+=(r.nights||0)*(r.rooms||1);
     });
     const totalRev=curData.reduce((a,r)=>a+(r.totalRev||0),0);
     const totalCount=curData.length;
-    const totalNights=curData.reduce((a,r)=>a+(r.nights||0),0);
+    const totalNights=curData.reduce((a,r)=>a+((r.nights||0)*(r.rooms||1)),0);
     const countryRows=Object.entries(byCountry)
       .sort((a,b)=>b[1].rev-a[1].rev)
-      .map(([c,v])=>({country:c,count:v.count,rev:v.rev,adr:v.nights>0?Math.round(v.rev/v.nights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
+      .map(([c,v])=>({country:c,count:v.count,rev:v.rev,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
     const byRegion={};
     curData.forEach(r=>{
       const reg=GEO_REGION(r.country);
-      if(!byRegion[reg])byRegion[reg]={count:0,rev:0,nights:0};
+      if(!byRegion[reg])byRegion[reg]={count:0,rev:0,roomNights:0};
       byRegion[reg].count++;
       byRegion[reg].rev+=r.totalRev||0;
-      byRegion[reg].nights+=r.nights||0;
+      byRegion[reg].roomNights+=(r.nights||0)*(r.rooms||1);
     });
     const regionRows=Object.entries(byRegion)
       .sort((a,b)=>b[1].rev-a[1].rev)
-      .map(([reg,v])=>({region:reg,count:v.count,rev:v.rev,adr:v.nights>0?Math.round(v.rev/v.nights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
+      .map(([reg,v])=>({region:reg,count:v.count,rev:v.rev,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0,share:totalRev>0?((v.rev/totalRev)*100).toFixed(1)+"%":"0%"}));
     const prevByCountry={};
     prevData.forEach(r=>{
       if(!prevByCountry[r.country])prevByCountry[r.country]={count:0,rev:0};
@@ -1781,12 +1788,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const fPSet=fP.length?new Set(fP):null;
     const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
     const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
+    const fBrSet=fTlBrand.length?new Set(fTlBrand):null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const filtered=[],allStatus=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
       if(fCBSet&&!fCBSet.has(r.channelBucket))continue;
       if(fCNSet&&!fCNSet.has(r.channel_name))continue;
+      if(fBrSet&&!fBrSet.has(r.brand))continue;
+      if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)continue;
       if(from&&r.date<from)continue;
       if(to&&r.date>to)continue;
       allStatus.push(r);
@@ -1802,7 +1812,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       filtered.push(r);
     }
     return{filtered,allStatus};
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlStatus,fDF,fDTo]);
+  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fTlStatus,fDF,fDTo]);
   const tlFiltered=tlFilteredBoth.filtered;
   const tlAllStatusFiltered=tlFilteredBoth.allStatus;
 
@@ -2247,7 +2257,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     }
     const computeAdr=v=>({...v,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0});
     const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
-    const countryRows=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
+    // Country rows: keep top 15 by ADR (min 5 rsv threshold), but ALWAYS include Japan if present
+    const allCountryRows=Object.values(byCountry).map(computeAdr);
+    const jpRow=allCountryRows.find(v=>v.country==="Japan");
+    const topCountries=allCountryRows.filter(v=>v.count>=5&&v.country!=="Japan").sort((a,b)=>b.adr-a.adr).slice(0,15);
+    const countryRows=jpRow?[jpRow,...topCountries]:topCountries;
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
     const channelRows=Object.values(byChannel).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
     const bucketRows=["ota","rta","direct"].filter(b=>byBucket[b].count).map(b=>({bucket:b,...computeAdr(byBucket[b])}));
@@ -2512,6 +2526,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {!isTlTab&&<div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>}
         {!isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlHotelType===v?S.ba:{})}} onClick={()=>setFTlHotelType(v)}>{l}</button>)}</div></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uTlBrand} selected={fTlBrand} onChange={setFTlBrand} placeholder={t.allBrands} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlChannelBucket}</div><MS options={["ota","rta","direct"]} selected={fChannelBucket} onChange={setFChannelBucket} placeholder={t.all} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlChannelName}</div><MS options={uTlChannelName} selected={fTlChannelName} onChange={setFTlChannelName} placeholder={t.all} maxShow={1} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlStatus}</div><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[["net",t.tlStatusNet],["all",t.tlStatusAll],["cancelled",t.tlStatusCancelled],["modified",t.tlStatusModified]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlStatus===v?S.ba:{})}} onClick={()=>setFTlStatus(v)}>{l}</button>)}</div></div>}
@@ -2521,7 +2537,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
         {!isTlTab&&<div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>}
-        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setActivePreset(null)}}>{t.reset}</button>
+        <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setActivePreset(null)}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
@@ -3019,7 +3035,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <div style={{...S.kpi,borderColor:TH.gold}}><div style={S.kl}>Overall ADR</div><div style={{...S.kv,color:TH.gold}}>¥{fmtN(adrRpt.overallAdr)}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.totalRevenue}</div><div style={S.kv}>¥{fmtN(adrRpt.totalRev)}</div></div>
-            <div style={S.kpi}><div style={S.kl}>Nights Sold</div><div style={S.kv}>{fmtN(adrRpt.totalNights)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>Room-Nights</div><div style={S.kv}>{fmtN(adrRpt.totalRoomNights)}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.reservations}</div><div style={S.kv}>{fmtN(adrRpt.totalCount)}</div></div>
           </div>
           <DraggableGrid {...dgProps("adr")}>
