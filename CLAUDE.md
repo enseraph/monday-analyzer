@@ -129,7 +129,9 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.75 (TL ADR room-nights fix + YYB ADR tab + TL Pace metric toggle + TL Compare presets)
+Current: 1.76 (audit-driven cleanup — tlData enrichment refresh fix, translator dict memoization, single-pass TL filter, layout schema versioning, raw col constants hoisted)
+
+**LAYOUT_SCHEMA_VERSION** constant (separate from APP_VERSION) — bump ONLY when tab IDs or grid keys change, NOT on every minor version. App-version bumps no longer clear saved custom layouts.
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 

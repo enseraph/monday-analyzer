@@ -4,16 +4,22 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.75";
+const APP_VERSION="1.76";
+// Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
+const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
 const SOURCE_COLORS={yyb:"#c9a84c",tl:"#5eead4"};
 // Channel bucket colors for TL tab
 const CHANNEL_COLORS={direct:"#34d399",rta:"#5eead4",ota:"#4ea8de"};
+// Raw Data table column definitions — hoisted to avoid recreation on every render
+const YYB_RAW_COLS=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
+const TL_RAW_COLS=["dateStr","facility","channel_name","channelBucket","status","guestName","country","segment","checkinStr","checkoutStr","nights","rooms","adults_male","adults_female","children","totalRev","planName","booking_id"];
+const TL_RAW_HEADERS=["Date","Facility","Channel","Bucket","Status","Guest","Country","Segment","Check-in","Check-out","Nights","Rooms","M","F","Kids","¥ (ex-tax)","Plan","Booking ID"];
 
 // ─── Grid Layout Helpers ───
-function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_ver");if(v!==APP_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_ver",APP_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
+function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_schema");if(v!==LAYOUT_SCHEMA_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_schema",LAYOUT_SCHEMA_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
 function saveLayouts(tabId,layouts){localStorage.setItem(`rgl_${tabId}`,JSON.stringify(layouts))}
 function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
@@ -694,7 +700,10 @@ export default function App(){
   },[tz]);
   const t=T[lang];const dL=lang==="ja"?DOW_JA:DOW_SHORT;
   // Translate data-level labels (region, segment, type, rank, country)
-  const tl=v=>{const m={"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum};if(m[v])return m[v];if(lang==="ja"){const cm={"Couple (1M+1F)":"カップル(1M+1F)","Duo (Male)":"男性ペア","Duo (Female)":"女性ペア","Family (1 child)":"ファミリー(子1)","Family (2 children)":"ファミリー(子2)","Family (3+ children)":"ファミリー(子3+)","Group (All Male)":"グループ(全男性)","Group (All Female)":"グループ(全女性)","Group (Mixed)":"グループ(混合)","Overall":"全体","Japanese":"日本","Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"};if(cm[v])return cm[v]}return v};
+  // Translator dicts are memoized per-lang to avoid allocating ~60-key objects on every tl() call (was called 1000+/render)
+  const tlBase=useMemo(()=>({"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum}),[t]);
+  const tlJa=useMemo(()=>lang==="ja"?{"Couple (1M+1F)":"カップル(1M+1F)","Duo (Male)":"男性ペア","Duo (Female)":"女性ペア","Family (1 child)":"ファミリー(子1)","Family (2 children)":"ファミリー(子2)","Family (3+ children)":"ファミリー(子3+)","Group (All Male)":"グループ(全男性)","Group (All Female)":"グループ(全女性)","Group (Mixed)":"グループ(混合)","Overall":"全体","Japanese":"日本","Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"海外(英語)","Taiwan/HK (ZH)":"台湾/香港(中文)"}:null,[lang]);
+  const tl=useCallback(v=>{if(tlBase[v])return tlBase[v];if(tlJa&&tlJa[v])return tlJa[v];return v},[tlBase,tlJa]);
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
   useEffect(()=>{let raf=0;const h=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const m=window.innerWidth<768;setIsMobile(p=>p===m?p:m)})};window.addEventListener("resize",h);return()=>{window.removeEventListener("resize",h);if(raf)cancelAnimationFrame(raf)}},[]);
   const[allData,setAllData]=useState([]);const[allH,setAllH]=useState([]);const[fL,setFL]=useState([]);const[errs,setErrs]=useState([]);const[proc,setProc]=useState(false);
@@ -849,12 +858,18 @@ const[drSingle,setDrSingle]=useState("");
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Enrich TL rows with country info once BOTH yyb + tl data are loaded ───
+  // Uses a ref guard to prevent infinite loop (setTlData would re-trigger this effect).
+  const tlCountryEnrichedRef=useRef(false);
   useEffect(()=>{
-    if(tlData.length&&allData.length){
-      const cov=applyTLEmailCountry(tlData,allData);
-      setTlCoverage(cov);
-    }
+    if(!tlData.length||!allData.length||tlCountryEnrichedRef.current)return;
+    const cov=applyTLEmailCountry(tlData,allData);
+    setTlCoverage(cov);
+    tlCountryEnrichedRef.current=true;
+    // Force new array reference so downstream memos that depend on tlData re-fire with enriched country data
+    setTlData(prev=>[...prev]);
   },[tlData,allData]);
+  // Reset the enrichment guard when a fresh fetch replaces tlData (refresh button or new year)
+  useEffect(()=>{tlCountryEnrichedRef.current=false},[tlStatus]);
 
   const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(applyEmailIntlOverride(nd));setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
 
@@ -1756,56 +1771,38 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       cancelFacRows,cancelCountryRows,cancelCount:cancelData.length};
   },[tab,allData,drFrom,drTo,tz]);
 
-  // ─── TL Channel Mix tab data ───
-  const tlFiltered=useMemo(()=>{
-    if(!tab.startsWith("tl-")||!tlData.length)return[];
+  // ─── TL filtering (single-pass, produces both status-filtered and all-status views in one walk) ───
+  // tlFiltered = rows matching all filters INCLUDING status (used by most TL tabs)
+  // tlAllStatusFiltered = same but status toggle is ignored (used by Channel Mix cancel-rate calc which needs full dataset)
+  const tlFilteredBoth=useMemo(()=>{
+    if(!tab.startsWith("tl-")||!tlData.length)return{filtered:[],allStatus:[]};
     const fPSet=fP.length?new Set(fP):null;
     const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
     const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
-    const out=[];
+    const filtered=[],allStatus=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
       if(fCBSet&&!fCBSet.has(r.channelBucket))continue;
       if(fCNSet&&!fCNSet.has(r.channel_name))continue;
-      // Status filter: net (default) / all / cancelled / modified
+      if(from&&r.date<from)continue;
+      if(to&&r.date>to)continue;
+      allStatus.push(r);
+      // Status filter for the Net/Cancelled/Modified view
       if(fTlStatus==="net"){
-        // Net = 予約 not same-day-cancelled + 変更 that modifies prior-day bookings
         if(r.status==="取消")continue;
         if(r.status==="予約"&&r.sameDayCancelled)continue;
-        // 変更 rows stay by default — they represent modifications
       }else if(fTlStatus==="cancelled"){
         if(r.status!=="取消"&&!r.sameDayCancelled)continue;
       }else if(fTlStatus==="modified"){
         if(r.status!=="変更")continue;
       }
-      // "all" lets everything through
-      if(from&&r.date<from)continue;
-      if(to&&r.date>to)continue;
-      out.push(r);
+      filtered.push(r);
     }
-    return out;
+    return{filtered,allStatus};
   },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlStatus,fDF,fDTo]);
-
-  // Cancel-rate and modification tracking need the FULL status dataset, not the Net-filtered view.
-  // Re-filter tlData for stats that span all statuses (same dates/facility/channel filters but status=all).
-  const tlAllStatusFiltered=useMemo(()=>{
-    if(tab!=="tl-channel"||!tlData.length)return[];
-    const fPSet=fP.length?new Set(fP):null;
-    const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
-    const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
-    const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
-    const out=[];
-    for(let i=0;i<tlData.length;i++){const r=tlData[i];
-      if(fPSet&&!fPSet.has(r.facility))continue;
-      if(fCBSet&&!fCBSet.has(r.channelBucket))continue;
-      if(fCNSet&&!fCNSet.has(r.channel_name))continue;
-      if(from&&r.date<from)continue;
-      if(to&&r.date>to)continue;
-      out.push(r);
-    }
-    return out;
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fDF,fDTo]);
+  const tlFiltered=tlFilteredBoth.filtered;
+  const tlAllStatusFiltered=tlFilteredBoth.allStatus;
 
   const tlChannelRpt=useMemo(()=>{
     if(tab!=="tl-channel"||!tlFiltered.length)return null;
@@ -2355,11 +2352,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   },[tab,tlData,fP,fChannelBucket,fTlChannelName,fDF,fDTo]);
 
   // ─── TL Raw Data table ───
-  const tlTC=["dateStr","facility","channel_name","channelBucket","status","guestName","country","segment","checkinStr","checkoutStr","nights","rooms","adults_male","adults_female","children","totalRev","planName","booking_id"];
-  const tlTH=["Date","Facility","Channel","Bucket","Status","Guest","Country","Segment","Check-in","Check-out","Nights","Rooms","M","F","Kids","¥ (ex-tax)","Plan","Booking ID"];
+  const tlTC=TL_RAW_COLS;
+  const tlTH=TL_RAW_HEADERS;
   const tlTRows=useMemo(()=>{
     if(tab!=="tl-data")return[];
-    let rows=tlFiltered.map(r=>{const o={};tlTC.forEach(c=>{o[c]=r[c]??""});return o});
+    let rows=tlFiltered.map(r=>{const o={};TL_RAW_COLS.forEach(c=>{o[c]=r[c]??""});return o});
     if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});
     return rows;
   },[tab,tlFiltered,tSort]);
@@ -2368,9 +2365,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
 
   // Table
-  const tC=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
-  const tH=[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty];
-  const tRows=useMemo(()=>{if(tab!=="data")return[];let rows=filtered.map(r=>{const o={};tC.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?tzFmt(r[c]):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[tab,filtered,tSort]);
+  const tC=YYB_RAW_COLS;
+  const tH=useMemo(()=>[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty],[t]);
+  const tRows=useMemo(()=>{if(tab!=="data")return[];let rows=filtered.map(r=>{const o={};YYB_RAW_COLS.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?tzFmt(r[c]):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[tab,filtered,tSort]);
   const paged=useMemo(()=>tRows.slice(tPage*PG,(tPage+1)*PG),[tRows,tPage]);const totPg=Math.ceil(tRows.length/PG);
 
   const expFilt=()=>{const h=["Facility","Region","Country","Segment","Check-in","Check-out","Nights","Lead","Rev","Room","Device","Rank","Party"];expCSV(filtered.map(r=>{const o={};tC.forEach((k,i)=>{o[h[i]]=(k==="checkin"||k==="checkout")?(r[k]?tzFmt(r[k]):""):r[k]??""});return o}),h,"filtered.csv")};
