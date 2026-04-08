@@ -129,11 +129,28 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.78 (YYB ADR room-nights fix + TL brand/hotel-type filters + Japan always in TL ADR country list)
+Current: 1.81
+
+Recent changes:
+- v1.81: TL filter bar gained Region / Segment / DOW / Date Type / Month Mode (shared with YYB, same carry-over philosophy as date range). New `tlGetM(r)` helper switches month groupings between booking month (`r.dateStr`) and stay month (`r.checkinStr`). All TL aggregation memos updated to respect `monthMode` in deps. `tlPaceRpt` deliberately stays on reception date (cumulative pace is semantically reception-based).
+- v1.80: TL Pace chart x-axis fix — flat chartData keyed by day 1-31 instead of per-Line data which caused recharts to concatenate categories.
+- v1.79: All TL tables converted to `SortTbl` (column sort, xlsx export, draggable title via `rgl-drag` class on title). TL Raw Data left as inline table because of pagination.
+- v1.78: YYB ADR room-nights fix — `processRow` now parses `部屋数` (room count) into `r.rooms`. All YYB ADR/RevPAR memos use `rev/(nights*rooms)` instead of `rev/nights`. Multi-room group bookings were inflating hotel ADR by ~7%. TL brand + hotel type filters + Japan always pinned in TL ADR country list.
 
 **YYB rooms parsing**: `processRow` now reads `部屋数` column and stores as `r.rooms` (default 1). All YYB ADR calculations now use `nights × rooms` room-nights denominator, matching TL. Fixed a ~7% overstatement in hotel ADR caused by ~5% of bookings being multi-room group reservations.
 
 **LAYOUT_SCHEMA_VERSION** constant (separate from APP_VERSION) — bump ONLY when tab IDs or grid keys change, NOT on every minor version. App-version bumps no longer clear saved custom layouts.
+
+**Shared filter state between YYB and TL** (carry over when switching sections):
+- Date range (`fDF`/`fDTo`)
+- Date type (`fDT`) — TL only honors `booking`/`checkin`
+- Month mode (`monthMode`) — TL uses `tlGetM(r)` helper
+- Region (`fR`), Segment (`fS`), DOW (`fDOW`), Property (`fP`)
+- Hotel type, brand are separate per-section (`fHType`/`fBrands` for YYB, `fTlHotelType`/`fTlBrand` for TL)
+- TL-only: `fChannelBucket`, `fTlChannelName`, `fTlStatus` (Net/All/Cancelled/Modified)
+- YYB-only: `fCancel` (cancellation status), `fGeo` (geographic region)
+
+**ADR formula** (both YYB and TL since v1.78): `Σ revenue / Σ (nights × rooms)`. Using `rev/nights` is wrong for multi-room group bookings. YYB rows store `rooms` from the `部屋数` column (default 1 if missing); TL rows use the `rooms` field directly.
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 
