@@ -39,6 +39,7 @@ A second deployment (`monday-analyzer-ads`) will include Google Ads / Meta Ads m
 
 ## Key Architecture
 - **Two data sources**: YYB (reservation rows, `allData`, `processRow()`) + TL Lincoln (channel-level daily actuals, `tlData`, `parseTLRow()`). Each has its own publish URL constant (`GSHEET_CSV_URL` / `TL_GSHEET_CSV_URL`), separate `useEffect` fetch, separate localStorage cache key (`monday_csv_cache` / `monday_tl_csv_cache`).
+- ⚠ **Date parsing gotcha (v1.61 fix)**: `new Date("YYYY-MM-DD")` is UTC midnight in JS, but `new Date("YYYY-MM-DDT00:00:00")` is local midnight. Mixing these breaks date-equality filters in non-UTC timezones. TL filter uses `new Date(fDF+"T00:00:00")` to match `parseTLRow`'s local-midnight row dates. Don't strip the `T00:00:00`.
 - **TL data is ex-tax** (n8n divides by 1.1 at parse). YYB also ex-tax. UI labels TL revenue as "売上 (税抜)" / "Revenue (ex-tax)" explicitly.
 - **Sectioned tab strip**: Tabs split into YYB and TL sections via `src` field on each TAB entry. Section chips (`YYB` / `TL`) + vertical divider + per-section accent color (gold / teal) on active tab underline. `SOURCE_COLORS` constant.
 - **Source banner**: always-on bar above filter row, dot + label, color matches active section. Reads `isTlTab = activeTabSrc === "tl"`.
@@ -121,7 +122,7 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.60 (increment by 0.01)
+Current: 1.61 (increment by 0.01)
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 
