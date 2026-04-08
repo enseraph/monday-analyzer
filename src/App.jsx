@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.80";
+const APP_VERSION="1.81";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -1789,7 +1789,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
     const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
     const fBrSet=fTlBrand.length?new Set(fTlBrand):null;
+    const fSSet=fS.length?new Set(fS):null;
+    const fDSet=fDOW.length?new Set(fDOW):null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
+    // TL supports only booking (reception date) and checkin as date-type filters.
+    const dateField=fDT==="checkin"?"checkin":"date";
     const filtered=[],allStatus=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
@@ -1797,8 +1801,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fCNSet&&!fCNSet.has(r.channel_name))continue;
       if(fBrSet&&!fBrSet.has(r.brand))continue;
       if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)continue;
-      if(from&&r.date<from)continue;
-      if(to&&r.date>to)continue;
+      if(fR!=="All"&&r.region!==fR)continue;
+      if(fSSet&&!fSSet.has(r.segment))continue;
+      if(fDSet&&!fDSet.has(r.checkinDow))continue;
+      const dt=r[dateField];
+      if(from&&(!dt||dt<from))continue;
+      if(to&&(!dt||dt>to))continue;
       allStatus.push(r);
       // Status filter for the Net/Cancelled/Modified view
       if(fTlStatus==="net"){
@@ -1812,9 +1820,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       filtered.push(r);
     }
     return{filtered,allStatus};
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fTlStatus,fDF,fDTo]);
+  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fTlStatus,fR,fS,fDOW,fDT,fDF,fDTo]);
   const tlFiltered=tlFilteredBoth.filtered;
   const tlAllStatusFiltered=tlFilteredBoth.allStatus;
+  // Month-key helper for TL memos that aggregate by month, respects the shared monthMode toggle.
+  // "booking" = reception month (dateStr), "stay" = check-in month (checkinStr, fallback to dateStr if empty)
+  const tlGetM=r=>monthMode==="stay"?((r.checkinStr&&r.checkinStr.length>=7?r.checkinStr:r.dateStr).slice(0,7)):r.dateStr.slice(0,7);
 
   const tlChannelRpt=useMemo(()=>{
     if(tab!=="tl-channel"||!tlFiltered.length)return null;
@@ -1837,7 +1848,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const dKey=r.dateStr;
       if(!byDay[dKey])byDay[dKey]={date:dKey,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0};
       byDay[dKey][b]+=rev;byDay[dKey][b+"B"]+=1;
-      const mKey=dKey.slice(0,7);
+      const mKey=tlGetM(r);
       if(!byMonth[mKey])byMonth[mKey]={date:mKey,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0};
       byMonth[mKey][b]+=rev;byMonth[mKey][b+"B"]+=1;
       if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,facilityGroup:r.facilityGroup,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0,total:0,totalB:0};
@@ -1895,7 +1906,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       bucketKeys:buckets,
       channelNameList,channelNameByBucket,
     };
-  },[tab,tlFiltered,tlAllStatusFiltered]);
+  },[tab,tlFiltered,tlAllStatusFiltered,monthMode]);
 
   // ─── TL Revenue tab data ───
   const tlRevenueRpt=useMemo(()=>{
@@ -1908,7 +1919,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const r=tlFiltered[i];if(r.status==="取消")continue;
       const rev=r.totalRev;const rn=(r.nights||0)*(r.rooms||0);
       totalRev+=rev;totalRoomNights+=rn;count++;
-      const mKey=r.dateStr.slice(0,7);
+      const mKey=tlGetM(r);
       if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,count:0,roomNights:0};
       byMonth[mKey].rev+=rev;byMonth[mKey].count++;byMonth[mKey].roomNights+=rn;
       if(!byDay[r.dateStr])byDay[r.dateStr]={date:r.dateStr,rev:0,count:0};
@@ -1928,7 +1939,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>({segment:s,rev:bySeg[s].rev,count:bySeg[s].count,avgRev:bySeg[s].count>0?Math.round(bySeg[s].rev/bySeg[s].count):0}));
     const adr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
     return{totalRev,totalRoomNights,count,adr,moRows,dayRows,facRows,segRows,dowRows:DOW.map(d=>byDow[d])};
-  },[tab,tlFiltered]);
+  },[tab,tlFiltered,monthMode]);
 
   // ─── TL Segments tab data ───
   const tlSegmentsRpt=useMemo(()=>{
@@ -1974,6 +1985,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fP.length&&!fP.includes(r.facility))return false;
       if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
       if(fTlChannelName.length&&!fTlChannelName.includes(r.channel_name))return false;
+      if(fTlBrand.length&&!fTlBrand.includes(r.brand))return false;
+      if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)return false;
+      if(fR!=="All"&&r.region!==fR)return false;
+      if(fS.length&&!fS.includes(r.segment))return false;
+      if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
       if(fTlStatus==="net"){if(r.status==="取消"||(r.status==="予約"&&r.sameDayCancelled))return false}
       else if(fTlStatus==="cancelled"){if(r.status!=="取消"&&!r.sameDayCancelled)return false}
       else if(fTlStatus==="modified"){if(r.status!=="変更")return false}
@@ -2004,7 +2020,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const yoyCount=prev.count>0?+((cur.count-prev.count)/prev.count*100).toFixed(1):null;
     const channelNameRows=Object.values(cur.byChannel.name).sort((a,b)=>b.rev-a.rev).slice(0,15);
     return{cur,prev,yoyRev,yoyCount,from,to,channelNameRows};
-  },[tab,tlData,drFrom,drTo,fP,fChannelBucket,fTlChannelName,fTlStatus]);
+  },[tab,tlData,drFrom,drTo,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus]);
 
   // ─── TL Member tab data ───
   const tlMemberRpt=useMemo(()=>{
@@ -2055,7 +2071,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     DOW.forEach(d=>{byDow[d]={day:d,count:0,rev:0}});
     for(let i=0;i<tlFiltered.length;i++){
       const r=tlFiltered[i];if(r.status==="取消")continue;
-      const m=r.dateStr.slice(0,7);
+      const m=tlGetM(r);
       if(!byMo[m])byMo[m]={month:m,count:0,rev:0};
       byMo[m].count++;byMo[m].rev+=r.totalRev;
       const c=r.country||"Unknown";
@@ -2071,7 +2087,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       segRows:SEG_ORDER.filter(s=>bySeg[s]).map(s=>bySeg[s]),
       dowRows:DOW.map(d=>byDow[d]),
     };
-  },[tab,tlFiltered]);
+  },[tab,tlFiltered,monthMode]);
 
   // ─── TL LOS tab data ───
   const tlLosRpt=useMemo(()=>{
@@ -2118,7 +2134,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         const dowAbbr=r.checkinDow.slice(0,3);
         if(byDow[dowAbbr])byDow[dowAbbr].count++;
       }
-      const m=r.dateStr.slice(0,7);
+      const m=tlGetM(r);
       if(!byMonthDow[m])byMonthDow[m]={month:m,Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
       if(r.checkinDow){byMonthDow[m][r.checkinDow.slice(0,3)]++}
     }
@@ -2127,7 +2143,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowRows:DOW.map(d=>byDow[d]),
       mdowRows:Object.values(byMonthDow).sort((a,b)=>a.month.localeCompare(b.month)),
     };
-  },[tab,tlFiltered]);
+  },[tab,tlFiltered,monthMode]);
 
   // ─── TL Compare ───
   const tlCompareRpt=useMemo(()=>{
@@ -2136,6 +2152,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fP.length&&!fP.includes(r.facility))return false;
       if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
       if(fTlChannelName.length&&!fTlChannelName.includes(r.channel_name))return false;
+      if(fTlBrand.length&&!fTlBrand.includes(r.brand))return false;
+      if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)return false;
+      if(fR!=="All"&&r.region!==fR)return false;
+      if(fS.length&&!fS.includes(r.segment))return false;
+      if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
       if(fTlStatus==="net"){if(r.status==="取消"||(r.status==="予約"&&r.sameDayCancelled))return false}
       else if(fTlStatus==="cancelled"){if(r.status!=="取消"&&!r.sameDayCancelled)return false}
       else if(fTlStatus==="modified"){if(r.status!=="変更")return false}
@@ -2168,7 +2189,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
     const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     return{a,b,pctChg,countryRows,segRows,facRows};
-  },[tab,tlData,cmpA,cmpB,fP,fChannelBucket,fTlChannelName,fTlStatus]);
+  },[tab,tlData,cmpA,cmpB,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus]);
 
   // ─── TL Pace ───
   const tlPaceRpt=useMemo(()=>{
@@ -2177,6 +2198,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fP.length&&!fP.includes(r.facility))return false;
       if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
       if(fTlChannelName.length&&!fTlChannelName.includes(r.channel_name))return false;
+      if(fTlBrand.length&&!fTlBrand.includes(r.brand))return false;
+      if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)return false;
+      if(fR!=="All"&&r.region!==fR)return false;
+      if(fS.length&&!fS.includes(r.segment))return false;
+      if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
       if(r.status==="取消"||r.sameDayCancelled)return false;
       return r.status!=="変更";
     };
@@ -2210,7 +2236,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       chartData.push(row);
     }
     return{paceData,months,chartData};
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName]);
+  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW]);
 
   // ─── TL Facilities ───
   const tlFacilitiesRpt=useMemo(()=>{
@@ -2264,7 +2290,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       // Channel bucket
       if(byBucket[r.channelBucket]){byBucket[r.channelBucket].rev+=rev;byBucket[r.channelBucket].roomNights+=roomNights;byBucket[r.channelBucket].count++}
       // Month
-      const mKey=r.dateStr.slice(0,7);
+      const mKey=tlGetM(r);
       if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,roomNights:0,count:0};
       byMonth[mKey].rev+=rev;byMonth[mKey].roomNights+=roomNights;byMonth[mKey].count++;
     }
@@ -2281,7 +2307,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
     const overallAdr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
     return{overallAdr,totalRev,totalRoomNights,totalCount,facRows,countryRows,segRows,channelRows,bucketRows,monthRows};
-  },[tab,tlFiltered]);
+  },[tab,tlFiltered,monthMode]);
 
   // ─── TL KvK ───
   const tlKvkRpt=useMemo(()=>{
@@ -2310,7 +2336,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       revSR[rg][r.segment].count++;revSR[rg][r.segment].rev+=r.totalRev;
       if(r.checkinDow)dowCI[rg][r.checkinDow.slice(0,3)]++;
       if(r.checkoutDow)dowCO[rg][r.checkoutDow.slice(0,3)]++;
-      const m=r.dateStr.slice(0,7);
+      const m=tlGetM(r);
       if(!monthlyByReg[m])monthlyByReg[m]={month:m,Kanto:0,Kansai:0};
       monthlyByReg[m][rg]++;
     }
@@ -2323,7 +2349,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dowCORows=DOW.map(d=>({day:d,Kanto:dowCO.Kanto[d],Kansai:dowCO.Kansai[d]}));
     const revSRRows=SEG_ORDER.map(s=>({segment:s,Kanto:revSR.Kanto[s]?.count>0?Math.round(revSR.Kanto[s].rev/revSR.Kanto[s].count):0,Kansai:revSR.Kansai[s]?.count>0?Math.round(revSR.Kansai[s].rev/revSR.Kansai[s].count):0}));
     return{kN,sN,kR,sR,mkKanto,mkKansai,mktMo,segRegRows,losSRRows,dowCIRows,dowCORows,revSRRows};
-  },[tab,tlFiltered]);
+  },[tab,tlFiltered,monthMode]);
 
   // ─── TL Markets ───
   const tlMarketsRpt=useMemo(()=>{
@@ -2344,13 +2370,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   // ─── TL Cancellations ───
   const tlCancelRpt=useMemo(()=>{
     if(tab!=="tl-cancellations"||!tlData.length)return null;
+    const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
+    const dateField=fDT==="checkin"?"checkin":"date";
     const apply=r=>{
       if(fP.length&&!fP.includes(r.facility))return false;
       if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
       if(fTlChannelName.length&&!fTlChannelName.includes(r.channel_name))return false;
-      const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
-      if(from&&r.date<from)return false;
-      if(to&&r.date>to)return false;
+      if(fTlBrand.length&&!fTlBrand.includes(r.brand))return false;
+      if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)return false;
+      if(fR!=="All"&&r.region!==fR)return false;
+      if(fS.length&&!fS.includes(r.segment))return false;
+      if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
+      const dt=r[dateField];
+      if(from&&(!dt||dt<from))return false;
+      if(to&&(!dt||dt>to))return false;
       return true;
     };
     const base=tlData.filter(apply);
@@ -2360,7 +2393,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       total++;
       const isC=r.status==="取消"||r.sameDayCancelled;
       if(isC){cancelled++;lost+=r.totalRev}
-      const m=r.dateStr.slice(0,7);
+      const m=tlGetM(r);
       if(!byMonth[m])byMonth[m]={month:m,total:0,cancelled:0};
       byMonth[m].total++;if(isC)byMonth[m].cancelled++;
       if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),total:0,cancelled:0,lostRev:0};
@@ -2378,7 +2411,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const segRows=Object.values(bySeg).map(v=>({...v,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0}));
     const countryRows=Object.values(byCountry).sort((a,b)=>b.total-a.total).slice(0,15).map(v=>({...v,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0}));
     return{total,cancelled,rate,lost,monthTrend,facRows,facByRate,segRows,countryRows};
-  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fDF,fDTo]);
+  },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fDT,fDF,fDTo,monthMode]);
 
   // ─── TL Raw Data table ───
   const tlTC=TL_RAW_COLS;
@@ -2534,9 +2567,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {!isTlTab&&<div><div style={S.fl}>{t.statusFilter}</div><div style={{display:"flex",gap:3}}>{[["confirmed",t.statusConfirmed],["cancelled",t.statusCancelled],["all",t.statusAll]].map(([v,l])=><button key={v} style={{...S.btn,...(fCancel===v?S.ba:{})}} onClick={()=>setFCancel(v)}>{l}</button>)}</div></div>}
         {!isTlTab&&<div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fHType===v?S.ba:{})}} onClick={()=>setFHType(v)}>{l}</button>)}</div></div>}
         {!isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={S} cl={t.clear}/></div>}
-        {!isTlTab&&<div><div style={S.fl}>{t.region}</div><div style={{display:"flex",gap:3}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...S.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>}
+        <div><div style={S.fl}>{t.region}</div><div style={{display:"flex",gap:3}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...S.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>
         {!isTlTab&&<div><div style={S.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={S} cl={t.clear}/></div>}
-        {!isTlTab&&<div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>}
+        <div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>
         {!isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlHotelType===v?S.ba:{})}} onClick={()=>setFTlHotelType(v)}>{l}</button>)}</div></div>}
@@ -2545,11 +2578,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {isTlTab&&<div><div style={S.fl}>{t.tlChannelName}</div><MS options={uTlChannelName} selected={fTlChannelName} onChange={setFTlChannelName} placeholder={t.all} maxShow={1} S={S} cl={t.clear}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlStatus}</div><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[["net",t.tlStatusNet],["all",t.tlStatusAll],["cancelled",t.tlStatusCancelled],["modified",t.tlStatusModified]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlStatus===v?S.ba:{})}} onClick={()=>setFTlStatus(v)}>{l}</button>)}</div></div>}
 {!isTlTab&&<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear}/></div>}
-{!isTlTab&&<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear}/></div>}
-        {!isTlTab&&<div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></select></div>}
+<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear}/></div>
+        <div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></>}</select></div>
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
-        {!isTlTab&&<div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>}
+        <div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
         <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setActivePreset(null)}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
