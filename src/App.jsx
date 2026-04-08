@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.76";
+const APP_VERSION="1.77";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -714,14 +714,14 @@ export default function App(){
 const[fGeo,setFGeo]=useState([]);
 const[segDetailed,setSegDetailed]=useState(false);
 const[fDOW,setFDOW]=useState([]);
-  const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const PG=50;
+  const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tlSort,setTlSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const[tlPage,setTlPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
 const[presets,setPresets]=useState(()=>{try{return JSON.parse(localStorage.getItem("monday_presets"))||[]}catch{return[]}});
 const[presetMsg,setPresetMsg]=useState("");
 const[activePreset,setActivePreset]=useState(null);
 const savePreset=name=>{
   if(!name.trim())return;
-  const p={name:name.trim(),filters:{fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDT,fDF,fDTo,monthMode},saved:new Date().toISOString()};
+  const p={name:name.trim(),filters:{fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,fDT,fDF,fDTo,monthMode,fChannelBucket,fTlChannelName,fTlStatus},saved:new Date().toISOString()};
   const updated=[...presets.filter(x=>x.name!==p.name),p];
   setPresets(updated);localStorage.setItem("monday_presets",JSON.stringify(updated));
   setPresetMsg(t.presetSaved);setTimeout(()=>setPresetMsg(""),2000);
@@ -730,7 +730,9 @@ const loadPreset=p=>{
   const f=p.filters;
   setFCancel(f.fCancel||"all");setFHType(f.fHType||"All");setFBrands(f.fBrands||[]);
   setFR(f.fR||"All");setFC(f.fC||[]);setFS(f.fS||[]);setFP(f.fP||[]);setFGeo(f.fGeo||[]);
+  setFDOW(f.fDOW||[]);
   setFDT(f.fDT||"booking");setFDF(f.fDF||"");setFDTo(f.fDTo||"");setMonthMode(f.monthMode||"booking");
+  setFChannelBucket(f.fChannelBucket||[]);setFTlChannelName(f.fTlChannelName||[]);setFTlStatus(f.fTlStatus||"net");
   setActivePreset(p.name);
 };
 const deletePreset=name=>{
@@ -768,7 +770,7 @@ const[drSingle,setDrSingle]=useState("");
       const processed=applyEmailIntlOverride(rows.map(r=>processRow(r,h)));
       setAllH(h);setAllData(processed);
       setFL([{name:"Google Sheets (live)"+(fromCache?" (cached)":""),rows:rows.length,encoding:"UTF-8"}]);
-      setSheetStatus("done");
+      setSheetStatus("done");setLastFetchTs(Date.now());
       return true;
     };
     if(useCache){try{const c=localStorage.getItem(CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text,true))return}}catch{}}
@@ -801,7 +803,7 @@ const[drSingle,setDrSingle]=useState("");
     };
     const finalize=(rows)=>{
       applyTLSameDayCancel(rows);
-      setTlData(rows);setTlStatus("done");
+      setTlData(rows);setTlStatus("done");setLastFetchTs(Date.now());
     };
     // Per-year independent fetch — one bad year doesn't kill the rest
     const fetchOneYear=(yr)=>{
@@ -2357,10 +2359,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const tlTRows=useMemo(()=>{
     if(tab!=="tl-data")return[];
     let rows=tlFiltered.map(r=>{const o={};TL_RAW_COLS.forEach(c=>{o[c]=r[c]??""});return o});
-    if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});
+    if(tlSort.col)rows.sort((a,b)=>{let va=a[tlSort.col],vb=b[tlSort.col];if(typeof va==="number"&&typeof vb==="number")return tlSort.asc?va-vb:vb-va;return tlSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});
     return rows;
-  },[tab,tlFiltered,tSort]);
-  const tlPaged=useMemo(()=>tlTRows.slice(tPage*PG,(tPage+1)*PG),[tlTRows,tPage]);
+  },[tab,tlFiltered,tlSort]);
+  const tlPaged=useMemo(()=>tlTRows.slice(tlPage*PG,(tlPage+1)*PG),[tlTRows,tlPage]);
   const tlTotPg=Math.ceil(tlTRows.length/PG);
 
 
@@ -2486,7 +2488,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <div style={S.inner}>
       {/* Header */}
-      <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/><button style={{...S.btn,...((sheetStatus==="loading"||tlStatus==="loading")?{opacity:0.6,cursor:"wait"}:{})}} onClick={refreshAllData} disabled={sheetStatus==="loading"||tlStatus==="loading"} title={lastFetchTs?`Last loaded: ${new Date(lastFetchTs).toLocaleTimeString()}`:""}>{(sheetStatus==="loading"||tlStatus==="loading")?"⟳ "+t.refreshing:"⟳ "+t.refresh}</button><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button><button style={{...S.btn,background:"rgba(239,68,68,0.1)",borderColor:"#ef4444",color:"#ef4444"}} className="no-print" onClick={()=>window.print()}>{t.downloadPDF}</button></div></div>
+      <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}{lastFetchTs?" • Last loaded: "+new Date(lastFetchTs).toLocaleString():""}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/><button style={{...S.btn,...((sheetStatus==="loading"||tlStatus==="loading")?{opacity:0.6,cursor:"wait"}:{})}} onClick={refreshAllData} disabled={sheetStatus==="loading"||tlStatus==="loading"} title={lastFetchTs?`Last loaded: ${new Date(lastFetchTs).toLocaleTimeString()}`:""}>{(sheetStatus==="loading"||tlStatus==="loading")?"⟳ "+t.refreshing:"⟳ "+t.refresh}</button><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button><button style={{...S.btn,background:"rgba(239,68,68,0.1)",borderColor:"#ef4444",color:"#ef4444"}} className="no-print" onClick={()=>window.print()}>{t.downloadPDF}</button></div></div>
         {fL.length>0&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>{fL.map((f,i)=><span key={i} style={{fontSize:10,background:TH.input,padding:"3px 8px",borderRadius:4,color:TH.textMuted}}>{f.name} ({fmtN(f.rows)}) <span style={{color:"#4ea8de"}}>{f.encoding}</span></span>)}<span style={{fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.dataCoverage}</span></div>}
         {errs.length>0&&<div style={{marginTop:8}}>{errs.map((e,i)=><div key={i} style={{fontSize:11,color:"#ef4444"}}>⚠ {e}</div>)}</div>}
       </div>
@@ -3532,14 +3534,30 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {tab==="tl-data"&&<div style={S.card}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{fmtN(tlFiltered.length)} rows filtered</div></div>
           <div style={{overflowX:"auto"}}>
-            <table style={S.tbl}><thead><tr>{tlTH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tlTC[i],asc:p.col===tlTC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tlTC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead>
+            <table style={S.tbl}><thead><tr>{tlTH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTlSort(p=>({col:tlTC[i],asc:p.col===tlTC[i]?!p.asc:true}));setTlPage(0)}}>{h} {tlSort.col===tlTC[i]?(tlSort.asc?"↑":"↓"):""}</th>)}</tr></thead>
             <tbody>{tlPaged.map((r,ri)=><tr key={ri}>{tlTC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","rooms","adults_male","adults_female","children","totalRev"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"||c==="planName"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="channelBucket"?<span style={S.tag(CHANNEL_COLORS[r[c]]||"#888")}>{r[c]}</span>:c==="status"?<span style={S.tag(r[c]==="取消"?"#ef4444":r[c]==="変更"?"#c9a84c":"#34d399")}>{r[c]}</span>:String(r[c]??"")}</td>)}</tr>)}</tbody></table>
           </div>
-          {tlTotPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12}}><button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button><span style={{fontSize:12,color:"#a0977f"}}>{t.pageOf(tPage+1,tlTotPg)}</span><button style={S.btn} onClick={()=>setTPage(p=>Math.min(tlTotPg-1,p+1))} disabled={tPage>=tlTotPg-1}>{t.next}</button></div>}
+          {tlTotPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,flexWrap:"wrap"}}>
+            <button style={S.btn} onClick={()=>setTlPage(0)} disabled={tlPage===0}>« First</button>
+            <button style={S.btn} onClick={()=>setTlPage(p=>Math.max(0,p-1))} disabled={tlPage===0}>{t.prev}</button>
+            <span style={{fontSize:12,color:"#a0977f",display:"flex",alignItems:"center",gap:6}}>Page <input type="number" min="1" max={tlTotPg} value={tlPage+1} onChange={e=>{const v=parseInt(e.target.value)-1;if(!isNaN(v))setTlPage(Math.max(0,Math.min(tlTotPg-1,v)))}} style={{...S.inp,width:60,padding:"3px 6px",textAlign:"center"}}/> of {tlTotPg}</span>
+            <button style={S.btn} onClick={()=>setTlPage(p=>Math.min(tlTotPg-1,p+1))} disabled={tlPage>=tlTotPg-1}>{t.next}</button>
+            <button style={S.btn} onClick={()=>setTlPage(tlTotPg-1)} disabled={tlPage>=tlTotPg-1}>Last »</button>
+          </div>}
         </div>}
 
         {/* RAW DATA */}
-        {tab==="data"&&<div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.rowsFiltered(fmtN(filtered.length))}</div><button style={S.bg} onClick={expFilt}>⬇ {t.exportFiltered}</button></div><div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{tH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tC[i],asc:p.col===tC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead><tbody>{paged.map((r,ri)=><tr key={ri}>{tC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","leadTime","totalRev","partySize"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="region"?<span style={S.tag(r[c]==="Kanto"?"#4ea8de":"#e07b54")}>{tl(r[c])}</span>:c==="isCancelled"?<span style={S.tag(r[c]?"#ef4444":"#34d399")}>{r[c]?t.statusCancelled:t.statusConfirmed}</span>:["segment","hotelType"].includes(c)?tl(String(r[c]??"")):String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>{totPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12}}><button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button><span style={{fontSize:12,color:"#a0977f"}}>{t.pageOf(tPage+1,totPg)}</span><button style={S.btn} onClick={()=>setTPage(p=>Math.min(totPg-1,p+1))} disabled={tPage>=totPg-1}>{t.next}</button></div>}</div>}
+        {tab==="data"&&<div style={S.card}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.rowsFiltered(fmtN(filtered.length))}</div><button style={S.bg} onClick={expFilt}>⬇ {t.exportFiltered}</button></div>
+          <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{tH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tC[i],asc:p.col===tC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead><tbody>{paged.map((r,ri)=><tr key={ri}>{tC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","leadTime","totalRev","partySize"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="region"?<span style={S.tag(r[c]==="Kanto"?"#4ea8de":"#e07b54")}>{tl(r[c])}</span>:c==="isCancelled"?<span style={S.tag(r[c]?"#ef4444":"#34d399")}>{r[c]?t.statusCancelled:t.statusConfirmed}</span>:["segment","hotelType"].includes(c)?tl(String(r[c]??"")):String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>
+          {totPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,flexWrap:"wrap"}}>
+            <button style={S.btn} onClick={()=>setTPage(0)} disabled={tPage===0}>« First</button>
+            <button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button>
+            <span style={{fontSize:12,color:"#a0977f",display:"flex",alignItems:"center",gap:6}}>Page <input type="number" min="1" max={totPg} value={tPage+1} onChange={e=>{const v=parseInt(e.target.value)-1;if(!isNaN(v))setTPage(Math.max(0,Math.min(totPg-1,v)))}} style={{...S.inp,width:60,padding:"3px 6px",textAlign:"center"}}/> of {totPg}</span>
+            <button style={S.btn} onClick={()=>setTPage(p=>Math.min(totPg-1,p+1))} disabled={tPage>=totPg-1}>{t.next}</button>
+            <button style={S.btn} onClick={()=>setTPage(totPg-1)} disabled={tPage>=totPg-1}>Last »</button>
+          </div>}
+        </div>}
       </>}
     </div></div>
   );

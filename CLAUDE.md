@@ -129,7 +129,7 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.76 (audit-driven cleanup — tlData enrichment refresh fix, translator dict memoization, single-pass TL filter, layout schema versioning, raw col constants hoisted)
+Current: 1.77 (audit medium-risk tier — separate TL/YYB sort+page state, jump-to-page inputs, TL filters in presets, visible last-loaded timestamp)
 
 **LAYOUT_SCHEMA_VERSION** constant (separate from APP_VERSION) — bump ONLY when tab IDs or grid keys change, NOT on every minor version. App-version bumps no longer clear saved custom layouts.
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
