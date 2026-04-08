@@ -129,9 +129,16 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.81
+Current: 1.82
 
 Recent changes:
+- v1.82: **Audit-driven correctness fixes** to calculation methodology.
+  1. **KvK DOW chart Kansai scaling removed** — pre-v1.82 multiplied Kansai DOW counts by `Math.round(kantoJapan/kansaiJapan)` to "scale up" Kansai for visual comparison; this was misleading. Now both regions display **% share within their own region** (each region's daily counts sum to 100%). Chart titles updated. The `kvk.scale` field is no longer used by these charts.
+  2. **YYB RevPAR `totalDays` always uses check-in span** regardless of `fDT`. Pre-v1.82, with `fDT=booking`, the denominator was the booking-date span but the numerator counted nights spread across many future check-in months → occupancy could exceed 100%.
+  3. **YYB RevPAR monthly grouping always by stay month** regardless of `monthMode`. Same root cause as #2: physical occupancy must be measured against stay periods, not booking periods.
+  4. **YYB Segments tab "ADR by Segment" switched to revenue-weighted formula** (`Σrev / Σ(nights×rooms)`). Pre-v1.82 used unweighted simple-average of per-row ADRs, which is the "macro" definition; the rest of the tool uses the industry-standard "micro" (revenue-weighted) definition. Affects `agg.segADR`, `segDetailedExtras.segADR`, and KvK `adrSeg`. Storage shape changed from `array of per-row ADRs` to `{rev, rn}` accumulator.
+  5. **`agg.intlPct` no longer counts Unknown country as international.** Was: `country !== "Japan"`. Now: `country !== "Japan" && country !== "Unknown"`. International % KPI on the header now only counts confirmed international rows.
+  6. **TL ADR uses `r.revenue` only, not `r.totalRev`** (which is `revenue + revenue_other`). `revenue_other` covers meals/options/programs and shouldn't be in the room-rate calculation. Applied to `tlAdrRpt`, `tlRevenueRpt` (per-month and per-facility ADR), and `tlDailyRpt` (ADR KPI). Revenue display totals still use `totalRev` — only ADR denominators changed.
 - v1.81: TL filter bar gained Region / Segment / DOW / Date Type / Month Mode (shared with YYB, same carry-over philosophy as date range). New `tlGetM(r)` helper switches month groupings between booking month (`r.dateStr`) and stay month (`r.checkinStr`). All TL aggregation memos updated to respect `monthMode` in deps. `tlPaceRpt` deliberately stays on reception date (cumulative pace is semantically reception-based).
 - v1.80: TL Pace chart x-axis fix — flat chartData keyed by day 1-31 instead of per-Line data which caused recharts to concatenate categories.
 - v1.79: All TL tables converted to `SortTbl` (column sort, xlsx export, draggable title via `rgl-drag` class on title). TL Raw Data left as inline table because of pagination.
@@ -151,6 +158,18 @@ Recent changes:
 - YYB-only: `fCancel` (cancellation status), `fGeo` (geographic region)
 
 **ADR formula** (both YYB and TL since v1.78): `Σ revenue / Σ (nights × rooms)`. Using `rev/nights` is wrong for multi-room group bookings. YYB rows store `rooms` from the `部屋数` column (default 1 if missing); TL rows use the `rooms` field directly.
+
+**ADR revenue source** (v1.82+):
+- **YYB**: uses `r.totalRev` = `予約料金合計` (ex-tax). YYB doesn't separate room from ancillary charges in this column.
+- **TL**: uses `r.revenue` ONLY (not `r.totalRev` = `revenue + revenue_other`). `revenue_other` covers meals, options, programs and should not inflate room rate. Revenue display tabs still use `totalRev`.
+
+**RevPAR / occupancy**: must always be measured by check-in date / stay month. Pre-v1.82 used `fDT` and `monthMode`-dependent grouping which broke when those were set to "booking". Hardcoded to check-in regardless.
+
+**International % KPI** (`agg.intlPct`): only counts rows where `country !== "Japan" && country !== "Unknown"`. Pre-v1.82 lumped Unknown with International.
+
+**KvK DOW comparison**: shows **% share within each region**, not raw counts. Each region's daily counts sum to 100%. Pre-v1.82 multiplied Kansai counts by a scaling factor which was misleading.
+
+**Segment ADR formula**: revenue-weighted (`Σrev / Σ(nights×rooms)`), not unweighted simple average. Storage in `agg.segADR` is `{[seg]: {rev, rn}}` accumulator, not `{[seg]: [adr1, adr2, ...]}` array. v1.82 fix.
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 

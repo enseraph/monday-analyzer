@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.81";
+const APP_VERSION="1.82";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -964,15 +964,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(!segLead[r.segment])segLead[r.segment]=[];if(r.leadTime!=null)segLead[r.segment].push(r.leadTime);
       // Lead by month
       if(getM(r)){const mm=getM(r);if(!mLead[mm])mLead[mm]=[];if(r.leadTime!=null)mLead[mm].push(r.leadTime)}
-      // ADR by seg
-      if(r.nights&&r.nights>0&&r.totalRev>0){if(!segADR[r.segment])segADR[r.segment]=[];segADR[r.segment].push(r.totalRev/(r.nights*(r.rooms||1)))}
+      // ADR by seg — accumulate rev + room-nights for revenue-weighted ADR (matches ADR tab formula)
+      if(r.nights&&r.nights>0&&r.totalRev>0){if(!segADR[r.segment])segADR[r.segment]={rev:0,rn:0};segADR[r.segment].rev+=r.totalRev;segADR[r.segment].rn+=r.nights*(r.rooms||1)}
       // Rev by seg×region
       if(!rSR[reg][r.segment])rSR[reg][r.segment]=[];rSR[reg][r.segment].push(r.totalRev);
       // Rank by country
       if(!rkC[r.country])rkC[r.country]={};rkC[r.country][r.rank]=(rkC[r.country][r.rank]||0)+1;
     });
 
-    const totRev=d.reduce((a,r)=>a+r.totalRev,0);const intlN=d.filter(r=>r.country!=="Japan").length;
+    const totRev=d.reduce((a,r)=>a+r.totalRev,0);const intlN=d.filter(r=>r.country!=="Japan"&&r.country!=="Unknown").length;
     return{n,totalRev:totRev,avgRev:n>0?totRev/n:0,avgNights:avg(d.filter(r=>r.nights).map(r=>r.nights)),avgLead:avg(d.filter(r=>r.leadTime!=null).map(r=>r.leadTime)),intlPct:n>0?(intlN/n)*100:0,byR,byC,byS,byM,byF,byD,byRm,rC,rS,rM,rSL,rDow,rRoom,rRank,rDev,cS,cLOS,segLead,mLead,segADR,rSR,rkC};
   },[filtered,monthMode,tz]);
 
@@ -1011,8 +1011,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const leadSeg=activeSegs.filter(s=>segLead[s]&&segLead[s].length).map(s=>({segment:s,avg:+avg(segLead[s]).toFixed(1),median:+med(segLead[s]).toFixed(1)}));
 
     // ADR by detailed segment
-    const segADR={};filtered.forEach(r=>{if(!r.nights||r.nights<=0||!r.totalRev)return;const s=r.segmentDetailed||"Unknown";if(!segADR[s])segADR[s]=[];segADR[s].push(r.totalRev/(r.nights*(r.rooms||1)))});
-    const adrSeg=activeSegs.filter(s=>segADR[s]&&segADR[s].length).map(s=>({segment:s,adr:Math.round(avg(segADR[s]))}));
+    const segADR={};filtered.forEach(r=>{if(!r.nights||r.nights<=0||!r.totalRev)return;const s=r.segmentDetailed||"Unknown";if(!segADR[s])segADR[s]={rev:0,rn:0};segADR[s].rev+=r.totalRev;segADR[s].rn+=r.nights*(r.rooms||1)});
+    const adrSeg=activeSegs.filter(s=>segADR[s]&&segADR[s].rn>0).map(s=>({segment:s,adr:Math.round(segADR[s].rev/segADR[s].rn)}));
 
     return{segMo,segCountry,leadSeg,adrSeg,activeSegs};
   },[filtered,monthMode,tz]);
@@ -1116,15 +1116,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const leadSeg=SEG_ORDER.filter(s=>agg.segLead[s]).map(s=>({segment:s,avg:+avg(agg.segLead[s]).toFixed(1),median:+med(agg.segLead[s]).toFixed(1)}));
     // Lead by month
     const leadMo=months.map(m=>({month:m,avg:agg.mLead[m]?+avg(agg.mLead[m]).toFixed(1):0,median:agg.mLead[m]?+med(agg.mLead[m]).toFixed(1):0}));
-    // DOW radar
-    const dowCI=DOW_FULL.map((d,i)=>({day:dL[i],Kanto:agg.rDow.Kanto[d+"_ci"]||0,Kansai:(agg.rDow.Kansai[d+"_ci"]||0)*Math.round((agg.rC.Kanto?.Japan||1)/(agg.rC.Kansai?.Japan||1))}));
-    const dowCO=DOW_FULL.map((d,i)=>({day:dL[i],Kanto:agg.rDow.Kanto[d+"_co"]||0,Kansai:(agg.rDow.Kansai[d+"_co"]||0)*Math.round((agg.rC.Kanto?.Japan||1)/(agg.rC.Kansai?.Japan||1))}));
+    // DOW: show % share within each region (each region's daily counts sum to 100%) for honest visual comparison.
+    // Pre-v1.82 multiplied Kansai counts by Kanto/Kansai ratio to "scale" them — that was misleading.
+    const kantoCITot=DOW_FULL.reduce((a,d)=>a+(agg.rDow.Kanto[d+"_ci"]||0),0);
+    const kansaiCITot=DOW_FULL.reduce((a,d)=>a+(agg.rDow.Kansai[d+"_ci"]||0),0);
+    const kantoCOTot=DOW_FULL.reduce((a,d)=>a+(agg.rDow.Kanto[d+"_co"]||0),0);
+    const kansaiCOTot=DOW_FULL.reduce((a,d)=>a+(agg.rDow.Kansai[d+"_co"]||0),0);
+    const dowCI=DOW_FULL.map((d,i)=>({day:dL[i],Kanto:kantoCITot>0?+(((agg.rDow.Kanto[d+"_ci"]||0)/kantoCITot)*100).toFixed(1):0,Kansai:kansaiCITot>0?+(((agg.rDow.Kansai[d+"_ci"]||0)/kansaiCITot)*100).toFixed(1):0}));
+    const dowCO=DOW_FULL.map((d,i)=>({day:dL[i],Kanto:kantoCOTot>0?+(((agg.rDow.Kanto[d+"_co"]||0)/kantoCOTot)*100).toFixed(1):0,Kansai:kansaiCOTot>0?+(((agg.rDow.Kansai[d+"_co"]||0)/kansaiCOTot)*100).toFixed(1):0}));
     const kantoN=Object.values(agg.rC.Kanto).reduce((a,b)=>a+b,0);const kansaiN=Object.values(agg.rC.Kansai).reduce((a,b)=>a+b,0);
     const scale=kansaiN>0?Math.round(kantoN/kansaiN):1;
     // Device by region
     const devR=["スマートフォン","パソコン","タブレット"].map(d=>({device:d==="スマートフォン"?(lang==="ja"?"スマホ":"Smartphone"):d==="パソコン"?"PC":d==="タブレット"?(lang==="ja"?"タブレット":"Tablet"):"Other",Kanto:agg.rDev.Kanto[d]||0,Kansai:agg.rDev.Kansai[d]||0}));
     // ADR by seg
-    const adrSeg=SEG_ORDER.filter(s=>agg.segADR[s]).map(s=>({segment:s,adr:Math.round(avg(agg.segADR[s]))}));
+    const adrSeg=SEG_ORDER.filter(s=>agg.segADR[s]&&agg.segADR[s].rn>0).map(s=>({segment:s,adr:Math.round(agg.segADR[s].rev/agg.segADR[s].rn)}));
     // Rev by seg×region
     const revSR=SEG_ORDER.map(s=>({segment:s,Kanto:agg.rSR.Kanto[s]?Math.round(avg(agg.rSR.Kanto[s])):0,Kansai:agg.rSR.Kansai[s]?Math.round(avg(agg.rSR.Kansai[s])):0}));
     // Rev by country
@@ -1380,9 +1385,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const withRooms=filtered.filter(r=>ROOM_INVENTORY[r.facility]);
 
     // Monthly trend: RevPAR, occupancy, ADR — nightsSold = room-nights (nights × rooms)
+    // RevPAR/occupancy must be grouped by STAY month regardless of monthMode setting,
+    // because the denominator (room inventory × days) is anchored to physical room availability,
+    // and bookings are spread across many future check-in months.
     const byMonth={};
     withRooms.forEach(r=>{
-      const m=getM(r);if(!m)return;
+      const m=tzFmt(r.checkin,"month");if(!m)return;
       if(!byMonth[m])byMonth[m]={rev:0,nightsSold:0,facilities:new Set()};
       byMonth[m].rev+=r.totalRev||0;
       byMonth[m].nightsSold+=(r.nights||0)*(r.rooms||1);
@@ -1408,8 +1416,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       byFac[r.facility].rev+=r.totalRev||0;
       byFac[r.facility].nightsSold+=(r.nights||0)*(r.rooms||1);
     });
-    // Calculate total days in the filtered period
-    const allDates=withRooms.map(r=>tzFmt(getDateField(r))).filter(Boolean).sort();
+    // Calculate total days in the filtered period — must use check-in dates regardless of fDT,
+    // because the room inventory denominator is anchored to physical nights of occupancy.
+    const allDates=withRooms.map(r=>tzFmt(r.checkin)).filter(Boolean).sort();
     const minDate=allDates.length?allDates[0]:null;
     const maxDate=allDates.length?allDates[allDates.length-1]:null;
     const totalDays=minDate&&maxDate?Math.max(1,Math.round((new Date(maxDate)-new Date(minDate))/864e5)+1):1;
@@ -1914,18 +1923,19 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const byMonth={},byDay={},byFac={},bySeg={};
     const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
     const byDow={};DOW.forEach(d=>{byDow[d]={day:d,rev:0,count:0}});
-    let totalRev=0,totalRoomNights=0,count=0;
+    // rev = totalRev (revenue + revenue_other) for revenue display; roomRev = revenue only for ADR.
+    let totalRev=0,totalRoomRev=0,totalRoomNights=0,count=0;
     for(let i=0;i<tlFiltered.length;i++){
       const r=tlFiltered[i];if(r.status==="取消")continue;
-      const rev=r.totalRev;const rn=(r.nights||0)*(r.rooms||0);
-      totalRev+=rev;totalRoomNights+=rn;count++;
+      const rev=r.totalRev;const roomRev=r.revenue;const rn=(r.nights||0)*(r.rooms||0);
+      totalRev+=rev;totalRoomRev+=roomRev;totalRoomNights+=rn;count++;
       const mKey=tlGetM(r);
-      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,count:0,roomNights:0};
-      byMonth[mKey].rev+=rev;byMonth[mKey].count++;byMonth[mKey].roomNights+=rn;
+      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,roomRev:0,count:0,roomNights:0};
+      byMonth[mKey].rev+=rev;byMonth[mKey].roomRev+=roomRev;byMonth[mKey].count++;byMonth[mKey].roomNights+=rn;
       if(!byDay[r.dateStr])byDay[r.dateStr]={date:r.dateStr,rev:0,count:0};
       byDay[r.dateStr].rev+=rev;byDay[r.dateStr].count++;
-      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,count:0,roomNights:0};
-      byFac[r.facility].rev+=rev;byFac[r.facility].count++;byFac[r.facility].roomNights+=rn;
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,roomRev:0,count:0,roomNights:0};
+      byFac[r.facility].rev+=rev;byFac[r.facility].roomRev+=roomRev;byFac[r.facility].count++;byFac[r.facility].roomNights+=rn;
       if(r.segment!=="Unknown"){
         if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,count:0};
         bySeg[r.segment].rev+=rev;bySeg[r.segment].count++;
@@ -1933,11 +1943,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const dow=DOW[(r.date.getDay()+6)%7];
       byDow[dow].rev+=rev;byDow[dow].count++;
     }
-    const moRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0}));
+    const moRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.roomNights>0?Math.round(v.roomRev/v.roomNights):0}));
     const dayRows=Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date));
-    const facRows=Object.values(byFac).sort((a,b)=>b.rev-a.rev).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0}));
+    const facRows=Object.values(byFac).sort((a,b)=>b.rev-a.rev).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.roomNights>0?Math.round(v.roomRev/v.roomNights):0}));
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>({segment:s,rev:bySeg[s].rev,count:bySeg[s].count,avgRev:bySeg[s].count>0?Math.round(bySeg[s].rev/bySeg[s].count):0}));
-    const adr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
+    const adr=totalRoomNights>0?Math.round(totalRoomRev/totalRoomNights):0;
     return{totalRev,totalRoomNights,count,adr,moRows,dayRows,facRows,segRows,dowRows:DOW.map(d=>byDow[d])};
   },[tab,tlFiltered,monthMode]);
 
@@ -2002,18 +2012,19 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const prevData=tlData.filter(r=>apply(r)&&r.dateStr>=prevFrom&&r.dateStr<=prevTo);
     const agg=d=>{
       const byFac={},byChannel={bucket:{ota:{count:0,rev:0},rta:{count:0,rev:0},direct:{count:0,rev:0}},name:{}};
-      let rev=0,count=0,roomNights=0;
+      // rev = totalRev for revenue display; roomRev = revenue only for ADR.
+      let rev=0,roomRev=0,count=0,roomNights=0;
       d.forEach(r=>{
         if(r.status==="取消")return;
         const rn=(r.nights||0)*(r.rooms||0);
-        rev+=r.totalRev;count++;roomNights+=rn;
+        rev+=r.totalRev;roomRev+=r.revenue;count++;roomNights+=rn;
         if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),count:0,rev:0,roomNights:0};
         byFac[r.facility].count++;byFac[r.facility].rev+=r.totalRev;byFac[r.facility].roomNights+=rn;
         byChannel.bucket[r.channelBucket].count++;byChannel.bucket[r.channelBucket].rev+=r.totalRev;
         if(!byChannel.name[r.channel_name])byChannel.name[r.channel_name]={channel:r.channel_name,bucket:r.channelBucket,count:0,rev:0};
         byChannel.name[r.channel_name].count++;byChannel.name[r.channel_name].rev+=r.totalRev;
       });
-      return{rev,count,roomNights,adr:roomNights>0?Math.round(rev/roomNights):0,facRows:Object.values(byFac).sort((a,b)=>b.rev-a.rev),byChannel};
+      return{rev,count,roomNights,adr:roomNights>0?Math.round(roomRev/roomNights):0,facRows:Object.values(byFac).sort((a,b)=>b.rev-a.rev),byChannel};
     };
     const cur=agg(curData),prev=agg(prevData);
     const yoyRev=prev.rev>0?+((cur.rev-prev.rev)/prev.rev*100).toFixed(1):null;
@@ -2271,7 +2282,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const n=r.nights||0;const rm=r.rooms||0;
       if(n<=0||rm<=0)continue;
       const roomNights=n*rm;
-      const rev=r.totalRev;totalRev+=rev;totalRoomNights+=roomNights;totalCount++;
+      // ADR uses room revenue ONLY (r.revenue), not totalRev (which includes revenue_other for meals/options/etc.)
+      const rev=r.revenue;totalRev+=rev;totalRoomNights+=roomNights;totalCount++;
       // Facility
       if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,roomNights:0,count:0};
       byFac[r.facility].rev+=rev;byFac[r.facility].roomNights+=roomNights;byFac[r.facility].count++;
@@ -2908,8 +2920,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="kk-sg-rg"><CC grid title={t.kvkSegByRegion} id="kk-sg-rg" nm="seg_region" data={kvk.segReg}><BarChart data={kvk.segReg}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC></div>
             <div key="kk-los-co"><CC grid title={t.kvkLOSByCountry} id="kk-los-co" nm="los_country" h={Math.max(280,kvk.losC.length*26)} data={kvk.losC}><BarChart data={kvk.losC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avg" fill="#4ea8de" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
             <div key="kk-los-sr"><CC grid title={t.kvkLOSBySegRegion} id="kk-los-sr" nm="los_seg_region" data={kvk.losSR}><BarChart data={kvk.losSR}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC></div>
-            <div key="kk-dw-ci"><CC grid title={`${t.kvkDOWCheckin}`} id="kk-dw-ci" nm="dow_checkin" h={300} data={kvk.dowCI}><RadarChart data={kvk.dowCI} cx="50%" cy="50%" outerRadius={100}><PolarGrid stroke={TH.gridLine}/><PolarAngleAxis dataKey="day" tick={{fill:TH.pieLabelFill,fontSize:11}}/><PolarRadiusAxis tick={false}/><Radar name={t.kanto} dataKey="Kanto" stroke="#4ea8de" fill="rgba(78,168,222,0.1)" dot={{r:3}}/><Radar name={`${t.kansai} (×${kvk.scale})`} dataKey="Kansai" stroke="#e07b54" fill="rgba(224,123,84,0.1)" dot={{r:3}}/><Legend/><Tooltip content={<CT/>}/></RadarChart></CC></div>
-            <div key="kk-dw-co"><CC grid title={`${t.kvkDOWCheckout}`} id="kk-dw-co" nm="dow_checkout" h={300} data={kvk.dowCO}><RadarChart data={kvk.dowCO} cx="50%" cy="50%" outerRadius={100}><PolarGrid stroke={TH.gridLine}/><PolarAngleAxis dataKey="day" tick={{fill:TH.pieLabelFill,fontSize:11}}/><PolarRadiusAxis tick={false}/><Radar name={t.kanto} dataKey="Kanto" stroke="#4ea8de" fill="rgba(78,168,222,0.1)" dot={{r:3}}/><Radar name={`${t.kansai} (×${kvk.scale})`} dataKey="Kansai" stroke="#e07b54" fill="rgba(224,123,84,0.1)" dot={{r:3}}/><Legend/><Tooltip content={<CT/>}/></RadarChart></CC></div>
+            <div key="kk-dw-ci"><CC grid title={`${t.kvkDOWCheckin} (% share within region)`} id="kk-dw-ci" nm="dow_checkin" h={300} data={kvk.dowCI}><RadarChart data={kvk.dowCI} cx="50%" cy="50%" outerRadius={100}><PolarGrid stroke={TH.gridLine}/><PolarAngleAxis dataKey="day" tick={{fill:TH.pieLabelFill,fontSize:11}}/><PolarRadiusAxis tick={false}/><Radar name={t.kanto} dataKey="Kanto" stroke="#4ea8de" fill="rgba(78,168,222,0.1)" dot={{r:3}}/><Radar name={t.kansai} dataKey="Kansai" stroke="#e07b54" fill="rgba(224,123,84,0.1)" dot={{r:3}}/><Legend/><Tooltip content={<CT formatter={v=>v+"%"}/>}/></RadarChart></CC></div>
+            <div key="kk-dw-co"><CC grid title={`${t.kvkDOWCheckout} (% share within region)`} id="kk-dw-co" nm="dow_checkout" h={300} data={kvk.dowCO}><RadarChart data={kvk.dowCO} cx="50%" cy="50%" outerRadius={100}><PolarGrid stroke={TH.gridLine}/><PolarAngleAxis dataKey="day" tick={{fill:TH.pieLabelFill,fontSize:11}}/><PolarRadiusAxis tick={false}/><Radar name={t.kanto} dataKey="Kanto" stroke="#4ea8de" fill="rgba(78,168,222,0.1)" dot={{r:3}}/><Radar name={t.kansai} dataKey="Kansai" stroke="#e07b54" fill="rgba(224,123,84,0.1)" dot={{r:3}}/><Legend/><Tooltip content={<CT formatter={v=>v+"%"}/>}/></RadarChart></CC></div>
             <div key="kk-dev"><CC grid title={t.kvkDeviceByRegion} id="kk-dev" nm="device_region" data={kvk.devR}><BarChart data={kvk.devR}><CartesianGrid {...gl}/><XAxis dataKey="device" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC></div>
             <div key="kk-rev-sr"><CC grid title={t.kvkRevBySegRegion} id="kk-rev-sr" nm="rev_seg_region" data={kvk.revSR}><BarChart data={kvk.revSR}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={t.kanto}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={t.kansai}/></BarChart></CC></div>
             <div key="kk-rev-co"><CC grid title={t.kvkRevByCountry} id="kk-rev-co" nm="rev_country" h={Math.max(300,kvk.revC.length*26)} data={kvk.revC}><BarChart data={kvk.revC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
