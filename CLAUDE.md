@@ -129,7 +129,7 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.71 (v1.70 TL schema rewrite + TL ADR tab + plan_code filter removed)
+Current: 1.72 (v1.70 TL schema rewrite + ADR tab + 2025 TL year + segment-per-facility + Unknown segment filter + filter-hint banners)
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 
