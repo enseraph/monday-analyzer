@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.74";
+const APP_VERSION="1.75";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -43,6 +43,7 @@ const DL={
   "tl-booking":mkL([["tlb-lead",0,0,6,3],["tlb-dow",6,0,6,3],["tlb-mdow",0,3,12,3]]),
   "tl-compare":mkL([["tlc-country",0,0,6,5],["tlc-rev",6,0,6,4],["tlc-seg",0,5,6,4],["tlc-count",6,4,6,4],["tlc-facility",0,9,12,4]]),
   "tl-pace":mkL([["tlp-chart",0,0,12,5],["tlp-summary",0,5,6,4]]),
+  adr:mkL([["adr-fac",0,0,12,7],["adr-country",0,7,12,5],["adr-seg",0,12,6,4],["adr-region",6,12,6,4],["adr-mo",0,16,12,4]]),
   "tl-adr":mkL([["tla-fac",0,0,12,7],["tla-country",0,7,12,5],["tla-seg",0,12,6,4],["tla-channel",6,12,6,4],["tla-bucket",0,16,6,4],["tla-mo",6,16,6,4]]),
   "tl-facilities":mkL([["tlf-res",0,0,6,7],["tlf-rev",6,0,6,7],["tlf-direct",0,7,6,7],["tlf-los",6,7,6,7]]),
   "tl-kvk":mkL([["tlkv-mk-kt",0,0,6,4],["tlkv-mk-ks",6,0,6,4],["tlkv-mk-mo",0,4,12,4],["tlkv-sg-rg",0,8,6,3],["tlkv-los-co",0,11,6,4],["tlkv-los-sr",6,11,6,3],["tlkv-dw-ci",0,15,6,4],["tlkv-dw-co",6,15,6,4],["tlkv-rev-sr",0,19,6,3],["tlkv-rev-co",6,19,6,4]]),
@@ -282,6 +283,7 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     tlStatus:"Status",tlStatusNet:"Net",tlStatusAll:"All",tlStatusCancelled:"Cancelled",tlStatusModified:"Modified",
     tlCoverage:"Country coverage",tlCoverageNote:"via YYB email cross-reference",
     tlTopChannels:"Top Channels (full OTA breakdown)",tlTotalModifications:"Modifications",
+    adrTab:"ADR",
     tlHintCancelStatus:"Note: Status filter ignored on this tab — cancel rate requires the full dataset (both confirmed and cancelled) to compute meaningful denominators.",
     tlHintDailyDate:"Note: Global date filter ignored on this tab — uses its own date picker above.",
     tlHintCompareDate:"Note: Global date filter ignored on this tab — uses its own Period A / Period B pickers below.",
@@ -416,6 +418,7 @@ segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     tlStatus:"状態",tlStatusNet:"純",tlStatusAll:"全て",tlStatusCancelled:"取消",tlStatusModified:"変更",
     tlCoverage:"国別カバー率",tlCoverageNote:"YYBメールクロス参照",
     tlTopChannels:"チャネル詳細（OTA別）",tlTotalModifications:"変更件数",
+    adrTab:"ADR",
     tlHintCancelStatus:"注意: このタブではステータスフィルターは無効です — キャンセル率の分母には確定＋キャンセルの全データが必要です。",
     tlHintDailyDate:"注意: グローバル日付フィルターは無効 — 上の独自の日付ピッカーを使用します。",
     tlHintCompareDate:"注意: グローバル日付フィルターは無効 — 下の期間A / 期間Bピッカーを使用します。",
@@ -1419,6 +1422,43 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     return{monthTrend,dailyTrend,facRows,overallRevpar,overallOcc,overallAdr,totalRev,totalNightsSold,totalAvail,totalDays};
   },[tab,filtered,monthMode,tz,tzFmt]);
 
+  // ─── YYB ADR ───
+  // YYB has no rooms count per reservation; each row is one booking with totalRev for the whole stay and nights = stay length.
+  // Empirically YYB reservations are predominantly single-room (reservations are per-party, not per-room), so ADR = rev / nights.
+  const adrRpt=useMemo(()=>{
+    if(tab!=="adr"||!filtered.length)return null;
+    const byFac={},byCountry={},bySeg={},byRegion={Kanto:{rev:0,nights:0,count:0},Kansai:{rev:0,nights:0,count:0}},byMonth={};
+    let totalRev=0,totalNights=0,totalCount=0;
+    for(let i=0;i<filtered.length;i++){
+      const r=filtered[i];
+      const n=r.nights||0;if(n<=0)continue;
+      const rev=r.totalRev||0;totalRev+=rev;totalNights+=n;totalCount++;
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,nights:0,count:0};
+      byFac[r.facility].rev+=rev;byFac[r.facility].nights+=n;byFac[r.facility].count++;
+      const c=r.country||"Unknown";
+      if(!byCountry[c])byCountry[c]={country:c,rev:0,nights:0,count:0};
+      byCountry[c].rev+=rev;byCountry[c].nights+=n;byCountry[c].count++;
+      if(r.segment&&r.segment!=="Unknown"){
+        if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,nights:0,count:0};
+        bySeg[r.segment].rev+=rev;bySeg[r.segment].nights+=n;bySeg[r.segment].count++;
+      }
+      if(byRegion[r.region]){byRegion[r.region].rev+=rev;byRegion[r.region].nights+=n;byRegion[r.region].count++}
+      const mKey=tzFmt(r.bookingDate,"month");
+      if(mKey){
+        if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,nights:0,count:0};
+        byMonth[mKey].rev+=rev;byMonth[mKey].nights+=n;byMonth[mKey].count++;
+      }
+    }
+    const computeAdr=v=>({...v,adr:v.nights>0?Math.round(v.rev/v.nights):0});
+    const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
+    const countryRows=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
+    const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
+    const regionRows=["Kanto","Kansai"].filter(r=>byRegion[r].count).map(r=>({region:r,...computeAdr(byRegion[r])}));
+    const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
+    const overallAdr=totalNights>0?Math.round(totalRev/totalNights):0;
+    return{overallAdr,totalRev,totalNights,totalCount,facRows,countryRows,segRows,regionRows,monthRows};
+  },[tab,filtered,tz,tzFmt]);
+
   // ─── MEMBER & REPEAT ANALYSIS ───
   const memberRpt=useMemo(()=>{
     if(tab!=="member"||!filtered.length)return null;
@@ -1782,9 +1822,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const r=tlFiltered[i];const b=r.channelBucket;if(!byBucket[b])continue;
       // Skip 取消 rows for revenue/bookings totals; they're counted separately in cancellations
       if(r.status==="取消")continue;
-      const rev=r.totalRev;
-      totalRev+=rev;totalBookings+=1;totalRoomNights+=r.nights||0;
-      byBucket[b].rev+=rev;byBucket[b].bookings+=1;byBucket[b].roomNights+=r.nights||0;
+      const rev=r.totalRev;const rn=(r.nights||0)*(r.rooms||0);
+      totalRev+=rev;totalBookings+=1;totalRoomNights+=rn;
+      byBucket[b].rev+=rev;byBucket[b].bookings+=1;byBucket[b].roomNights+=rn;
       const dKey=r.dateStr;
       if(!byDay[dKey])byDay[dKey]={date:dKey,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0};
       byDay[dKey][b]+=rev;byDay[dKey][b+"B"]+=1;
@@ -1854,28 +1894,31 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const byMonth={},byDay={},byFac={},bySeg={};
     const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
     const byDow={};DOW.forEach(d=>{byDow[d]={day:d,rev:0,count:0}});
-    let totalRev=0,totalNights=0,count=0;
+    let totalRev=0,totalRoomNights=0,count=0;
     for(let i=0;i<tlFiltered.length;i++){
       const r=tlFiltered[i];if(r.status==="取消")continue;
-      const rev=r.totalRev;totalRev+=rev;totalNights+=r.nights||0;count++;
+      const rev=r.totalRev;const rn=(r.nights||0)*(r.rooms||0);
+      totalRev+=rev;totalRoomNights+=rn;count++;
       const mKey=r.dateStr.slice(0,7);
-      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,count:0,nights:0};
-      byMonth[mKey].rev+=rev;byMonth[mKey].count++;byMonth[mKey].nights+=r.nights||0;
+      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,count:0,roomNights:0};
+      byMonth[mKey].rev+=rev;byMonth[mKey].count++;byMonth[mKey].roomNights+=rn;
       if(!byDay[r.dateStr])byDay[r.dateStr]={date:r.dateStr,rev:0,count:0};
       byDay[r.dateStr].rev+=rev;byDay[r.dateStr].count++;
-      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,count:0,nights:0};
-      byFac[r.facility].rev+=rev;byFac[r.facility].count++;byFac[r.facility].nights+=r.nights||0;
-      if(r.segment==="Unknown")return;if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,count:0};
-      bySeg[r.segment].rev+=rev;bySeg[r.segment].count++;
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,count:0,roomNights:0};
+      byFac[r.facility].rev+=rev;byFac[r.facility].count++;byFac[r.facility].roomNights+=rn;
+      if(r.segment!=="Unknown"){
+        if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,count:0};
+        bySeg[r.segment].rev+=rev;bySeg[r.segment].count++;
+      }
       const dow=DOW[(r.date.getDay()+6)%7];
       byDow[dow].rev+=rev;byDow[dow].count++;
     }
-    const moRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.nights>0?Math.round(v.rev/v.nights):0}));
+    const moRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0}));
     const dayRows=Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date));
-    const facRows=Object.values(byFac).sort((a,b)=>b.rev-a.rev).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.nights>0?Math.round(v.rev/v.nights):0}));
+    const facRows=Object.values(byFac).sort((a,b)=>b.rev-a.rev).map(v=>({...v,avgRev:v.count>0?Math.round(v.rev/v.count):0,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0}));
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>({segment:s,rev:bySeg[s].rev,count:bySeg[s].count,avgRev:bySeg[s].count>0?Math.round(bySeg[s].rev/bySeg[s].count):0}));
-    const adr=totalNights>0?Math.round(totalRev/totalNights):0;
-    return{totalRev,totalNights,count,adr,moRows,dayRows,facRows,segRows,dowRows:DOW.map(d=>byDow[d])};
+    const adr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
+    return{totalRev,totalRoomNights,count,adr,moRows,dayRows,facRows,segRows,dowRows:DOW.map(d=>byDow[d])};
   },[tab,tlFiltered]);
 
   // ─── TL Segments tab data ───
@@ -1934,17 +1977,18 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const prevData=tlData.filter(r=>apply(r)&&r.dateStr>=prevFrom&&r.dateStr<=prevTo);
     const agg=d=>{
       const byFac={},byChannel={bucket:{ota:{count:0,rev:0},rta:{count:0,rev:0},direct:{count:0,rev:0}},name:{}};
-      let rev=0,count=0,nights=0;
+      let rev=0,count=0,roomNights=0;
       d.forEach(r=>{
         if(r.status==="取消")return;
-        rev+=r.totalRev;count++;nights+=r.nights||0;
-        if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),count:0,rev:0,nights:0};
-        byFac[r.facility].count++;byFac[r.facility].rev+=r.totalRev;byFac[r.facility].nights+=r.nights||0;
+        const rn=(r.nights||0)*(r.rooms||0);
+        rev+=r.totalRev;count++;roomNights+=rn;
+        if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),count:0,rev:0,roomNights:0};
+        byFac[r.facility].count++;byFac[r.facility].rev+=r.totalRev;byFac[r.facility].roomNights+=rn;
         byChannel.bucket[r.channelBucket].count++;byChannel.bucket[r.channelBucket].rev+=r.totalRev;
         if(!byChannel.name[r.channel_name])byChannel.name[r.channel_name]={channel:r.channel_name,bucket:r.channelBucket,count:0,rev:0};
         byChannel.name[r.channel_name].count++;byChannel.name[r.channel_name].rev+=r.totalRev;
       });
-      return{rev,count,nights,adr:nights>0?Math.round(rev/nights):0,facRows:Object.values(byFac).sort((a,b)=>b.rev-a.rev),byChannel};
+      return{rev,count,roomNights,adr:roomNights>0?Math.round(rev/roomNights):0,facRows:Object.values(byFac).sort((a,b)=>b.rev-a.rev),byChannel};
     };
     const cur=agg(curData),prev=agg(prevData);
     const yoyRev=prev.rev>0?+((cur.rev-prev.rev)/prev.rev*100).toFixed(1):null;
@@ -2166,45 +2210,51 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   },[tab,tlFiltered]);
 
   // ─── TL ADR ───
-  // ADR = revenue / room-nights. Computed per-dimension; rows with 0 nights are excluded from the denominator.
+  // ADR = revenue / room-nights where room-nights = nights × rooms (TL stores per-reservation rev for all rooms booked,
+  // but 'nights' is per-guest stay length, so a 20-room × 3-night group booking needs 60 room-nights in the denominator).
+  // Rows with nights<=0 or rooms<=0 are excluded from the denominator.
   const tlAdrRpt=useMemo(()=>{
     if(tab!=="tl-adr"||!tlFiltered.length)return null;
-    const byFac={},byCountry={},bySeg={},byChannel={},byBucket={ota:{rev:0,nights:0,count:0},rta:{rev:0,nights:0,count:0},direct:{rev:0,nights:0,count:0}};
+    const byFac={},byCountry={},bySeg={},byChannel={},byBucket={ota:{rev:0,roomNights:0,count:0},rta:{rev:0,roomNights:0,count:0},direct:{rev:0,roomNights:0,count:0}};
     const byMonth={};
-    let totalRev=0,totalNights=0,totalCount=0;
+    let totalRev=0,totalRoomNights=0,totalCount=0;
     for(let i=0;i<tlFiltered.length;i++){
       const r=tlFiltered[i];if(r.status==="取消")continue;
-      const n=r.nights||0;if(n<=0)continue;
-      const rev=r.totalRev;totalRev+=rev;totalNights+=n;totalCount++;
+      const n=r.nights||0;const rm=r.rooms||0;
+      if(n<=0||rm<=0)continue;
+      const roomNights=n*rm;
+      const rev=r.totalRev;totalRev+=rev;totalRoomNights+=roomNights;totalCount++;
       // Facility
-      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,nights:0,count:0};
-      byFac[r.facility].rev+=rev;byFac[r.facility].nights+=n;byFac[r.facility].count++;
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,name:shortFac(r.facility),rev:0,roomNights:0,count:0};
+      byFac[r.facility].rev+=rev;byFac[r.facility].roomNights+=roomNights;byFac[r.facility].count++;
       // Country
       const c=r.country||"Unknown";
-      if(!byCountry[c])byCountry[c]={country:c,rev:0,nights:0,count:0};
-      byCountry[c].rev+=rev;byCountry[c].nights+=n;byCountry[c].count++;
+      if(!byCountry[c])byCountry[c]={country:c,rev:0,roomNights:0,count:0};
+      byCountry[c].rev+=rev;byCountry[c].roomNights+=roomNights;byCountry[c].count++;
       // Segment
-      if(r.segment==="Unknown")continue;if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,nights:0,count:0};
-      bySeg[r.segment].rev+=rev;bySeg[r.segment].nights+=n;bySeg[r.segment].count++;
+      if(r.segment!=="Unknown"){
+        if(!bySeg[r.segment])bySeg[r.segment]={segment:r.segment,rev:0,roomNights:0,count:0};
+        bySeg[r.segment].rev+=rev;bySeg[r.segment].roomNights+=roomNights;bySeg[r.segment].count++;
+      }
       // Channel name (full OTA granularity)
-      if(!byChannel[r.channel_name])byChannel[r.channel_name]={channel:r.channel_name,bucket:r.channelBucket,rev:0,nights:0,count:0};
-      byChannel[r.channel_name].rev+=rev;byChannel[r.channel_name].nights+=n;byChannel[r.channel_name].count++;
+      if(!byChannel[r.channel_name])byChannel[r.channel_name]={channel:r.channel_name,bucket:r.channelBucket,rev:0,roomNights:0,count:0};
+      byChannel[r.channel_name].rev+=rev;byChannel[r.channel_name].roomNights+=roomNights;byChannel[r.channel_name].count++;
       // Channel bucket
-      if(byBucket[r.channelBucket]){byBucket[r.channelBucket].rev+=rev;byBucket[r.channelBucket].nights+=n;byBucket[r.channelBucket].count++}
+      if(byBucket[r.channelBucket]){byBucket[r.channelBucket].rev+=rev;byBucket[r.channelBucket].roomNights+=roomNights;byBucket[r.channelBucket].count++}
       // Month
       const mKey=r.dateStr.slice(0,7);
-      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,nights:0,count:0};
-      byMonth[mKey].rev+=rev;byMonth[mKey].nights+=n;byMonth[mKey].count++;
+      if(!byMonth[mKey])byMonth[mKey]={month:mKey,rev:0,roomNights:0,count:0};
+      byMonth[mKey].rev+=rev;byMonth[mKey].roomNights+=roomNights;byMonth[mKey].count++;
     }
-    const computeAdr=v=>({...v,adr:v.nights>0?Math.round(v.rev/v.nights):0});
+    const computeAdr=v=>({...v,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0});
     const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
     const countryRows=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
     const channelRows=Object.values(byChannel).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
     const bucketRows=["ota","rta","direct"].filter(b=>byBucket[b].count).map(b=>({bucket:b,...computeAdr(byBucket[b])}));
     const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
-    const overallAdr=totalNights>0?Math.round(totalRev/totalNights):0;
-    return{overallAdr,totalRev,totalNights,totalCount,facRows,countryRows,segRows,channelRows,bucketRows,monthRows};
+    const overallAdr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
+    return{overallAdr,totalRev,totalRoomNights,totalCount,facRows,countryRows,segRows,channelRows,bucketRows,monthRows};
   },[tab,tlFiltered]);
 
   // ─── TL KvK ───
@@ -2392,7 +2442,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport,src:"yyb"},{id:"compare",l:t.compare,src:"yyb"},{id:"pace",l:t.pace,src:"yyb"},{id:"overview",l:t.overview,src:"yyb"},{id:"kvk",l:t.kvk,src:"yyb"},{id:"markets",l:t.sourceMarkets,src:"yyb"},{id:"segments",l:t.segments,src:"yyb"},{id:"booking",l:t.bookingPatterns,src:"yyb"},{id:"member",l:t.memberTab,src:"yyb"},{id:"los",l:t.losTab,src:"yyb"},{id:"revenue",l:t.revenue,src:"yyb"},{id:"cancellations",l:t.cancellations,src:"yyb"},{id:"rooms",l:t.roomTypes,src:"yyb"},{id:"facilities",l:t.facilities,src:"yyb"},{id:"data",l:t.rawData,src:"yyb"},
+  const TABS=[{id:"daily",l:t.dailyReport,src:"yyb"},{id:"compare",l:t.compare,src:"yyb"},{id:"pace",l:t.pace,src:"yyb"},{id:"overview",l:t.overview,src:"yyb"},{id:"kvk",l:t.kvk,src:"yyb"},{id:"markets",l:t.sourceMarkets,src:"yyb"},{id:"segments",l:t.segments,src:"yyb"},{id:"booking",l:t.bookingPatterns,src:"yyb"},{id:"member",l:t.memberTab,src:"yyb"},{id:"los",l:t.losTab,src:"yyb"},{id:"revenue",l:t.revenue,src:"yyb"},{id:"cancellations",l:t.cancellations,src:"yyb"},{id:"rooms",l:t.roomTypes,src:"yyb"},{id:"adr",l:t.adrTab,src:"yyb"},{id:"facilities",l:t.facilities,src:"yyb"},{id:"data",l:t.rawData,src:"yyb"},
     {id:"tl-channel",l:t.tlChannelMix,src:"tl"},
     {id:"tl-daily",l:t.tlDailyReport,src:"tl"},
     {id:"tl-revenue",l:t.tlRevenueTab,src:"tl"},
@@ -2966,6 +3016,32 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </>}
 
         {/* ROOMS */}
+        {tab==="adr"&&adrRpt&&<div>
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            <div style={{...S.kpi,borderColor:TH.gold}}><div style={S.kl}>Overall ADR</div><div style={{...S.kv,color:TH.gold}}>¥{fmtN(adrRpt.overallAdr)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.totalRevenue}</div><div style={S.kv}>¥{fmtN(adrRpt.totalRev)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>Nights Sold</div><div style={S.kv}>{fmtN(adrRpt.totalNights)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>{t.reservations}</div><div style={S.kv}>{fmtN(adrRpt.totalCount)}</div></div>
+          </div>
+          <DraggableGrid {...dgProps("adr")}>
+            <div key="adr-fac"><CC grid title="ADR by Facility" id="adr-fac" nm="adr_fac" h={Math.max(320,adrRpt.facRows.length*24)} data={adrRpt.facRows}>
+              <BarChart data={adrRpt.facRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" fill={TH.gold} radius={[0,4,4,0]} name="ADR"/></BarChart>
+            </CC></div>
+            <div key="adr-country"><CC grid title="ADR by Country (min 5 rsv)" id="adr-country" nm="adr_country" data={adrRpt.countryRows}>
+              <BarChart data={adrRpt.countryRows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>} labelFormatter={v=>tl(v)}/><Bar dataKey="adr" fill="#4ea8de" radius={[4,4,0,0]} name="ADR"/></BarChart>
+            </CC></div>
+            <div key="adr-seg"><CC grid title="ADR by Segment" id="adr-seg" nm="adr_seg" data={adrRpt.segRows}>
+              <BarChart data={adrRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" name="ADR">{adrRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart>
+            </CC></div>
+            <div key="adr-region"><CC grid title="ADR by Region" id="adr-region" nm="adr_region" data={adrRpt.regionRows}>
+              <BarChart data={adrRpt.regionRows}><CartesianGrid {...gl}/><XAxis dataKey="region" tick={tk} tickFormatter={v=>tl(v)}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" radius={[4,4,0,0]} name="ADR">{adrRpt.regionRows.map((r,i)=><Cell key={i} fill={r.region==="Kanto"?"#4ea8de":"#e07b54"}/>)}</Bar></BarChart>
+            </CC></div>
+            <div key="adr-mo"><CC grid title="Monthly ADR Trend" id="adr-mo" nm="adr_mo" data={adrRpt.monthRows}>
+              <LineChart data={adrRpt.monthRows}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Line type="monotone" dataKey="adr" stroke={TH.gold} strokeWidth={2} dot={{r:3}} name="ADR"/></LineChart>
+            </CC></div>
+          </DraggableGrid>
+        </div>}
+
         {tab==="rooms"&&<><DraggableGrid {...dgProps("rooms")}>
           <div key="ch-rt"><CC grid title={t.roomTypeDist} id="ch-rt" nm="rooms" h={Math.max(280,rmD.length*26)} data={rmD}><BarChart data={rmD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="room" type="category" width={120} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c084fc" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
         </DraggableGrid>
@@ -3143,7 +3219,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <div style={S.kpi}><div style={S.kl}>{t.tlTotalRevenue}</div><div style={S.kv}>¥{fmtN(tlRevenueRpt.totalRev)}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.tlTotalBookings}</div><div style={S.kv}>{fmtN(tlRevenueRpt.count)}</div></div>
-            <div style={S.kpi}><div style={S.kl}>{t.tlTotalRoomNights}</div><div style={S.kv}>{fmtN(tlRevenueRpt.totalNights)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>Room-Nights</div><div style={S.kv}>{fmtN(tlRevenueRpt.totalRoomNights)}</div></div>
             <div style={S.kpi}><div style={S.kl}>ADR (税抜)</div><div style={S.kv}>¥{fmtN(tlRevenueRpt.adr)}</div></div>
           </div>
           <DraggableGrid {...dgProps("tl-revenue")}>
@@ -3206,14 +3282,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
               <div style={S.kpi}><div style={S.kl}>{t.tlTotalRevenue}</div><div style={S.kv}>¥{fmtN(tlDailyRpt.cur.rev)}</div>{tlDailyRpt.yoyRev!=null&&<div style={{fontSize:10,color:tlDailyRpt.yoyRev>=0?"#34d399":"#ef4444",marginTop:2}}>YoY: {tlDailyRpt.yoyRev>=0?"+":""}{tlDailyRpt.yoyRev}%</div>}</div>
               <div style={S.kpi}><div style={S.kl}>{t.tlTotalBookings}</div><div style={S.kv}>{fmtN(tlDailyRpt.cur.count)}</div>{tlDailyRpt.yoyCount!=null&&<div style={{fontSize:10,color:tlDailyRpt.yoyCount>=0?"#34d399":"#ef4444",marginTop:2}}>YoY: {tlDailyRpt.yoyCount>=0?"+":""}{tlDailyRpt.yoyCount}%</div>}</div>
-              <div style={S.kpi}><div style={S.kl}>{t.tlTotalRoomNights}</div><div style={S.kv}>{fmtN(tlDailyRpt.cur.nights)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>Room-Nights</div><div style={S.kv}>{fmtN(tlDailyRpt.cur.roomNights)}</div></div>
               <div style={S.kpi}><div style={S.kl}>ADR (税抜)</div><div style={S.kv}>¥{fmtN(tlDailyRpt.cur.adr)}</div></div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
               <div style={S.card}><div style={S.ct}>By Facility</div>
-                <table style={S.tbl}><thead><tr><th style={S.th}>Facility</th><th style={{...S.th,textAlign:"right"}}>Res</th><th style={{...S.th,textAlign:"right"}}>Revenue (税抜)</th><th style={{...S.th,textAlign:"right"}}>Nights</th></tr></thead>
-                <tbody>{tlDailyRpt.cur.facRows.map(f=><tr key={f.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.nights)}</td></tr>)}
-                <tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}><td style={S.td}>{t.drGrandTotal}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlDailyRpt.cur.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.nights)}</td></tr>
+                <table style={S.tbl}><thead><tr><th style={S.th}>Facility</th><th style={{...S.th,textAlign:"right"}}>Res</th><th style={{...S.th,textAlign:"right"}}>Revenue (税抜)</th><th style={{...S.th,textAlign:"right"}}>Room-Nights</th></tr></thead>
+                <tbody>{tlDailyRpt.cur.facRows.map(f=><tr key={f.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.roomNights)}</td></tr>)}
+                <tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}><td style={S.td}>{t.drGrandTotal}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlDailyRpt.cur.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.roomNights)}</td></tr>
                 </tbody></table>
               </div>
               <div style={S.card}><div style={S.ct}>By Channel (full name)</div>
@@ -3286,6 +3362,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end"}}>
             <div><div style={S.fl}>{t.cmpPeriodA}</div><div style={{display:"flex",gap:4}}><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.from} onChange={e=>setCmpA(p=>({...p,from:e.target.value}))}/><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.to} onChange={e=>setCmpA(p=>({...p,to:e.target.value}))}/></div></div>
             <div><div style={S.fl}>{t.cmpPeriodB}</div><div style={{display:"flex",gap:4}}><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.from} onChange={e=>setCmpB(p=>({...p,from:e.target.value}))}/><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.to} onChange={e=>setCmpB(p=>({...p,to:e.target.value}))}/></div></div>
+            <div style={{display:"flex",gap:4}}>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear(),m=end.getMonth(),d=end.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(end);const days=d-1;const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,1);bEnd.setDate(bEnd.getDate()+days);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const start=new Date(end);start.setDate(end.getDate()-6);const prevEnd=new Date(start);prevEnd.setDate(start.getDate()-1);const prevStart=new Date(prevEnd);prevStart.setDate(prevEnd.getDate()-6);setCmpA({from:tzFmt(start),to:tzFmt(end)});setCmpB({from:tzFmt(prevStart),to:tzFmt(prevEnd)})}}>{t.cmpWeekVsWeek}</button>
+              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(end);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,end.getMonth(),end.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
+            </div>
           </div>
           {tlCompareRpt&&!tlCompareRpt.empty?<div>
             <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
@@ -3307,10 +3388,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {/* TL PACE */}
         {tab==="tl-pace"&&tlPaceRpt&&<div>
           <div style={{...S.card,background:"rgba(94,234,212,0.06)",border:"1px solid rgba(94,234,212,0.2)",padding:"8px 12px",marginBottom:12,fontSize:10,color:TH.textMuted,lineHeight:1.5}}>{t.tlHintPaceStatus}</div>
+          <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5}}>Metric:</span>
+            <div style={{display:"flex",gap:3}}>
+              <button style={{...S.btn,...(paceMetric==="count"?S.ba:{})}} onClick={()=>setPaceMetric("count")}>{t.paceToggleRes}</button>
+              <button style={{...S.btn,...(paceMetric==="rev"?S.ba:{})}} onClick={()=>setPaceMetric("rev")}>{t.paceToggleRev}</button>
+            </div>
+          </div>
           <DraggableGrid {...dgProps("tl-pace")}>
-            <div key="tlp-chart"><CC grid title="Cumulative Bookings by Reception Date (last 6 months)" id="tlp-chart" nm="tl_pace" data={tlPaceRpt.paceData[0]?.series||[]}>
-              <LineChart data={tlPaceRpt.paceData[0]?.series||[]}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/>
-                {tlPaceRpt.paceData.slice(0,6).map((m,i)=><Line key={m.month} type="monotone" data={m.series} dataKey="count" stroke={PALETTE[i%PALETTE.length]} name={m.month} strokeWidth={1.5} dot={false}/>)}
+            <div key="tlp-chart"><CC grid title={`Cumulative ${paceMetric==="rev"?"Revenue":"Bookings"} by Reception Date (last 6 months)`} id="tlp-chart" nm="tl_pace" data={tlPaceRpt.paceData[0]?.series||[]}>
+              <LineChart data={tlPaceRpt.paceData[0]?.series||[]}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tks}/><YAxis tick={tk} tickFormatter={paceMetric==="rev"?fmtY:undefined}/><Tooltip content={<CT formatter={paceMetric==="rev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Legend/>
+                {tlPaceRpt.paceData.slice(0,6).map((m,i)=><Line key={m.month} type="monotone" data={m.series} dataKey={paceMetric==="rev"?"rev":"count"} stroke={PALETTE[i%PALETTE.length]} name={m.month} strokeWidth={1.5} dot={false}/>)}
               </LineChart>
             </CC></div>
             <div key="tlp-summary"><div style={{...S.card,height:"100%"}}><div style={{...S.ct,marginBottom:8}} className="rgl-drag">Month Totals</div><table style={S.tbl}><thead><tr><th style={S.th}>Month</th><th style={{...S.th,textAlign:"right"}}>Bookings</th><th style={{...S.th,textAlign:"right"}}>Revenue</th></tr></thead><tbody>{tlPaceRpt.paceData.map(m=><tr key={m.month}><td style={S.td}>{m.month}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(m.total.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(m.total.rev)}</td></tr>)}</tbody></table></div></div>
@@ -3322,7 +3410,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <div style={{...S.kpi,borderColor:SOURCE_COLORS.tl}}><div style={S.kl}>Overall ADR (税抜)</div><div style={{...S.kv,color:SOURCE_COLORS.tl}}>¥{fmtN(tlAdrRpt.overallAdr)}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.tlTotalRevenue}</div><div style={S.kv}>¥{fmtN(tlAdrRpt.totalRev)}</div></div>
-            <div style={S.kpi}><div style={S.kl}>{t.tlTotalRoomNights}</div><div style={S.kv}>{fmtN(tlAdrRpt.totalNights)}</div></div>
+            <div style={S.kpi}><div style={S.kl}>Room-Nights</div><div style={S.kv}>{fmtN(tlAdrRpt.totalRoomNights)}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.tlTotalBookings}</div><div style={S.kv}>{fmtN(tlAdrRpt.totalCount)}</div></div>
           </div>
           <DraggableGrid {...dgProps("tl-adr")}>
