@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.78";
+const APP_VERSION="1.79";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -2435,7 +2435,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const toggleSort=col=>{if(sortCol===col)setSortAsc(!sortAsc);else{setSortCol(col);setSortAsc(false)}};
     const arrow=col=>sortCol===col?(sortAsc?" ▲":" ▼"):"";
     return<div style={S.card}>
-      {(title||exportFn)&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>{title&&<div style={S.ct}>{title}</div>}<div style={{display:"flex",gap:4}}>{exportFn&&exportFn}{data&&data.length>0&&<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>{const xlsData=data.map(r=>{const o={};columns.forEach(c=>{o[c.label]=r[c.key]});return o});expXLS(xlsData,title||"export",title||"export",trFn)}}>📊</button>}</div></div>}
+      {(title||exportFn)&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>{title&&<div style={S.ct} className="rgl-drag">{title}</div>}<div style={{display:"flex",gap:4}}>{exportFn&&exportFn}{data&&data.length>0&&<button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>{const xlsData=data.map(r=>{const o={};columns.forEach(c=>{o[c.label]=r[c.key]});return o});expXLS(xlsData,title||"export",title||"export",trFn)}}>📊</button>}</div></div>}
       <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>
         {columns.map(c=><th key={c.key} style={{...S.th,cursor:"pointer"}} onClick={()=>toggleSort(c.key)}>{c.label}{arrow(c.key)}</th>)}
       </tr></thead><tbody>
@@ -3197,34 +3197,27 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 </BarChart>
               </CC></div>
               {/* Matrix table */}
-              <div key="tl-matrix"><div style={{...S.card,height:"100%",overflow:"auto"}}>
-                <div style={{...S.ct,marginBottom:8}} className="rgl-drag">{t.tlMatrix}</div>
-                <table style={S.tbl}><thead><tr>
-                  <th style={S.th}>{t.property}</th>
-                  <th style={{...S.th,textAlign:"right"}}>OTA ¥</th>
-                  <th style={{...S.th,textAlign:"right"}}>RTA ¥</th>
-                  <th style={{...S.th,textAlign:"right"}}>Direct ¥</th>
-                  <th style={{...S.th,textAlign:"right"}}>Total ¥</th>
-                  <th style={{...S.th,textAlign:"right"}}>Direct %</th>
-                </tr></thead><tbody>
-                  {tlChannelRpt.facList.map(f=><tr key={f.facility}>
-                    <td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.ota)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rta)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right",color:CHANNEL_COLORS.direct}}>¥{fmtN(f.direct)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right",fontWeight:600}}>¥{fmtN(f.total)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right",color:f.directPct>30?CHANNEL_COLORS.direct:TH.text}}>{f.directPct}%</td>
-                  </tr>)}
-                  <tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}>
-                    <td style={S.td}>{t.drGrandTotal}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.ota.rev)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.rta.rev)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.direct.rev)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.totalRev)}</td>
-                    <td style={{...S.td,...S.m,textAlign:"right"}}>{tlChannelRpt.directShare}%</td>
-                  </tr>
-                </tbody></table>
-              </div></div>
+              <div key="tl-matrix"><SortTbl
+                data={tlChannelRpt.facList}
+                columns={[{key:"name",label:t.property},{key:"ota",label:"OTA ¥"},{key:"rta",label:"RTA ¥"},{key:"direct",label:"Direct ¥"},{key:"total",label:"Total ¥"},{key:"directPct",label:"Direct %"}]}
+                renderRow={f=><tr key={f.facility}>
+                  <td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.ota)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rta)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right",color:CHANNEL_COLORS.direct}}>¥{fmtN(f.direct)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right",fontWeight:600}}>¥{fmtN(f.total)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right",color:f.directPct>30?CHANNEL_COLORS.direct:TH.text}}>{f.directPct}%</td>
+                </tr>}
+                grandTotalRow={<tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}>
+                  <td style={S.td}>{t.drGrandTotal}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.ota.rev)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.rta.rev)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.byBucket.direct.rev)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlChannelRpt.totalRev)}</td>
+                  <td style={{...S.td,...S.m,textAlign:"right"}}>{tlChannelRpt.directShare}%</td>
+                </tr>}
+                title={t.tlMatrix}
+              /></div>
             </DraggableGrid>
           </>:null}
         </div>}
@@ -3301,16 +3294,19 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div style={S.kpi}><div style={S.kl}>ADR (税抜)</div><div style={S.kv}>¥{fmtN(tlDailyRpt.cur.adr)}</div></div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
-              <div style={S.card}><div style={S.ct}>By Facility</div>
-                <table style={S.tbl}><thead><tr><th style={S.th}>Facility</th><th style={{...S.th,textAlign:"right"}}>Res</th><th style={{...S.th,textAlign:"right"}}>Revenue (税抜)</th><th style={{...S.th,textAlign:"right"}}>Room-Nights</th></tr></thead>
-                <tbody>{tlDailyRpt.cur.facRows.map(f=><tr key={f.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.roomNights)}</td></tr>)}
-                <tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}><td style={S.td}>{t.drGrandTotal}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlDailyRpt.cur.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.roomNights)}</td></tr>
-                </tbody></table>
-              </div>
-              <div style={S.card}><div style={S.ct}>By Channel (full name)</div>
-                <table style={S.tbl}><thead><tr><th style={S.th}>Channel</th><th style={S.th}>Bucket</th><th style={{...S.th,textAlign:"right"}}>Res</th><th style={{...S.th,textAlign:"right"}}>Revenue (税抜)</th></tr></thead>
-                <tbody>{tlDailyRpt.channelNameRows.map(c=><tr key={c.channel}><td style={{...S.td,whiteSpace:"nowrap"}}>{c.channel}</td><td style={S.td}><span style={S.tag(CHANNEL_COLORS[c.bucket]||"#888")}>{c.bucket}</span></td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(c.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(c.rev)}</td></tr>)}</tbody></table>
-              </div>
+              <SortTbl
+                data={tlDailyRpt.cur.facRows}
+                columns={[{key:"name",label:"Facility"},{key:"count",label:"Res"},{key:"rev",label:"Revenue (税抜)"},{key:"roomNights",label:"Room-Nights"}]}
+                renderRow={f=><tr key={f.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{f.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(f.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(f.roomNights)}</td></tr>}
+                grandTotalRow={<tr style={{fontWeight:700,borderTop:"1px solid "+TH.border}}><td style={S.td}>{t.drGrandTotal}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(tlDailyRpt.cur.rev)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(tlDailyRpt.cur.roomNights)}</td></tr>}
+                title="By Facility"
+              />
+              <SortTbl
+                data={tlDailyRpt.channelNameRows}
+                columns={[{key:"channel",label:"Channel"},{key:"bucket",label:"Bucket"},{key:"count",label:"Res"},{key:"rev",label:"Revenue (税抜)"}]}
+                renderRow={c=><tr key={c.channel}><td style={{...S.td,whiteSpace:"nowrap"}}>{c.channel}</td><td style={S.td}><span style={S.tag(CHANNEL_COLORS[c.bucket]||"#888")}>{c.bucket}</span></td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(c.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(c.rev)}</td></tr>}
+                title="By Channel (full name)"
+              />
             </div>
           </div>:<div style={{textAlign:"center",color:TH.textMuted,padding:40}}>Select a date range.</div>}
         </div>}
@@ -3334,11 +3330,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="tlm-fac"><CC grid title={t.memberByFac} id="tlm-fac" nm="tl_member_fac" h={Math.max(300,tlMemberRpt.facByRate.length*22)} data={tlMemberRpt.facByRate}>
               <BarChart data={tlMemberRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#34d399" radius={[0,4,4,0]} name={t.memberRepeatRate}/></BarChart>
             </CC></div>
-            <div key="tlm-detail"><div style={{...S.card,height:"100%",overflow:"auto"}}>
-              <div style={{...S.ct,marginBottom:8}} className="rgl-drag">{t.memberDetail}</div>
-              <table style={S.tbl}><thead><tr><th style={S.th}>#</th><th style={S.th}>{t.memberName}</th><th style={S.th}>{t.thCountry}</th><th style={S.th}>{t.thSegment}</th><th style={{...S.th,textAlign:"right"}}>{t.reservations}</th><th style={{...S.th,textAlign:"right"}}>¥(税抜)</th></tr></thead>
-              <tbody>{tlMemberRpt.detailRows.map(r=><tr key={r.idx}><td style={S.td}>{r.idx}</td><td style={S.td}>{r.name}</td><td style={S.td}>{tl(r.country)}</td><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(r.bookings)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.rev)}</td></tr>)}</tbody></table>
-            </div></div>
+            <div key="tlm-detail"><SortTbl
+              data={tlMemberRpt.detailRows}
+              columns={[{key:"idx",label:"#"},{key:"name",label:t.memberName},{key:"country",label:t.thCountry},{key:"segment",label:t.thSegment},{key:"bookings",label:t.reservations},{key:"rev",label:"¥(税抜)"}]}
+              renderRow={r=><tr key={r.idx}><td style={S.td}>{r.idx}</td><td style={S.td}>{r.name}</td><td style={S.td}>{tl(r.country)}</td><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(r.bookings)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.rev)}</td></tr>}
+              title={t.memberDetail}
+            /></div>
           </DraggableGrid>
         </div>}
 
@@ -3393,9 +3390,24 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Res</div><div style={S.kv}>{tlCompareRpt.pctChg(tlCompareRpt.a.totalCount,tlCompareRpt.b.totalCount)}</div></div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
-              <div style={S.card}><div style={S.ct}>{t.cmpByCountry}</div><table style={S.tbl}><thead><tr><th style={S.th}>Country</th><th style={{...S.th,textAlign:"right"}}>A</th><th style={{...S.th,textAlign:"right"}}>B</th><th style={{...S.th,textAlign:"right"}}>Δ</th></tr></thead><tbody>{tlCompareRpt.countryRows.slice(0,15).map(r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>)}</tbody></table></div>
-              <div style={S.card}><div style={S.ct}>{t.cmpBySegment}</div><table style={S.tbl}><thead><tr><th style={S.th}>Segment</th><th style={{...S.th,textAlign:"right"}}>A</th><th style={{...S.th,textAlign:"right"}}>B</th><th style={{...S.th,textAlign:"right"}}>Δ</th></tr></thead><tbody>{tlCompareRpt.segRows.map(r=><tr key={r.segment}><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>)}</tbody></table></div>
-              <div style={{...S.card,gridColumn:isMobile?"auto":"span 2"}}><div style={S.ct}>{t.cmpByFacility}</div><table style={S.tbl}><thead><tr><th style={S.th}>Facility</th><th style={{...S.th,textAlign:"right"}}>A Rev</th><th style={{...S.th,textAlign:"right"}}>B Rev</th><th style={{...S.th,textAlign:"right"}}>Δ</th></tr></thead><tbody>{tlCompareRpt.facRows.slice(0,20).map(r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>)}</tbody></table></div>
+              <SortTbl
+                data={tlCompareRpt.countryRows.slice(0,15)}
+                columns={[{key:"country",label:"Country"},{key:"revA",label:"A"},{key:"revB",label:"B"},{key:"revDelta",label:"Δ"}]}
+                renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
+                title={t.cmpByCountry}
+              />
+              <SortTbl
+                data={tlCompareRpt.segRows}
+                columns={[{key:"segment",label:"Segment"},{key:"revA",label:"A"},{key:"revB",label:"B"},{key:"revDelta",label:"Δ"}]}
+                renderRow={r=><tr key={r.segment}><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
+                title={t.cmpBySegment}
+              />
+              <div style={{gridColumn:isMobile?"auto":"span 2"}}><SortTbl
+                data={tlCompareRpt.facRows.slice(0,20)}
+                columns={[{key:"name",label:"Facility"},{key:"revA",label:"A Rev"},{key:"revB",label:"B Rev"},{key:"revDelta",label:"Δ"}]}
+                renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
+                title={t.cmpByFacility}
+              /></div>
             </div>
           </div>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
@@ -3416,7 +3428,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 {tlPaceRpt.paceData.slice(0,6).map((m,i)=><Line key={m.month} type="monotone" data={m.series} dataKey={paceMetric==="rev"?"rev":"count"} stroke={PALETTE[i%PALETTE.length]} name={m.month} strokeWidth={1.5} dot={false}/>)}
               </LineChart>
             </CC></div>
-            <div key="tlp-summary"><div style={{...S.card,height:"100%"}}><div style={{...S.ct,marginBottom:8}} className="rgl-drag">Month Totals</div><table style={S.tbl}><thead><tr><th style={S.th}>Month</th><th style={{...S.th,textAlign:"right"}}>Bookings</th><th style={{...S.th,textAlign:"right"}}>Revenue</th></tr></thead><tbody>{tlPaceRpt.paceData.map(m=><tr key={m.month}><td style={S.td}>{m.month}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(m.total.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(m.total.rev)}</td></tr>)}</tbody></table></div></div>
+            <div key="tlp-summary"><SortTbl
+              data={tlPaceRpt.paceData.map(m=>({month:m.month,count:m.total.count,rev:m.total.rev}))}
+              columns={[{key:"month",label:"Month"},{key:"count",label:"Bookings"},{key:"rev",label:"Revenue"}]}
+              renderRow={m=><tr key={m.month}><td style={S.td}>{m.month}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(m.count)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(m.rev)}</td></tr>}
+              title="Month Totals"
+            /></div>
           </DraggableGrid>
         </div>}
 
@@ -3542,7 +3559,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="tlcn-country"><CC grid title="Cancel Rate by Country" id="tlcn-country" nm="tl_cn_country" data={tlCancelRpt.countryRows}><BarChart data={tlCancelRpt.countryRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={110} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name="Rate %"/></BarChart></CC></div>
             <div key="tlcn-seg"><CC grid title="Cancel Rate by Segment" id="tlcn-seg" nm="tl_cn_seg" data={tlCancelRpt.segRows}><BarChart data={tlCancelRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[4,4,0,0]} name="Rate %"/></BarChart></CC></div>
             <div key="tlcn-fac"><CC grid title="Cancel Rate by Facility" id="tlcn-fac" nm="tl_cn_fac" h={Math.max(300,tlCancelRpt.facByRate.length*22)} data={tlCancelRpt.facByRate}><BarChart data={tlCancelRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name="Rate %"/></BarChart></CC></div>
-            <div key="tlcn-detail"><div style={{...S.card,height:"100%",overflow:"auto"}}><div style={{...S.ct,marginBottom:8}} className="rgl-drag">Facility Detail</div><table style={S.tbl}><thead><tr><th style={S.th}>Facility</th><th style={{...S.th,textAlign:"right"}}>Total</th><th style={{...S.th,textAlign:"right"}}>Cancelled</th><th style={{...S.th,textAlign:"right"}}>Rate</th><th style={{...S.th,textAlign:"right"}}>Lost ¥</th></tr></thead><tbody>{tlCancelRpt.facRows.map(r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(r.total)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(r.cancelled)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{r.rate}%</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.lostRev)}</td></tr>)}</tbody></table></div></div>
+            <div key="tlcn-detail"><SortTbl
+              data={tlCancelRpt.facRows}
+              columns={[{key:"name",label:"Facility"},{key:"total",label:"Total"},{key:"cancelled",label:"Cancelled"},{key:"rate",label:"Rate"},{key:"lostRev",label:"Lost ¥"}]}
+              renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(r.total)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{fmtN(r.cancelled)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>{r.rate}%</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.lostRev)}</td></tr>}
+              title="Facility Detail"
+            /></div>
           </DraggableGrid>
         </div>}
 
