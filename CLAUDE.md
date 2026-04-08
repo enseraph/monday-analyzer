@@ -122,7 +122,7 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.61 (increment by 0.01)
+Current: 1.62 (increment by 0.01)
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 

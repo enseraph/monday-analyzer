@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 
-const APP_VERSION="1.61";
+const APP_VERSION="1.62";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -33,7 +33,7 @@ const DL={
   cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,9],["canc-detail",6,7,6,7]]),
   revpar:mkL([["rp-trend",0,0,12,4],["rp-daily",0,4,12,4],["rp-fac",0,8,6,7],["rp-detail",6,8,6,7]]),
   kvk:mkL([["kk-mk-kt",0,0,6,4],["kk-mk-ks",6,0,6,4],["kk-mk-mo",0,4,12,4],["kk-sg-rg",0,8,6,3],["kk-los-co",0,11,6,4],["kk-los-sr",6,11,6,3],["kk-dw-ci",0,15,6,4],["kk-dw-co",6,15,6,4],["kk-dev",0,19,6,3],["kk-rev-sr",0,22,6,3],["kk-rev-co",6,22,6,4],["kk-rm-sg",0,26,6,4],["kk-rm-rg",6,26,6,4],["kk-rk-rg",0,30,6,3]]),
-  "tl-channel":mkL([["tl-mix",0,0,12,4],["tl-direct-trend",0,4,12,4],["tl-fac-stack",0,8,12,7],["tl-fac-direct",0,15,6,5],["tl-canc-channel",6,15,6,4],["tl-dow",0,19,12,4],["tl-matrix",0,23,12,8]]),
+  "tl-channel":mkL([["tl-mix",0,0,12,4],["tl-direct-trend",0,4,12,4],["tl-direct-trend-mo",0,8,12,4],["tl-fac-stack",0,12,12,7],["tl-fac-direct",0,19,6,5],["tl-canc-channel",6,19,6,4],["tl-dow",0,23,12,4],["tl-matrix",0,27,12,8]]),
 };
 const RGL_PROPS={breakpoints:{lg:900,sm:0},cols:{lg:12,sm:1},rowHeight:80,draggableHandle:".rgl-drag",margin:[10,10],containerPadding:[0,0],resizeHandles:["se","s","e"],compactType:"vertical",preventCollision:false};
 
@@ -77,7 +77,7 @@ const T = {
     dropHere:"Drop CSV files here or click to browse",dropSub:"Supports multiple files • CP932 / Shift-JIS / UTF-8 • YYB format",
     requiredCols:"Required columns",processing:"Processing files…",
     loadedFrom:(n,f)=>`${n} reservations from ${f} file${f!==1?"s":""}`,showing:n=>`Showing ${n} filtered`,
-    addFiles:"+ Add Files",clearAll:"Clear All",reset:"Reset",
+    addFiles:"+ Add Files",clearAll:"Clear All",reset:"Reset",refresh:"Refresh",refreshing:"Loading...",
     region:"Region",country:"Country",segment:"Segment",property:"Property",
     dateType:"Date Type",from:"From",to:"To",
     all:"All",allCountries:"All countries",allSegments:"All segments",allProperties:"All properties",
@@ -200,7 +200,7 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     dropHere:"CSVファイルをドロップまたはクリックして選択",dropSub:"複数ファイル対応 • CP932 / Shift-JIS / UTF-8 • YYB形式",
     requiredCols:"必須カラム",processing:"処理中…",
     loadedFrom:(n,f)=>`${f}ファイルから${n}件読込`,showing:n=>`フィルター後: ${n}件`,
-    addFiles:"+ 追加",clearAll:"全消去",reset:"リセット",
+    addFiles:"+ 追加",clearAll:"全消去",reset:"リセット",refresh:"更新",refreshing:"読込中...",
     region:"エリア",country:"国・地域",segment:"旅行者タイプ",property:"施設",
     dateType:"日付種別",from:"開始日",to:"終了日",
     all:"全て",allCountries:"全ての国",allSegments:"全タイプ",allProperties:"全施設",
@@ -596,10 +596,10 @@ const[drSingle,setDrSingle]=useState("");
   const[fChannelBucket,setFChannelBucket]=useState([]); // ["ota","rta","direct"] subset
   const[tlGroupBy,setTlGroupBy]=useState("day"); // "day"|"month"
   const[tlMetric,setTlMetric]=useState("revenue"); // "revenue"|"bookings"
+  const[lastFetchTs,setLastFetchTs]=useState(null);
 
-  // ─── Auto-fetch from Google Sheets on mount ───
-  useEffect(()=>{
-    if(allData.length>0)return; // skip if user already uploaded files
+  // ─── Reusable YYB fetch ───
+  const fetchYYB=useCallback((useCache=true)=>{
     setSheetStatus("loading");
     const CACHE_KEY="monday_csv_cache",CACHE_TTL=5*60*1000;
     const parseAndSet=(text,fromCache)=>{
@@ -615,16 +615,15 @@ const[drSingle,setDrSingle]=useState("");
       setSheetStatus("done");
       return true;
     };
-    // Try cache first for instant warm starts
-    try{const c=localStorage.getItem(CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text,true))return}}catch{}
+    if(useCache){try{const c=localStorage.getItem(CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text,true))return}}catch{}}
     fetch(GSHEET_CSV_URL)
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
       .then(text=>{if(parseAndSet(text,false)){try{localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch{}}})
       .catch(()=>setSheetStatus("error"));
-  },[]); // eslint-disable-line react-hooks/exhaustive-deps
+  },[]);
 
-  // ─── Auto-fetch TL Lincoln channel data on mount ───
-  useEffect(()=>{
+  // ─── Reusable TL fetch ───
+  const fetchTL=useCallback((useCache=true)=>{
     setTlStatus("loading");
     const TL_CACHE_KEY="monday_tl_csv_cache",CACHE_TTL=5*60*1000;
     const parseAndSet=(text)=>{
@@ -638,11 +637,26 @@ const[drSingle,setDrSingle]=useState("");
       setTlData(rows);setTlStatus("done");
       return true;
     };
-    try{const c=localStorage.getItem(TL_CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text))return}}catch{}
+    if(useCache){try{const c=localStorage.getItem(TL_CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text))return}}catch{}}
     fetch(TL_GSHEET_CSV_URL)
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
       .then(text=>{if(parseAndSet(text)){try{localStorage.setItem(TL_CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch{}}})
       .catch(()=>setTlStatus("error"));
+  },[]);
+
+  // Manual refresh: clear caches, refetch both, regardless of file uploads
+  const refreshAllData=useCallback(()=>{
+    try{localStorage.removeItem("monday_csv_cache");localStorage.removeItem("monday_tl_csv_cache")}catch{}
+    fetchYYB(false);
+    fetchTL(false);
+    setLastFetchTs(Date.now());
+  },[fetchYYB,fetchTL]);
+
+  // ─── Auto-fetch on mount ───
+  useEffect(()=>{
+    if(allData.length===0)fetchYYB(true);
+    fetchTL(true);
+    setLastFetchTs(Date.now());
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(applyEmailIntlOverride(nd));setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
@@ -1570,6 +1584,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const monthlySeries=Object.values(byMonth).sort((a,b)=>a.date.localeCompare(b.date));
     // Direct share over time
     const directShareSeries=dailySeries.map(d=>{const tot=d.ota+d.rta+d.direct;return{date:d.date,share:tot>0?+((d.direct/tot)*100).toFixed(1):0}});
+    const directShareMonthlySeries=monthlySeries.map(d=>{const tot=d.ota+d.rta+d.direct;return{date:d.date,share:tot>0?+((d.direct/tot)*100).toFixed(1):0}});
 
     // Facility list
     const facList=Object.values(byFac).map(f=>{
@@ -1581,7 +1596,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     return{
       totalRev,totalBookings,totalRoomNights,totalCancellations,directShare,
       byBucket,
-      dailySeries,monthlySeries,directShareSeries,
+      dailySeries,monthlySeries,directShareSeries,directShareMonthlySeries,
       facList,facByDirect,
       cancelRateRows,
       dowRows:DOW.map(d=>byDow[d]),
@@ -1695,7 +1710,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
     <div style={S.inner}>
       {/* Header */}
-      <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button><button style={{...S.btn,background:"rgba(239,68,68,0.1)",borderColor:"#ef4444",color:"#ef4444"}} className="no-print" onClick={()=>window.print()}>{t.downloadPDF}</button></div></div>
+      <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/><button style={{...S.btn,...((sheetStatus==="loading"||tlStatus==="loading")?{opacity:0.6,cursor:"wait"}:{})}} onClick={refreshAllData} disabled={sheetStatus==="loading"||tlStatus==="loading"} title={lastFetchTs?`Last loaded: ${new Date(lastFetchTs).toLocaleTimeString()}`:""}>{(sheetStatus==="loading"||tlStatus==="loading")?"⟳ "+t.refreshing:"⟳ "+t.refresh}</button><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button><button style={{...S.btn,background:"rgba(239,68,68,0.1)",borderColor:"#ef4444",color:"#ef4444"}} className="no-print" onClick={()=>window.print()}>{t.downloadPDF}</button></div></div>
         {fL.length>0&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>{fL.map((f,i)=><span key={i} style={{fontSize:10,background:TH.input,padding:"3px 8px",borderRadius:4,color:TH.textMuted}}>{f.name} ({fmtN(f.rows)}) <span style={{color:"#4ea8de"}}>{f.encoding}</span></span>)}<span style={{fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.dataCoverage}</span></div>}
         {errs.length>0&&<div style={{marginTop:8}}>{errs.map((e,i)=><div key={i} style={{fontSize:11,color:"#ef4444"}}>⚠ {e}</div>)}</div>}
       </div>
@@ -2288,14 +2303,24 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                   <Bar dataKey={tlMetric==="revenue"?"ota":"otaB"} stackId="a" fill={CHANNEL_COLORS.ota} name={t.tlOTA}/>
                 </BarChart>
               </CC></div>
-              {/* Direct share trend */}
-              <div key="tl-direct-trend"><CC grid title={t.tlDirectShareTrend} id="tl-direct-trend" nm="tl_direct_trend" data={tlChannelRpt.directShareSeries}>
+              {/* Direct share trend — daily */}
+              <div key="tl-direct-trend"><CC grid title={t.tlDirectShareTrend+" — "+t.tlGroupByDay} id="tl-direct-trend" nm="tl_direct_trend" data={tlChannelRpt.directShareSeries}>
                 <LineChart data={tlChannelRpt.directShareSeries}>
                   <CartesianGrid {...gl}/>
                   <XAxis dataKey="date" tick={tks}/>
                   <YAxis tick={tk} tickFormatter={v=>v+"%"} domain={[0,100]}/>
                   <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
                   <Line type="monotone" dataKey="share" stroke={CHANNEL_COLORS.direct} strokeWidth={2} dot={{fill:CHANNEL_COLORS.direct,r:3}} name={t.tlDirectShare}/>
+                </LineChart>
+              </CC></div>
+              {/* Direct share trend — monthly */}
+              <div key="tl-direct-trend-mo"><CC grid title={t.tlDirectShareTrend+" — "+t.tlGroupByMonth} id="tl-direct-trend-mo" nm="tl_direct_trend_mo" data={tlChannelRpt.directShareMonthlySeries}>
+                <LineChart data={tlChannelRpt.directShareMonthlySeries}>
+                  <CartesianGrid {...gl}/>
+                  <XAxis dataKey="date" tick={tks}/>
+                  <YAxis tick={tk} tickFormatter={v=>v+"%"} domain={[0,100]}/>
+                  <Tooltip content={<CT formatter={v=>v+"%"}/>}/>
+                  <Line type="monotone" dataKey="share" stroke={CHANNEL_COLORS.direct} strokeWidth={2.5} dot={{fill:CHANNEL_COLORS.direct,r:4}} name={t.tlDirectShare}/>
                 </LineChart>
               </CC></div>
               {/* Facility × Channel stacked horizontal */}
