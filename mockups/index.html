@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MONday Analyzer — Tab Layout Mockups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    background: #080e1a;
+    color: #f0ece4;
+    min-height: 100vh;
+  }
+  .mockup-switcher {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #0f1a30;
+    border-bottom: 2px solid #c9a84c;
+    padding: 10px 20px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  .mockup-switcher h2 {
+    font-size: 14px;
+    color: #c9a84c;
+    margin-right: 20px;
+    letter-spacing: 0.5px;
+  }
+  .switcher-btn {
+    padding: 6px 14px;
+    background: #142444;
+    border: 1px solid #1e3150;
+    color: #c8c3b8;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .switcher-btn:hover { border-color: #c9a84c; color: #c9a84c; }
+  .switcher-btn.active {
+    background: rgba(201,168,76,0.15);
+    border-color: #c9a84c;
+    color: #c9a84c;
+  }
+  .note {
+    margin-left: auto;
+    font-size: 10px;
+    color: #7a8094;
+    font-style: italic;
+  }
+  .mockup-container {
+    margin-top: 60px;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+    position: relative;
+  }
+  .mockup { display: none; height: 100%; }
+  .mockup.active { display: block; }
+
+  /* Shared styling — mimics the real app */
+  .header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #1e3150;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f0ece4;
+  }
+  .header h1 span { color: #c9a84c; }
+  .header .sub {
+    font-size: 11px;
+    color: #7a8094;
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .source-banner {
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.3);
+    font-size: 10px;
+    color: #c9a84c;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 24px;
+  }
+  .source-banner.tl {
+    background: rgba(94,234,212,0.08);
+    border-color: rgba(94,234,212,0.3);
+    color: #5eead4;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #c9a84c;
+  }
+  .dot.tl { background: #5eead4; }
+  .filter-bar {
+    margin: 12px 24px;
+    padding: 12px;
+    background: #0f1a30;
+    border: 1px solid #1e3150;
+    border-radius: 8px;
+    font-size: 11px;
+    color: #7a8094;
+  }
+  .chart-area {
+    margin: 12px 24px;
+    padding: 30px;
+    background: #0c1628;
+    border: 1px solid #1e3150;
+    border-radius: 8px;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a5568;
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  /* === OPTION A: Sidebar === */
+  #mockup-a { display: none; }
+  #mockup-a.active { display: flex; }
+  .sidebar {
+    width: 200px;
+    background: #0a1124;
+    border-right: 1px solid #1e3150;
+    overflow-y: auto;
+    flex-shrink: 0;
+    transition: width 0.2s;
+  }
+  .sidebar.collapsed { width: 48px; }
+  .sidebar-header {
+    padding: 16px 14px;
+    border-bottom: 1px solid #1e3150;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .sidebar-header .logo {
+    font-size: 14px;
+    font-weight: 700;
+    color: #c9a84c;
+    white-space: nowrap;
+  }
+  .sidebar.collapsed .sidebar-header .logo { display: none; }
+  .sidebar-section {
+    padding: 12px 0;
+    border-bottom: 1px solid #1e3150;
+  }
+  .sidebar-section-label {
+    padding: 4px 14px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #c9a84c;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .sidebar-section.tl .sidebar-section-label { color: #5eead4; }
+  .sidebar.collapsed .sidebar-section-label { display: none; }
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    font-size: 12px;
+    color: #c8c3b8;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 0.1s;
+    white-space: nowrap;
+  }
+  .sidebar-item:hover {
+    background: rgba(255,255,255,0.03);
+  }
+  .sidebar-item.active {
+    background: rgba(201,168,76,0.1);
+    color: #c9a84c;
+    border-left-color: #c9a84c;
+  }
+  .sidebar-section.tl .sidebar-item.active {
+    background: rgba(94,234,212,0.1);
+    color: #5eead4;
+    border-left-color: #5eead4;
+  }
+  .sidebar-item .icon { width: 16px; text-align: center; flex-shrink: 0; }
+  .sidebar.collapsed .sidebar-item .label { display: none; }
+  .sidebar.collapsed .sidebar-item {
+    padding: 10px 0;
+    justify-content: center;
+  }
+  .sidebar.collapsed .sidebar-section-label::before {
+    content: "·";
+    display: block;
+    text-align: center;
+    color: #1e3150;
+    font-size: 16px;
+    padding: 4px 0;
+  }
+  .main-content {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* === OPTION B: Two-row === */
+  .two-row-strip {
+    border-bottom: 1px solid #1e3150;
+  }
+  .tab-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #1e3150;
+    padding: 0 12px;
+    overflow-x: auto;
+  }
+  .tab-row:last-child { border-bottom: none; }
+  .tab-row .section-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #c9a84c;
+    letter-spacing: 1.5px;
+    padding: 10px 14px 10px 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border-right: 1px solid #1e3150;
+    margin-right: 8px;
+  }
+  .tab-row.tl .section-label { color: #5eead4; }
+  .tab-btn {
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #7a8094;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.1s;
+  }
+  .tab-btn:hover { color: #c8c3b8; }
+  .tab-btn.active {
+    color: #c9a84c;
+    border-bottom-color: #c9a84c;
+  }
+  .tab-row.tl .tab-btn.active {
+    color: #5eead4;
+    border-bottom-color: #5eead4;
+  }
+
+  /* === OPTION D: Command palette === */
+  .compact-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 24px;
+    border-bottom: 1px solid #1e3150;
+    gap: 12px;
+  }
+  .compact-header h1 { font-size: 18px; }
+  .cmdk-hint {
+    padding: 6px 12px;
+    background: #142444;
+    border: 1px solid #1e3150;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #7a8094;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+  }
+  .cmdk-hint kbd {
+    background: #0a1124;
+    border: 1px solid #2a3a5a;
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: #c8c3b8;
+    font-size: 10px;
+  }
+  .breadcrumb {
+    font-size: 12px;
+    color: #7a8094;
+    padding: 8px 24px;
+    border-bottom: 1px solid #1e3150;
+  }
+  .breadcrumb .sep { margin: 0 8px; color: #4a5568; }
+  .breadcrumb .current { color: #c9a84c; font-weight: 600; }
+
+  /* Command palette modal */
+  .cmdk-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 2000;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 100px;
+  }
+  .cmdk-overlay.open { display: flex; }
+  .cmdk-modal {
+    width: 480px;
+    max-height: 480px;
+    background: #0f1a30;
+    border: 1px solid #c9a84c;
+    border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .cmdk-search {
+    padding: 14px 16px;
+    border-bottom: 1px solid #1e3150;
+    background: transparent;
+    color: #f0ece4;
+    font-size: 14px;
+    border: none;
+    border-bottom: 1px solid #1e3150;
+    font-family: inherit;
+    outline: none;
+  }
+  .cmdk-list {
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .cmdk-section {
+    padding: 6px 16px 4px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #c9a84c;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .cmdk-section.tl { color: #5eead4; }
+  .cmdk-item {
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #c8c3b8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .cmdk-item:hover, .cmdk-item.selected {
+    background: rgba(201,168,76,0.1);
+    color: #c9a84c;
+  }
+  .cmdk-item .kbd-hint {
+    margin-left: auto;
+    font-size: 10px;
+    color: #4a5568;
+    font-family: 'JetBrains Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-switcher">
+  <h2>Tab Layout Mockups</h2>
+  <button class="switcher-btn active" onclick="show('a')">A: Sidebar</button>
+  <button class="switcher-btn" onclick="show('b')">B: Two-row strip</button>
+  <button class="switcher-btn" onclick="show('d')">D: Command palette (⌘K)</button>
+  <span class="note">Click tabs to try switching. Option A: click ☰ to collapse. Option D: press ⌘K / Ctrl+K.</span>
+</div>
+
+<div class="mockup-container">
+
+<!-- ========== OPTION A: SIDEBAR ========== -->
+<div id="mockup-a" class="mockup active">
+  <div class="sidebar" id="sidebarA">
+    <div class="sidebar-header" onclick="toggleSidebar()">
+      <span style="font-size:16px;">☰</span>
+      <span class="logo">MONday</span>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">YYB</div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📋</span><span class="label">Daily Report</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">⇆</span><span class="label">Compare</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">⏱</span><span class="label">Pace</span></div>
+      <div class="sidebar-item active" onclick="selectTabA(event)"><span class="icon">📊</span><span class="label">Overview</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">⛩</span><span class="label">Kanto vs Kansai</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🌏</span><span class="label">Markets</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">👥</span><span class="label">Segments</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📅</span><span class="label">Booking Patterns</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🎫</span><span class="label">Member</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🌙</span><span class="label">LOS</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">¥</span><span class="label">Revenue</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">💴</span><span class="label">ADR</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">✖</span><span class="label">Cancellations</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🛏</span><span class="label">Room Types</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🏨</span><span class="label">Facilities</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📄</span><span class="label">Raw Data</span></div>
+    </div>
+    <div class="sidebar-section tl">
+      <div class="sidebar-section-label">TL</div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📊</span><span class="label">Channel Mix</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📋</span><span class="label">Daily Report</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">¥</span><span class="label">Revenue</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">👥</span><span class="label">Segments</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🎫</span><span class="label">Member</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📊</span><span class="label">Overview</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🌙</span><span class="label">LOS</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📅</span><span class="label">Booking Patterns</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">⇆</span><span class="label">Compare</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">⏱</span><span class="label">Pace</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">💴</span><span class="label">ADR</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🏨</span><span class="label">Facilities</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">⛩</span><span class="label">Kanto vs Kansai</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">🌏</span><span class="label">Markets</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">✖</span><span class="label">Cancellations</span></div>
+      <div class="sidebar-item" onclick="selectTabA(event)"><span class="icon">📄</span><span class="label">Raw Data</span></div>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="header">
+      <h1>MONday <span>Reservation Analyzer</span></h1>
+      <div class="sub">54,586 reservations • Showing 54,586 filtered • Last loaded: 4/9/2026 10:15 AM</div>
+    </div>
+    <div class="source-banner"><span class="dot"></span> DATA SOURCE: YYB (reservation-level)</div>
+    <div class="filter-bar">[Filter bar: Region · Segment · Country · Facility · Brand · Hotel Type · Status · Date range · etc.]</div>
+    <div class="chart-area">↑ Click the ☰ icon to collapse the sidebar to an icon rail. Click any tab to simulate switching.</div>
+  </div>
+</div>
+
+<!-- ========== OPTION B: TWO-ROW STRIP ========== -->
+<div id="mockup-b" class="mockup">
+  <div class="header">
+    <h1>MONday <span>Reservation Analyzer</span></h1>
+    <div class="sub">54,586 reservations • Showing 54,586 filtered</div>
+  </div>
+  <div class="two-row-strip">
+    <div class="tab-row">
+      <span class="section-label">YYB</span>
+      <button class="tab-btn" onclick="selectTabB(event)">Daily</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Compare</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Pace</button>
+      <button class="tab-btn active" onclick="selectTabB(event)">Overview</button>
+      <button class="tab-btn" onclick="selectTabB(event)">KvK</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Markets</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Segments</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Booking</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Member</button>
+      <button class="tab-btn" onclick="selectTabB(event)">LOS</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Revenue</button>
+      <button class="tab-btn" onclick="selectTabB(event)">ADR</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Cancel</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Rooms</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Facilities</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Raw Data</button>
+    </div>
+    <div class="tab-row tl">
+      <span class="section-label">TL</span>
+      <button class="tab-btn" onclick="selectTabB(event)">Channel</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Daily</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Revenue</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Segments</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Member</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Overview</button>
+      <button class="tab-btn" onclick="selectTabB(event)">LOS</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Booking</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Compare</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Pace</button>
+      <button class="tab-btn" onclick="selectTabB(event)">ADR</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Facilities</button>
+      <button class="tab-btn" onclick="selectTabB(event)">KvK</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Markets</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Cancel</button>
+      <button class="tab-btn" onclick="selectTabB(event)">Raw Data</button>
+    </div>
+  </div>
+  <div class="source-banner"><span class="dot"></span> DATA SOURCE: YYB (reservation-level)</div>
+  <div class="filter-bar">[Filter bar]</div>
+  <div class="chart-area">Tab rows scroll horizontally if there are too many tabs. YYB and TL clearly separated.</div>
+</div>
+
+<!-- ========== OPTION D: COMMAND PALETTE ========== -->
+<div id="mockup-d" class="mockup">
+  <div class="compact-header">
+    <h1 style="font-size:18px;">MONday <span style="color:#c9a84c;">Analyzer</span></h1>
+    <div class="cmdk-hint" onclick="openCmdK()">
+      Switch tab <kbd>⌘K</kbd>
+    </div>
+    <div class="sub" style="margin-left:auto; font-size:10px;">v1.83 · 54,586 reservations</div>
+  </div>
+  <div class="breadcrumb">
+    <span>YYB</span><span class="sep">›</span><span class="current">● Overview</span>
+  </div>
+  <div class="source-banner"><span class="dot"></span> DATA SOURCE: YYB (reservation-level)</div>
+  <div class="filter-bar">[Filter bar]</div>
+  <div class="chart-area">
+    Press ⌘K (or Ctrl+K) to open the command palette. Type to filter tabs. Max compact = max chart space.
+  </div>
+</div>
+
+</div><!-- /mockup-container -->
+
+<!-- Command palette modal (shared, used by Option D) -->
+<div class="cmdk-overlay" id="cmdkOverlay" onclick="closeCmdKOnBg(event)">
+  <div class="cmdk-modal">
+    <input class="cmdk-search" id="cmdkSearch" placeholder="Search tabs..." oninput="filterCmdK()" />
+    <div class="cmdk-list" id="cmdkList">
+      <!-- populated by JS -->
+    </div>
+  </div>
+</div>
+
+<script>
+// ──────── Mockup switcher ────────
+function show(which) {
+  document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
+  document.querySelectorAll('.switcher-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('mockup-' + which).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ──────── Option A: Sidebar ────────
+function toggleSidebar() {
+  document.getElementById('sidebarA').classList.toggle('collapsed');
+}
+function selectTabA(e) {
+  e.stopPropagation();
+  document.querySelectorAll('#mockup-a .sidebar-item').forEach(i => i.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+}
+
+// ──────── Option B: Two-row ────────
+function selectTabB(e) {
+  document.querySelectorAll('#mockup-b .tab-btn').forEach(b => b.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+}
+
+// ──────── Option D: Command palette ────────
+const TABS_DATA = {
+  YYB: ['Daily Report','Compare','Pace','Overview','Kanto vs Kansai','Markets','Segments','Booking Patterns','Member','LOS','Revenue','ADR','Cancellations','Room Types','Facilities','Raw Data'],
+  TL: ['Channel Mix','Daily Report','Revenue','Segments','Member','Overview','LOS','Booking Patterns','Compare','Pace','ADR','Facilities','Kanto vs Kansai','Markets','Cancellations','Raw Data']
+};
+let cmdkSelectedIdx = 3;
+function renderCmdK(filter='') {
+  const list = document.getElementById('cmdkList');
+  list.innerHTML = '';
+  let idx = 0;
+  ['YYB','TL'].forEach(section => {
+    const items = TABS_DATA[section].filter(t => t.toLowerCase().includes(filter.toLowerCase()));
+    if (!items.length) return;
+    const h = document.createElement('div');
+    h.className = 'cmdk-section' + (section === 'TL' ? ' tl' : '');
+    h.textContent = section;
+    list.appendChild(h);
+    items.forEach(label => {
+      const el = document.createElement('div');
+      el.className = 'cmdk-item' + (idx === cmdkSelectedIdx ? ' selected' : '');
+      el.innerHTML = '<span>' + label + '</span>' + (idx === cmdkSelectedIdx ? '<span class="kbd-hint">↵ to open</span>' : '');
+      el.onclick = () => {
+        closeCmdK();
+        // Update breadcrumb on option D
+        const bc = document.querySelector('#mockup-d .breadcrumb');
+        if (bc) bc.innerHTML = '<span>' + section + '</span><span class="sep">›</span><span class="current">● ' + label + '</span>';
+      };
+      list.appendChild(el);
+      idx++;
+    });
+  });
+}
+function openCmdK() {
+  document.getElementById('cmdkOverlay').classList.add('open');
+  cmdkSelectedIdx = 0;
+  renderCmdK('');
+  setTimeout(() => document.getElementById('cmdkSearch').focus(), 50);
+}
+function closeCmdK() {
+  document.getElementById('cmdkOverlay').classList.remove('open');
+  document.getElementById('cmdkSearch').value = '';
+}
+function closeCmdKOnBg(e) {
+  if (e.target.id === 'cmdkOverlay') closeCmdK();
+}
+function filterCmdK() {
+  cmdkSelectedIdx = 0;
+  renderCmdK(document.getElementById('cmdkSearch').value);
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    if (document.getElementById('cmdkOverlay').classList.contains('open')) {
+      closeCmdK();
+    } else {
+      openCmdK();
+    }
+  }
+  if (e.key === 'Escape') closeCmdK();
+});
+</script>
+</body>
+</html>

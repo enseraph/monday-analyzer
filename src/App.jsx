@@ -6,7 +6,7 @@ import { toPng } from "html-to-image";
 // Web worker for TL parse — offloads Papa.parse + parseTLRow + applyTLSameDayCancel from main thread
 import TlWorker from "./tlWorker.js?worker";
 
-const APP_VERSION="1.83";
+const APP_VERSION="1.84";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -778,6 +778,8 @@ const[segDetailed,setSegDetailed]=useState(false);
 const[fDOW,setFDOW]=useState(INITIAL_URL_STATE.fDOW||[]);
   const[tab,setTab]=useState(INITIAL_URL_STATE.tab||"overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tlSort,setTlSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const[tlPage,setTlPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
+  const[sidebarCollapsed,setSidebarCollapsed]=useState(()=>{try{return localStorage.getItem("rgl_sidebar_collapsed")==="1"}catch{return false}});
+  useEffect(()=>{try{localStorage.setItem("rgl_sidebar_collapsed",sidebarCollapsed?"1":"0")}catch{}},[sidebarCollapsed]);
 const[presets,setPresets]=useState(()=>{try{return JSON.parse(localStorage.getItem("monday_presets"))||[]}catch{return[]}});
 const[presetMsg,setPresetMsg]=useState("");
 const[activePreset,setActivePreset]=useState(null);
@@ -2614,21 +2616,37 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
 
-  const TABS=[{id:"daily",l:t.dailyReport,src:"yyb"},{id:"compare",l:t.compare,src:"yyb"},{id:"pace",l:t.pace,src:"yyb"},{id:"overview",l:t.overview,src:"yyb"},{id:"kvk",l:t.kvk,src:"yyb"},{id:"markets",l:t.sourceMarkets,src:"yyb"},{id:"segments",l:t.segments,src:"yyb"},{id:"booking",l:t.bookingPatterns,src:"yyb"},{id:"member",l:t.memberTab,src:"yyb"},{id:"los",l:t.losTab,src:"yyb"},{id:"revenue",l:t.revenue,src:"yyb"},{id:"cancellations",l:t.cancellations,src:"yyb"},{id:"rooms",l:t.roomTypes,src:"yyb"},{id:"adr",l:t.adrTab,src:"yyb"},{id:"facilities",l:t.facilities,src:"yyb"},{id:"data",l:t.rawData,src:"yyb"},
-    {id:"tl-channel",l:t.tlChannelMix,src:"tl"},
-    {id:"tl-daily",l:t.tlDailyReport,src:"tl"},
-    {id:"tl-revenue",l:t.tlRevenueTab,src:"tl"},
-    {id:"tl-segments",l:t.tlSegmentsTab,src:"tl"},
-    {id:"tl-member",l:t.tlMemberTab,src:"tl"},
-    {id:"tl-overview",l:t.tlOverviewTab,src:"tl"},
-    {id:"tl-los",l:t.tlLosTab,src:"tl"},
-    {id:"tl-booking",l:t.tlBookingTab,src:"tl"},
-    {id:"tl-compare",l:t.tlCompareTab,src:"tl"},
-    {id:"tl-pace",l:t.tlPaceTab,src:"tl"},
-    {id:"tl-adr",l:t.tlAdrTab,src:"tl"},
-    {id:"tl-facilities",l:t.tlFacilitiesTab,src:"tl"},
-    {id:"tl-kvk",l:t.tlKvkTab,src:"tl"},
-    {id:"tl-markets",l:t.tlMarketsTab,src:"tl"},
+  const TABS=[
+    {id:"daily",l:t.dailyReport,src:"yyb",i:"📋"},
+    {id:"compare",l:t.compare,src:"yyb",i:"⇆"},
+    {id:"pace",l:t.pace,src:"yyb",i:"⏱"},
+    {id:"overview",l:t.overview,src:"yyb",i:"📊"},
+    {id:"kvk",l:t.kvk,src:"yyb",i:"⛩"},
+    {id:"markets",l:t.sourceMarkets,src:"yyb",i:"🌏"},
+    {id:"segments",l:t.segments,src:"yyb",i:"👥"},
+    {id:"booking",l:t.bookingPatterns,src:"yyb",i:"📅"},
+    {id:"member",l:t.memberTab,src:"yyb",i:"🎫"},
+    {id:"los",l:t.losTab,src:"yyb",i:"🌙"},
+    {id:"revenue",l:t.revenue,src:"yyb",i:"¥"},
+    {id:"cancellations",l:t.cancellations,src:"yyb",i:"✖"},
+    {id:"rooms",l:t.roomTypes,src:"yyb",i:"🛏"},
+    {id:"adr",l:t.adrTab,src:"yyb",i:"💴"},
+    {id:"facilities",l:t.facilities,src:"yyb",i:"🏨"},
+    {id:"data",l:t.rawData,src:"yyb",i:"📄"},
+    {id:"tl-channel",l:t.tlChannelMix,src:"tl",i:"📊"},
+    {id:"tl-daily",l:t.tlDailyReport,src:"tl",i:"📋"},
+    {id:"tl-revenue",l:t.tlRevenueTab,src:"tl",i:"¥"},
+    {id:"tl-segments",l:t.tlSegmentsTab,src:"tl",i:"👥"},
+    {id:"tl-member",l:t.tlMemberTab,src:"tl",i:"🎫"},
+    {id:"tl-overview",l:t.tlOverviewTab,src:"tl",i:"📈"},
+    {id:"tl-los",l:t.tlLosTab,src:"tl",i:"🌙"},
+    {id:"tl-booking",l:t.tlBookingTab,src:"tl",i:"📅"},
+    {id:"tl-compare",l:t.tlCompareTab,src:"tl",i:"⇆"},
+    {id:"tl-pace",l:t.tlPaceTab,src:"tl",i:"⏱"},
+    {id:"tl-adr",l:t.tlAdrTab,src:"tl",i:"💴"},
+    {id:"tl-facilities",l:t.tlFacilitiesTab,src:"tl",i:"🏨"},
+    {id:"tl-kvk",l:t.tlKvkTab,src:"tl",i:"⛩"},
+    {id:"tl-markets",l:t.tlMarketsTab,src:"tl",i:"🌏"},
     {id:"tl-cancellations",l:t.tlCancellationsTab,src:"tl"},
     {id:"tl-data",l:t.tlDataTab,src:"tl"},
   ];
@@ -2659,6 +2677,31 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   return(
     <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <div style={{display:"flex",minHeight:"100vh"}}>
+      {/* ─── SIDEBAR ─── */}
+      <div className="no-print" style={{width:sidebarCollapsed?48:200,flexShrink:0,background:TH.sidebarBg||"#0a1124",borderRight:"1px solid "+TH.border,overflowY:"auto",overflowX:"hidden",position:isMobile?"fixed":"sticky",top:0,height:"100vh",zIndex:isMobile?200:10,transition:"width 0.2s",display:isMobile&&sidebarCollapsed?"none":"block"}}>
+        <div onClick={()=>setSidebarCollapsed(c=>!c)} style={{padding:"16px 14px",borderBottom:"1px solid "+TH.border,display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}} title={sidebarCollapsed?"Expand":"Collapse"}>
+          <span style={{fontSize:16,color:TH.textStrong}}>☰</span>
+          {!sidebarCollapsed&&<span style={{fontSize:14,fontWeight:700,color:TH.gold,whiteSpace:"nowrap"}}>MONday</span>}
+        </div>
+        {[["yyb",SOURCE_COLORS.yyb,"YYB"],["tl",SOURCE_COLORS.tl,"TL"]].map(([src,color,label])=>(
+          <div key={src} style={{padding:"12px 0",borderBottom:"1px solid "+TH.border}}>
+            {!sidebarCollapsed&&<div style={{padding:"4px 14px 8px",fontSize:9,fontWeight:700,color,letterSpacing:1.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</div>}
+            {sidebarCollapsed&&<div style={{textAlign:"center",color:"#1e3150",fontSize:16,padding:"4px 0"}}>·</div>}
+            {TABS.filter(tb=>tb.src===src).map(tb=>{
+              const active=tab===tb.id;
+              return<div key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0);setTlPage(0);if(isMobile)setSidebarCollapsed(true)}} title={sidebarCollapsed?tb.l:undefined} style={{display:"flex",alignItems:"center",gap:10,padding:sidebarCollapsed?"10px 0":"7px 14px",fontSize:12,color:active?color:TH.text,cursor:"pointer",borderLeft:"2px solid "+(active?color:"transparent"),background:active?(src==="yyb"?"rgba(201,168,76,0.1)":"rgba(94,234,212,0.1)"):"transparent",whiteSpace:"nowrap",justifyContent:sidebarCollapsed?"center":"flex-start",transition:"background 0.1s"}} onMouseEnter={e=>{if(!active)e.currentTarget.style.background="rgba(255,255,255,0.03)"}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent"}}>
+                <span style={{width:16,textAlign:"center",flexShrink:0,fontSize:12}}>{tb.i}</span>
+                {!sidebarCollapsed&&<span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{tb.l}</span>}
+              </div>;
+            })}
+          </div>
+        ))}
+      </div>
+      {/* Mobile sidebar toggle */}
+      {isMobile&&sidebarCollapsed&&<button className="no-print" onClick={()=>setSidebarCollapsed(false)} style={{position:"fixed",top:8,left:8,zIndex:199,background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:6,padding:"6px 10px",fontSize:16,color:TH.gold,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.5)"}}>☰</button>}
+      {/* ─── MAIN CONTENT ─── */}
+      <div style={{flex:1,minWidth:0}}>
     <div style={S.inner}>
       {/* Header */}
       <div style={S.hdr}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}><div><h1 style={S.h1}>{t.title} <span style={S.gold}>{t.titleAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1><div style={S.sub}>{t.loadedFrom(fmtN(allData.length),fL.length)} • {t.showing(fmtN(filtered.length))}{lastFetchTs?" • Last loaded: "+new Date(lastFetchTs).toLocaleString():""}</div></div><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/><button style={{...S.btn,...((sheetStatus==="loading"||tlStatus==="loading")?{opacity:0.6,cursor:"wait"}:{})}} onClick={refreshAllData} disabled={sheetStatus==="loading"||tlStatus==="loading"} title={lastFetchTs?`Last loaded: ${new Date(lastFetchTs).toLocaleTimeString()}`:""}>{(sheetStatus==="loading"||tlStatus==="loading")?"⟳ "+t.refreshing:"⟳ "+t.refresh}</button><label style={S.bg}><input type="file" accept=".csv" multiple style={{display:"none"}} onChange={handleFiles}/>{t.addFiles}</label><button style={S.btn} onClick={clearAll}>{t.clearAll}</button><button style={{...S.btn,background:"rgba(239,68,68,0.1)",borderColor:"#ef4444",color:"#ef4444"}} className="no-print" onClick={()=>window.print()}>{t.downloadPDF}</button></div></div>
@@ -2708,14 +2751,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         <div style={S.kpi}><div style={S.kl}>{t.avgLeadTime}</div><div style={S.kv}>{agg.avgLead.toFixed(0)}{t.du}</div></div>
         <div style={S.kpi}><div style={S.kl}>{t.intlPct}</div><div style={S.kv}>{agg.intlPct.toFixed(1)}%</div></div>
       </div>}
-      {/* Tabs */}
-      <div style={{display:"flex",gap:2,borderBottom:"1px solid "+TH.border,marginBottom:8,overflowX:"auto",alignItems:"flex-end"}}>
-        <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:SOURCE_COLORS.yyb,padding:"10px 8px 10px 4px",textTransform:"uppercase",userSelect:"none",alignSelf:"center"}}>YYB</span>
-        {TABS.filter(tb=>tb.src==="yyb").map(tb=><button key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0)}} style={{...S.btn,border:"none",borderBottom:"2px solid "+(tab===tb.id?SOURCE_COLORS.yyb:"transparent"),color:tab===tb.id?SOURCE_COLORS.yyb:TH.textMuted,borderRadius:0,padding:"8px 14px",whiteSpace:"nowrap"}}>{tb.l}</button>)}
-        <span style={{borderLeft:"1px solid "+TH.border,height:24,margin:"0 8px",alignSelf:"center"}}/>
-        <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:SOURCE_COLORS.tl,padding:"10px 8px 10px 4px",textTransform:"uppercase",userSelect:"none",alignSelf:"center"}}>TL</span>
-        {TABS.filter(tb=>tb.src==="tl").map(tb=><button key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0)}} style={{...S.btn,border:"none",borderBottom:"2px solid "+(tab===tb.id?SOURCE_COLORS.tl:"transparent"),color:tab===tb.id?SOURCE_COLORS.tl:TH.textMuted,borderRadius:0,padding:"8px 14px",whiteSpace:"nowrap"}}>{tb.l}</button>)}
-      </div>
+      {/* Source banner (tab strip replaced by sidebar) */}
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",marginBottom:14,borderRadius:6,background:isTlTab?"rgba(94,234,212,0.08)":"rgba(201,168,76,0.08)",border:"1px solid "+(isTlTab?"rgba(94,234,212,0.3)":"rgba(201,168,76,0.3)"),fontSize:10,color:isTlTab?SOURCE_COLORS.tl:SOURCE_COLORS.yyb,fontWeight:600,letterSpacing:0.5,flexWrap:"wrap"}}>
         <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:isTlTab?SOURCE_COLORS.tl:SOURCE_COLORS.yyb}}/>
         {isTlTab?t.sourceBannerTL:t.sourceBannerYYB}
@@ -3756,6 +3792,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           </div>}
         </div>}
       </>}
-    </div></div>
+    </div></div></div></div>
   );
 }
