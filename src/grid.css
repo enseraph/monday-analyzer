@@ -29,3 +29,23 @@
 }
 .rgl-locked .react-resizable-handle { display: none !important; }
 .rgl-locked .rgl-drag { cursor: default !important; }
+
+/* Sidebar scrollbar — thin, themed gold, transparent track */
+.monday-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(201, 168, 76, 0.25) transparent;
+}
+.monday-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.monday-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.monday-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(201, 168, 76, 0.25);
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+.monday-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(201, 168, 76, 0.55);
+}
