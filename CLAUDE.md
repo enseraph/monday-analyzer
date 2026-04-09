@@ -129,9 +129,12 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.82
+Current: 1.83
 
 Recent changes:
+- v1.83: **Performance + shareable URL state**.
+  1. **Web Worker for TL parse** — `src/tlWorker.js` runs Papa.parse + parseTLRow + applyTLSameDayCancel off the main thread. Eliminates the 2-4 second UI freeze on cold load of the ~180k-row TL dataset. Worker is bundled separately via Vite's `?worker` import suffix (23.74 KB chunk). Lazy-initialized on first fetch, reused across refreshes, terminated on unmount. Includes a main-thread fallback path if worker initialization fails. ⚠ Worker contains duplicated copies of `parseTLRow`, `applyTLSameDayCancel`, `getRegion`, `getBrand`, `getSegment`, `getSegmentDetailed`, `DOW_FULL`, `KANSAI_KW`, and `TL_REQUIRED_COLS` — these must stay in sync with App.jsx.
+  2. **URL state for shareable views** — tab + all filter state (YYB + TL) now serialize to query params and restore on load. Uses `window.history.replaceState` to avoid history pollution. Only non-default values written to keep URLs short. Short param names used (`fCB` for channel bucket, `fCN` for channel name, `fTS` for TL status, `fTB` for TL brand, `fTH` for TL hotel type, `mm` for month mode). Read once at module load into `INITIAL_URL_STATE` and passed into `useState` initializers. A single useEffect writes on any filter change. Shareable link format example: `?tab=tl-adr&fDF=2026-03-01&fDTo=2026-03-31&fCB=ota&fTS=net`.
 - v1.82: **Audit-driven correctness fixes** to calculation methodology.
   1. **KvK DOW chart Kansai scaling removed** — pre-v1.82 multiplied Kansai DOW counts by `Math.round(kantoJapan/kansaiJapan)` to "scale up" Kansai for visual comparison; this was misleading. Now both regions display **% share within their own region** (each region's daily counts sum to 100%). Chart titles updated. The `kvk.scale` field is no longer used by these charts.
   2. **YYB RevPAR `totalDays` always uses check-in span** regardless of `fDT`. Pre-v1.82, with `fDT=booking`, the denominator was the booking-date span but the numerator counted nights spread across many future check-in months → occupancy could exceed 100%.
@@ -170,6 +173,10 @@ Recent changes:
 **KvK DOW comparison**: shows **% share within each region**, not raw counts. Each region's daily counts sum to 100%. Pre-v1.82 multiplied Kansai counts by a scaling factor which was misleading.
 
 **Segment ADR formula**: revenue-weighted (`Σrev / Σ(nights×rooms)`), not unweighted simple average. Storage in `agg.segADR` is `{[seg]: {rev, rn}}` accumulator, not `{[seg]: [adr1, adr2, ...]}` array. v1.82 fix.
+
+**TL parsing runs in a Web Worker** (v1.83). `src/tlWorker.js` contains self-contained copies of `parseTLRow`, `applyTLSameDayCancel`, and the shared region/brand/segment helpers. Main thread posts `{type:"parse", jobs:[{yr,text}]}`, worker responds with `{type:"result", rows, perYear, errors}`. If worker init fails, code falls back to main-thread parse. When adding new derived fields to `parseTLRow`, update BOTH App.jsx and tlWorker.js.
+
+**URL state sync** (v1.83). `readUrlState()` / `writeUrlState()` serialize filter + tab state to query params. Called once at module load (into `INITIAL_URL_STATE`) and on every filter state change. Uses `history.replaceState` — no back-button pollution. When adding a new filter state variable, extend both helpers AND the sync useEffect deps array.
 APP_VERSION constant at top of App.jsx, also clears localStorage layouts on version change.
 `DATA_LAG_DAYS=1` constant near top — single source of truth for "latest available data = today - N". Used by Compare tab presets.
 

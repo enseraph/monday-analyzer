@@ -3,8 +3,10 @@ import * as Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ComposedChart } from "recharts";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
+// Web worker for TL parse — offloads Papa.parse + parseTLRow + applyTLSameDayCancel from main thread
+import TlWorker from "./tlWorker.js?worker";
 
-const APP_VERSION="1.82";
+const APP_VERSION="1.83";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="3";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -13,6 +15,66 @@ const DATA_LAG_DAYS=1;
 const SOURCE_COLORS={yyb:"#c9a84c",tl:"#5eead4"};
 // Channel bucket colors for TL tab
 const CHANNEL_COLORS={direct:"#34d399",rta:"#5eead4",ota:"#4ea8de"};
+// ─── URL state (shareable views) ───
+// Reads/writes filter + tab state to window.location query params without page reloads.
+// Only non-default values are written to keep URLs short.
+function readUrlState(){
+  if(typeof window==="undefined")return{};
+  const p=new URLSearchParams(window.location.search);
+  const s={};
+  const get=k=>p.get(k);
+  const getArr=k=>{const v=p.get(k);return v?v.split(",").filter(Boolean):null};
+  if(get("tab"))s.tab=get("tab");
+  if(get("fR"))s.fR=get("fR");
+  if(getArr("fC"))s.fC=getArr("fC");
+  if(getArr("fS"))s.fS=getArr("fS");
+  if(getArr("fP"))s.fP=getArr("fP");
+  if(getArr("fBrands"))s.fBrands=getArr("fBrands");
+  if(getArr("fGeo"))s.fGeo=getArr("fGeo");
+  if(getArr("fDOW"))s.fDOW=getArr("fDOW");
+  if(get("fCancel"))s.fCancel=get("fCancel");
+  if(get("fHType"))s.fHType=get("fHType");
+  if(get("fDT"))s.fDT=get("fDT");
+  if(get("fDF"))s.fDF=get("fDF");
+  if(get("fDTo"))s.fDTo=get("fDTo");
+  if(get("mm"))s.monthMode=get("mm");
+  if(getArr("fCB"))s.fChannelBucket=getArr("fCB");
+  if(getArr("fCN"))s.fTlChannelName=getArr("fCN");
+  if(get("fTS"))s.fTlStatus=get("fTS");
+  if(getArr("fTB"))s.fTlBrand=getArr("fTB");
+  if(get("fTH"))s.fTlHotelType=get("fTH");
+  return s;
+}
+function writeUrlState(state){
+  if(typeof window==="undefined")return;
+  const p=new URLSearchParams();
+  const put=(k,v,def)=>{if(v!=null&&v!==def&&v!=="")p.set(k,v)};
+  const putArr=(k,v)=>{if(v&&v.length)p.set(k,v.join(","))};
+  put("tab",state.tab,"overview");
+  put("fR",state.fR,"All");
+  putArr("fC",state.fC);
+  putArr("fS",state.fS);
+  putArr("fP",state.fP);
+  putArr("fBrands",state.fBrands);
+  putArr("fGeo",state.fGeo);
+  putArr("fDOW",state.fDOW);
+  put("fCancel",state.fCancel,"all");
+  put("fHType",state.fHType,"All");
+  put("fDT",state.fDT,"booking");
+  put("fDF",state.fDF,"");
+  put("fDTo",state.fDTo,"");
+  put("mm",state.monthMode,"booking");
+  putArr("fCB",state.fChannelBucket);
+  putArr("fCN",state.fTlChannelName);
+  put("fTS",state.fTlStatus,"net");
+  putArr("fTB",state.fTlBrand);
+  put("fTH",state.fTlHotelType,"All");
+  const qs=p.toString();
+  const newUrl=window.location.pathname+(qs?"?"+qs:"")+window.location.hash;
+  window.history.replaceState(null,"",newUrl);
+}
+const INITIAL_URL_STATE=typeof window!=="undefined"?readUrlState():{};
+
 // Raw Data table column definitions — hoisted to avoid recreation on every render
 const YYB_RAW_COLS=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
 const TL_RAW_COLS=["dateStr","facility","channel_name","channelBucket","status","guestName","country","segment","checkinStr","checkoutStr","nights","rooms","adults_male","adults_female","children","totalRev","planName","booking_id"];
@@ -707,14 +769,14 @@ export default function App(){
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
   useEffect(()=>{let raf=0;const h=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const m=window.innerWidth<768;setIsMobile(p=>p===m?p:m)})};window.addEventListener("resize",h);return()=>{window.removeEventListener("resize",h);if(raf)cancelAnimationFrame(raf)}},[]);
   const[allData,setAllData]=useState([]);const[allH,setAllH]=useState([]);const[fL,setFL]=useState([]);const[errs,setErrs]=useState([]);const[proc,setProc]=useState(false);
-  const[fR,setFR]=useState("All");const[fC,setFC]=useState([]);const[fDT,setFDT]=useState("booking");const[fDF,setFDF]=useState("");const[fDTo,setFDTo]=useState("");const[fS,setFS]=useState([]);const[fP,setFP]=useState([]);
-  const[fCancel,setFCancel]=useState("all"); // "confirmed" | "cancelled" | "all"
-  const[fHType,setFHType]=useState("All"); // "All" | "Hotel" | "Apart"
-  const[fBrands,setFBrands]=useState([]);
-const[fGeo,setFGeo]=useState([]);
+  const[fR,setFR]=useState(INITIAL_URL_STATE.fR||"All");const[fC,setFC]=useState(INITIAL_URL_STATE.fC||[]);const[fDT,setFDT]=useState(INITIAL_URL_STATE.fDT||"booking");const[fDF,setFDF]=useState(INITIAL_URL_STATE.fDF||"");const[fDTo,setFDTo]=useState(INITIAL_URL_STATE.fDTo||"");const[fS,setFS]=useState(INITIAL_URL_STATE.fS||[]);const[fP,setFP]=useState(INITIAL_URL_STATE.fP||[]);
+  const[fCancel,setFCancel]=useState(INITIAL_URL_STATE.fCancel||"all"); // "confirmed" | "cancelled" | "all"
+  const[fHType,setFHType]=useState(INITIAL_URL_STATE.fHType||"All"); // "All" | "Hotel" | "Apart"
+  const[fBrands,setFBrands]=useState(INITIAL_URL_STATE.fBrands||[]);
+const[fGeo,setFGeo]=useState(INITIAL_URL_STATE.fGeo||[]);
 const[segDetailed,setSegDetailed]=useState(false);
-const[fDOW,setFDOW]=useState([]);
-  const[tab,setTab]=useState("overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tlSort,setTlSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const[tlPage,setTlPage]=useState(0);const PG=50;
+const[fDOW,setFDOW]=useState(INITIAL_URL_STATE.fDOW||[]);
+  const[tab,setTab]=useState(INITIAL_URL_STATE.tab||"overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tlSort,setTlSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const[tlPage,setTlPage]=useState(0);const PG=50;
   const[filtersOpen,setFiltersOpen]=useState(true);
 const[presets,setPresets]=useState(()=>{try{return JSON.parse(localStorage.getItem("monday_presets"))||[]}catch{return[]}});
 const[presetMsg,setPresetMsg]=useState("");
@@ -744,20 +806,25 @@ const deletePreset=name=>{
 const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
 const[paceMetric,setPaceMetric]=useState("count");
 const[drSingle,setDrSingle]=useState("");
-  const[monthMode,setMonthMode]=useState("booking"); // "stay" or "booking"
+  const[monthMode,setMonthMode]=useState(INITIAL_URL_STATE.monthMode||"booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
   const[sheetStatus,setSheetStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
   const[tlData,setTlData]=useState([]);
   const[tlStatus,setTlStatus]=useState("idle"); // "idle"|"loading"|"done"|"error"
-  const[fChannelBucket,setFChannelBucket]=useState([]); // ["ota","rta","direct"] subset
-  const[fTlChannelName,setFTlChannelName]=useState([]); // full OTA-level filter
-  const[fTlStatus,setFTlStatus]=useState("net"); // "net"|"all"|"cancelled"|"modified"
-  const[fTlBrand,setFTlBrand]=useState([]);
-  const[fTlHotelType,setFTlHotelType]=useState("All"); // "All"|"Hotel"|"Apart"
+  const[fChannelBucket,setFChannelBucket]=useState(INITIAL_URL_STATE.fChannelBucket||[]); // ["ota","rta","direct"] subset
+  const[fTlChannelName,setFTlChannelName]=useState(INITIAL_URL_STATE.fTlChannelName||[]); // full OTA-level filter
+  const[fTlStatus,setFTlStatus]=useState(INITIAL_URL_STATE.fTlStatus||"net"); // "net"|"all"|"cancelled"|"modified"
+  const[fTlBrand,setFTlBrand]=useState(INITIAL_URL_STATE.fTlBrand||[]);
+  const[fTlHotelType,setFTlHotelType]=useState(INITIAL_URL_STATE.fTlHotelType||"All"); // "All"|"Hotel"|"Apart"
   const[tlGroupBy,setTlGroupBy]=useState("day"); // "day"|"month"
   const[tlMetric,setTlMetric]=useState("revenue"); // "revenue"|"bookings"
   const[tlCoverage,setTlCoverage]=useState(null); // {coverage,rowsWithCountry,totalRows}
   const[lastFetchTs,setLastFetchTs]=useState(null);
+
+  // ─── URL state sync: write filter/tab state to URL (replaceState, no history pollution) ───
+  useEffect(()=>{
+    writeUrlState({tab,fR,fC,fS,fP,fBrands,fGeo,fDOW,fCancel,fHType,fDT,fDF,fDTo,monthMode,fChannelBucket,fTlChannelName,fTlStatus,fTlBrand,fTlHotelType});
+  },[tab,fR,fC,fS,fP,fBrands,fGeo,fDOW,fCancel,fHType,fDT,fDF,fDTo,monthMode,fChannelBucket,fTlChannelName,fTlStatus,fTlBrand,fTlHotelType]);
 
   // ─── Reusable YYB fetch ───
   const fetchYYB=useCallback((useCache=true)=>{
@@ -784,64 +851,98 @@ const[drSingle,setDrSingle]=useState("");
   },[]);
 
   // ─── Reusable TL fetch (multi-year, per-year defensive) ───
+  // Worker ref — created once on mount, reused for refresh
+  const tlWorkerRef=useRef(null);
   const fetchTL=useCallback((useCache=true)=>{
     setTlStatus("loading");
     const CACHE_TTL=5*60*1000;
     const years=Object.keys(TL_GSHEET_CSV_URLS);
-    const parseYear=(text,yr)=>{
-      try{
-        const res=Papa.parse(text,{header:false,skipEmptyLines:true});
-        if(!res.data||res.data.length<2){console.warn(`[TL ${yr}] empty CSV`);return null}
-        const h=res.data[0];
-        const miss=TL_REQUIRED_COLS.filter(c=>!h.includes(c));
-        if(miss.length){console.warn(`[TL ${yr}] missing cols:`,miss);return null}
-        const hIdx={};h.forEach((c,i)=>{hIdx[c]=i});
-        const rows=[];
-        for(let i=1;i<res.data.length;i++){
-          try{const row=parseTLRow(res.data[i],hIdx);if(row)rows.push(row)}
-          catch(e){console.warn(`[TL ${yr}] row ${i} parse error:`,e.message)}
-        }
-        return rows;
-      }catch(e){console.error(`[TL ${yr}] parse failed:`,e);return null}
-    };
-    const finalize=(rows)=>{
-      applyTLSameDayCancel(rows);
-      setTlData(rows);setTlStatus("done");setLastFetchTs(Date.now());
-    };
-    // Per-year independent fetch — one bad year doesn't kill the rest
-    const fetchOneYear=(yr)=>{
-      // Try cache first
+    // Spin up worker lazily and reuse it across refreshes
+    if(!tlWorkerRef.current){
+      try{tlWorkerRef.current=new TlWorker()}
+      catch(e){console.error("[TL] worker init failed, falling back to main-thread parse:",e);tlWorkerRef.current=null}
+    }
+    // Collect CSV text per year (cache or network), then hand off to worker for parsing
+    const fetchText=yr=>{
       if(useCache){
         try{
           const c=localStorage.getItem("monday_tl_csv_cache_"+yr);
           if(c){
             const{ts,text}=JSON.parse(c);
-            if(Date.now()-ts<CACHE_TTL){const parsed=parseYear(text,yr);if(parsed&&parsed.length)return Promise.resolve({yr,rows:parsed,fromCache:true})}
+            if(Date.now()-ts<CACHE_TTL)return Promise.resolve({yr,text,fromCache:true});
           }
         }catch(e){console.warn(`[TL ${yr}] cache read failed:`,e)}
       }
       return fetch(TL_GSHEET_CSV_URLS[yr])
         .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.text()})
         .then(text=>{
-          const parsed=parseYear(text,yr);
-          if(parsed&&parsed.length){
-            try{localStorage.setItem("monday_tl_csv_cache_"+yr,JSON.stringify({ts:Date.now(),text}))}catch(e){console.warn(`[TL ${yr}] cache write failed (likely quota):`,e.message)}
-            return{yr,rows:parsed,fromCache:false};
-          }
-          return{yr,rows:[],fromCache:false};
+          try{localStorage.setItem("monday_tl_csv_cache_"+yr,JSON.stringify({ts:Date.now(),text}))}
+          catch(e){console.warn(`[TL ${yr}] cache write failed (likely quota):`,e.message)}
+          return{yr,text,fromCache:false};
         })
-        .catch(e=>{console.error(`[TL ${yr}] fetch failed:`,e);return{yr,rows:[],error:e.message}});
+        .catch(e=>{console.error(`[TL ${yr}] fetch failed:`,e);return{yr,text:null,error:e.message}});
     };
-    Promise.all(years.map(fetchOneYear))
+    Promise.all(years.map(fetchText))
       .then(batch=>{
-        const all=[];const errors=[];
-        batch.forEach(b=>{if(b.rows.length){for(let i=0;i<b.rows.length;i++)all.push(b.rows[i])}if(b.error)errors.push(b.yr+": "+b.error)});
-        if(!all.length){console.error("[TL] all years failed:",errors);setTlStatus("error");return}
-        if(errors.length)console.warn("[TL] partial load (some years failed):",errors);
-        console.log(`[TL] loaded ${all.length} rows across ${batch.filter(b=>b.rows.length).length}/${years.length} years`);
-        finalize(all);
+        const jobs=batch.filter(b=>b.text).map(({yr,text})=>({yr,text}));
+        const fetchErrors=batch.filter(b=>b.error).map(b=>`${b.yr}: ${b.error}`);
+        if(!jobs.length){
+          console.error("[TL] all year fetches failed:",fetchErrors);
+          setTlStatus("error");return;
+        }
+        // Dispatch to worker. If worker init failed earlier, fall back to synchronous parse.
+        if(tlWorkerRef.current){
+          const w=tlWorkerRef.current;
+          const onMessage=(ev)=>{
+            w.removeEventListener("message",onMessage);
+            w.removeEventListener("error",onError);
+            if(ev.data?.type==="error"){
+              console.error("[TL] worker error:",ev.data.message);
+              setTlStatus("error");return;
+            }
+            if(ev.data?.type!=="result")return;
+            const{rows,perYear,errors}=ev.data;
+            // Worker strips Date objects via structured clone? No — Date is cloneable. But recheck is cheap.
+            if(errors&&errors.length)console.warn("[TL] worker parse warnings:",errors);
+            if(fetchErrors.length)console.warn("[TL] partial load (some fetches failed):",fetchErrors);
+            if(!rows.length){setTlStatus("error");return}
+            console.log(`[TL] loaded ${rows.length} rows across ${Object.keys(perYear).length} years (worker)`);
+            setTlData(rows);setTlStatus("done");setLastFetchTs(Date.now());
+          };
+          const onError=(e)=>{
+            w.removeEventListener("message",onMessage);
+            w.removeEventListener("error",onError);
+            console.error("[TL] worker threw:",e);
+            setTlStatus("error");
+          };
+          w.addEventListener("message",onMessage);
+          w.addEventListener("error",onError);
+          w.postMessage({type:"parse",jobs});
+        }else{
+          // Fallback: main-thread parse (legacy path, only used if worker failed to init)
+          const all=[];
+          for(const{yr,text}of jobs){
+            try{
+              const res=Papa.parse(text,{header:false,skipEmptyLines:true});
+              if(!res.data||res.data.length<2)continue;
+              const h=res.data[0];
+              const miss=TL_REQUIRED_COLS.filter(c=>!h.includes(c));
+              if(miss.length){console.warn(`[TL ${yr}] missing cols:`,miss);continue}
+              const hIdx={};h.forEach((c,i)=>{hIdx[c]=i});
+              for(let i=1;i<res.data.length;i++){
+                try{const row=parseTLRow(res.data[i],hIdx);if(row)all.push(row)}catch{}
+              }
+            }catch(e){console.error(`[TL ${yr}] parse failed:`,e)}
+          }
+          if(!all.length){setTlStatus("error");return}
+          applyTLSameDayCancel(all);
+          console.log(`[TL] loaded ${all.length} rows (main-thread fallback)`);
+          setTlData(all);setTlStatus("done");setLastFetchTs(Date.now());
+        }
       });
   },[]);
+  // Clean up worker on unmount
+  useEffect(()=>()=>{if(tlWorkerRef.current){tlWorkerRef.current.terminate();tlWorkerRef.current=null}},[]);
 
   // Manual refresh: clear caches, refetch both, regardless of file uploads
   const refreshAllData=useCallback(()=>{
