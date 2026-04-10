@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.87
+Current: 1.88
 
 Recent changes:
+- v1.88: Added "Total Revenue by Country" horizontal bar chart to YYB Overview tab and YYB Revenue tab (top 15 countries sorted by total rev). `mktD` now carries `rev` field. Layout schema bumped to 4 (new grid keys `ch-rev-country`, `ch-rev-country-r`).
 - v1.87: Country classification cleanup. `International (EN)` renamed to `EN (no country)` — honest label for English-speaking guests whose country signal was missing (pre-2024 reservations didn't require country). `COUNTRY_MAP` massively expanded with English variants (USA/U.S.A./America/米国), UK variants (Britain/GB/England/英国), Japanese katakana country names, and common aliases. Chinese-language fallback now resolves to Taiwan instead of Taiwan/HK (ZH) — mainland China captured by added prefecture mappings (北京/上海/广州/etc.), HK by +852 phone, rest is statistically Taiwan. `GEO_REGION` classifies `EN (no country)` as Unknown not Asia. Mobile sidebar toggle moved to app root (position:fixed + zIndex:1000) for reliable scroll stickiness. Mobile layouts always default to locked on session start.
 - v1.86: Removed `Taiwan/HK (ZH)` bucket. Added mainland China city/province entries to COUNTRY_MAP.
 - v1.85: Sidebar polish — themed scrollbar (6px, gold, transparent track via grid.css `.monday-sidebar`), light-mode-aware sidebar colors (`TH.sidebarBg/sidebarBorder/sidebarHover`), collapsed section labels always visible.  Header trimmed: removed reservation-count sub-line and file-info pill. Updated data coverage disclaimer to "予約番 data covers May 2024 forward, TL-Lincoln data covers Jan 2025 forward."
