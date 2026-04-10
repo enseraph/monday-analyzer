@@ -16,20 +16,14 @@ React dashboard (single JSX file) for JHAT/MONday Group hotel reservation data.
 - Workers subdomain: `jhat` (changed from default `c-katsuse`)
 - Auto-deploys on git push via wrangler (independent of GitHub Pages)
 
-## Planned: Ads-extended version (not yet implemented)
-A second deployment (`monday-analyzer-ads`) will include Google Ads / Meta Ads metrics (cost, ROAS, CAC, etc.) on top of everything in the base version.
-
-**Approach**: build-time feature flag via Vite env var. Single repo, single branch, no merging.
-- `const ADS = import.meta.env.VITE_ADS_ENABLED === 'true'` at top of `App.jsx`
-- `.env.base` (`VITE_ADS_ENABLED=false`) and `.env.ads` (`VITE_ADS_ENABLED=true`)
-- Ads-only code lives in `src/ads/` (adsData.js, adsMetrics.js, adsTab.jsx, adsCharts.jsx)
-- `App.jsx` has thin `if (ADS)` / `ADS && ...` / `...(ADS ? [...] : [])` bridges only
-- Vite inlines the env constant → dead-code elimination strips all ads branches from base build (verify: `grep -i roas dist/assets/*.js` returns nothing)
-- Two wrangler configs: `wrangler.base.toml` (worker: `monday-analyzer`) and `wrangler.ads.toml` (worker: `monday-analyzer-ads`)
-- package.json scripts: `build:base`, `build:ads`, `deploy:base`, `deploy:ads`, `deploy:all`
-- Workflow: shared fix → edit once, `deploy:all`. Ads-only change → edit `src/ads/`, `deploy:ads`. Each version deploys independently.
-- Guardrail: after any `App.jsx` edit, run `npm run build:base && npm run build:ads` before pushing.
-- NOT YET SCAFFOLDED — user will signal when to implement.
+## Ads Dashboard (separate tool)
+The ads/marketing analytics dashboard is a **separate repo and tool** (`monday-ads`), NOT a feature-flag branch of this project. Decision made to keep this reservation dashboard lean and avoid a 4000+ line monolith.
+- **Repo**: `monday-ads` (sibling to `monday-analyzer`)
+- **Cloudflare Worker backend**: `monday-ads-api` — proxies Google Ads API, Meta Marketing API, GA4 Data API via OAuth tokens in Workers KV
+- **Data sources**: Google Ads (Search + PMax + Demand Gen), Meta Ads (traffic/conversions), GA4 (conversion attribution), plus Google Sheets reservation CSV (same URLs as this tool) for country-level spend-vs-revenue cross-analysis
+- **Shared design**: copies TH/S/DraggableGrid/CC/EB/SortTbl/i18n patterns from this tool (copy-paste, not shared package)
+- **Claude Code skill**: `~/.claude/skills/ads-analyst/SKILL.md` — AI ad specialist for strategic analysis
+- **Previous approach (SUPERSEDED)**: build-time feature flag with `VITE_ADS_ENABLED` env var was planned but abandoned in favor of full separation
 
 ## Google Sheet
 - Published CSV URL: `https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_G18beGfHLBfeWlS9biwDrt73kQhC0i8RLvIPkybgCejNffzMnsBp7AfmrrS8suD69dQxCyTWEOzh/pub?gid=0&single=true&output=csv`
