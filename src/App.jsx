@@ -5,8 +5,10 @@ import { Responsive, useContainerWidth } from "react-grid-layout";
 import { toPng } from "html-to-image";
 // Web worker for TL parse — offloads Papa.parse + parseTLRow + applyTLSameDayCancel from main thread
 import TlWorker from "./tlWorker.js?worker";
+// Shared helpers (single source of truth for App + Worker)
+import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.89";
+const APP_VERSION="1.91";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="5";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -138,89 +140,7 @@ const TL_GSHEET_CSV_URLS={
   "2025":"https://docs.google.com/spreadsheets/d/e/2PACX-1vTEfqhvFw_FGaGR0aRSZql3kNkefKXJbEX1MqPXuGH1eFZ_fFh0VAPti6dfE0VD2A4E-VX8XW5CrmH8/pub?gid=1182760421&single=true&output=csv",
   "2026":"https://docs.google.com/spreadsheets/d/e/2PACX-1vTEfqhvFw_FGaGR0aRSZql3kNkefKXJbEX1MqPXuGH1eFZ_fFh0VAPti6dfE0VD2A4E-VX8XW5CrmH8/pub?gid=207573208&single=true&output=csv",
 };
-// Parse a TL B-series per-reservation row → object with both native fields and YYB-compatible derived aliases
-function parseTLRow(row,hIdx){
-  const d=row[hIdx.date];if(!d)return null;
-  const dt=new Date(d+"T00:00:00");if(isNaN(dt))return null;
-  const facility=row[hIdx.facility]||"";
-  const status=row[hIdx.status]||"";
-  const checkinStr=row[hIdx.checkin]||"";
-  const checkoutStr=row[hIdx.checkout]||"";
-  let checkin=checkinStr?new Date(checkinStr+"T00:00:00"):null;
-  let checkout=checkoutStr?new Date(checkoutStr+"T00:00:00"):null;
-  if(checkin&&isNaN(checkin))checkin=null;
-  if(checkout&&isNaN(checkout))checkout=null;
-  const adults_male=parseInt(row[hIdx.adults_male])||0;
-  const adults_female=parseInt(row[hIdx.adults_female])||0;
-  const children=parseInt(row[hIdx.children])||0;
-  const nights=parseInt(row[hIdx.nights])||0;
-  const revenue=parseInt(row[hIdx.revenue])||0;
-  const revenue_other=parseInt(row[hIdx.revenue_other])||0;
-  const totalRev=revenue+revenue_other;
-  const adults=adults_male+adults_female;
-  // Lead time: receive date → checkin
-  let leadTime=null;
-  if(checkin){const c2=new Date(checkin);c2.setHours(0,0,0,0);const b=new Date(dt);b.setHours(0,0,0,0);leadTime=Math.max(0,Math.round((c2-b)/864e5))}
-  return{
-    // Native TL fields
-    date:dt,dateStr:d,
-    facility,
-    facilityGroup:row[hIdx.facility_group]||"",
-    status,
-    channel_code:row[hIdx.channel_code]||"",
-    channel_name:row[hIdx.channel_name]||"",
-    channelBucket:(row[hIdx.channel_bucket]||"").toLowerCase(),
-    booking_id:row[hIdx.booking_id]||"",
-    notification_id:row[hIdx.notification_id]||"",
-    guestName:row[hIdx.guest_name]||"",
-    guestNameKana:row[hIdx.guest_name_kana]||"",
-    email:(row[hIdx.email]||"").trim().toLowerCase(),
-    checkin,checkout,
-    checkinStr,checkoutStr,
-    nights,
-    rooms:parseInt(row[hIdx.rooms])||0,
-    guests:parseInt(row[hIdx.guests])||0,
-    adults_male,adults_female,children,
-    planName:row[hIdx.plan_name]||"",
-    planCode:row[hIdx.plan_code]||"",
-    revenue,revenue_other,
-    // YYB-compatible derived aliases (so YYB tab logic can be reused on TL rows)
-    region:getRegion(facility),
-    hotelType:(row[hIdx.facility_group]||"")==="hotel"?"Hotel":"Apart",
-    brand:getBrand(facility),
-    segment:getSegment(adults,children),
-    segmentDetailed:getSegmentDetailed(adults_male,adults_female,children),
-    leadTime,
-    checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,
-    checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,
-    bookingDate:dt, // TL's "receive date" maps to YYB's bookingDate
-    partySize:adults+children,
-    adults,
-    kids:children,
-    male:adults_male,
-    female:adults_female,
-    totalRev,
-    isCancelled:status==="取消",
-    isModified:status==="変更",
-    sameDayCancelled:false, // enriched below in applyTLSameDayCancel
-    country:null, // filled in by applyTLEmailCountry cross-ref
-  };
-}
-const TL_REQUIRED_COLS=["date","facility","facility_group","status","channel_code","channel_name","channel_bucket","booking_id","email","checkin","checkout","nights","rooms","guests","adults_male","adults_female","children","plan_name","plan_code","revenue","revenue_other"];
-
-// For each 予約 row, mark sameDayCancelled=true if a 取消 row exists with same (date,facility,booking_id) within the same dataset
-function applyTLSameDayCancel(rows){
-  const cancelKeys=new Set();
-  for(let i=0;i<rows.length;i++){
-    const r=rows[i];
-    if(r.status==="取消"&&r.booking_id){cancelKeys.add(r.dateStr+"|"+r.facility+"|"+r.booking_id)}
-  }
-  for(let i=0;i<rows.length;i++){
-    const r=rows[i];
-    if(r.status==="予約"&&r.booking_id&&cancelKeys.has(r.dateStr+"|"+r.facility+"|"+r.booking_id)){r.sameDayCancelled=true}
-  }
-  return rows;
-}
+// parseTLRow, TL_REQUIRED_COLS, applyTLSameDayCancel imported from shared.js
 
 // Cross-reference TL emails against YYB email→country map to fill in country info (TL has no country field)
 // Returns { coverage: 0..100, rowsWithCountry: int, totalRows: int }
@@ -392,6 +312,17 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     drDisclaimer:"予約番入れ込みデータ",
     geoArea:"Geo Area",allGeoAreas:"All areas",
     darkMode:"Dark",lightMode:"Light",
+    metricLabel:"Metric",
+    drNote:"Numbers finalized after 8:40",
+    revShare:"Rev Share",
+    tlMonthlyRev:"Monthly Revenue",tlDailyRev:"Daily Revenue",tlRevByFacility:"Revenue by Facility",
+    tlRevBySeg:"Revenue by Segment",tlRevByDow:"Revenue by DOW",
+    tlSegDist:"Segment Distribution",tlSegRev:"Segment Revenue Share",tlSegLos:"Avg LOS by Segment",tlSegLead:"Avg Lead Time by Segment",tlSegFac:"Segment by Facility",
+    tlLosHist:"LOS Distribution",tlLosSeg:"LOS by Segment",tlLosCountry:"LOS by Country",
+    tlLeadDist:"Lead Time Distribution",tlLeadDow:"Lead Time by DOW",tlLeadMdow:"Monthly Lead by DOW",
+    tlCancelTrend:"Monthly Cancellation Trend",tlCancelCountry:"Cancellations by Country",tlCancelSeg:"Cancellations by Segment",tlCancelFac:"Cancellations by Facility",tlCancelDetail:"Cancellation Detail",
+    tlMonthlyRes:"Monthly Reservations",tlTopMarkets:"Top Markets",tlSegPie:"Segment Breakdown",tlDowChart:"DOW Distribution",tlMonthlyRevChart:"Monthly Revenue",
+    roomNights:"Room-Nights",
   },
   ja: {
     title:"MONday",titleAccent:"予約分析ダッシュボード",uploadTitle:"MONday Group",uploadAccent:"予約分析ダッシュボード",
@@ -527,13 +458,24 @@ segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     drDisclaimer:"予約番入れ込みデータ",
     geoArea:"地理エリア",allGeoAreas:"全エリア",
     darkMode:"ダーク",lightMode:"ライト",
+    metricLabel:"指標",
+    drNote:"※数字は8:40以降に確定",
+    revShare:"売上シェア",
+    tlMonthlyRev:"月別売上",tlDailyRev:"日別売上",tlRevByFacility:"施設別売上",
+    tlRevBySeg:"タイプ別売上",tlRevByDow:"曜日別売上",
+    tlSegDist:"タイプ別分布",tlSegRev:"タイプ別売上シェア",tlSegLos:"タイプ別平均泊数",tlSegLead:"タイプ別平均LT",tlSegFac:"施設別タイプ",
+    tlLosHist:"泊数分布",tlLosSeg:"タイプ別泊数",tlLosCountry:"国別泊数",
+    tlLeadDist:"リードタイム分布",tlLeadDow:"曜日別リードタイム",tlLeadMdow:"月別曜日リードタイム",
+    tlCancelTrend:"月別キャンセル推移",tlCancelCountry:"国別キャンセル",tlCancelSeg:"タイプ別キャンセル",tlCancelFac:"施設別キャンセル",tlCancelDetail:"キャンセル詳細",
+    tlMonthlyRes:"月別予約数",tlTopMarkets:"上位マーケット",tlSegPie:"タイプ構成",tlDowChart:"曜日分布",tlMonthlyRevChart:"月別売上",
+    roomNights:"室泊数",
   }
 };
 
 const HEADER_JP={country:"国",count:"件数",avgRev:"平均単価",avgLOS:"平均泊数",avgLead:"平均LT",segment:"タイプ",month:"月",day:"曜日",room:"部屋",device:"端末",region:"エリア",avg:"平均",median:"中央値",adr:"ADR",rev:"売上",n:"件数",name:"施設名",intlPct:"海外%",topSeg:"主タイプ",Kanto:"関東",Kansai:"関西",Hotel:"ホテル",Apart:"アパート",date:"日付",metric:"指標"};
 
 // ─── CONSTANTS ───
-const KANSAI_KW=["京都丸太町","京都烏丸二条","京都駅","京都駅鴨川","京都五条","大阪難波"];
+// KANSAI_KW imported from shared.js
 const JP_PREFS=["東京都","大阪府","愛知県","兵庫県","北海道","静岡県","神奈川県","千葉県","埼玉県","宮城県","福岡県","京都府","新潟県","長野県","茨城県","群馬県","栃木県","三重県","奈良県","福島県","石川県","広島県","岐阜県","岡山県","富山県","和歌山県","大分県","鹿児島県","滋賀県","愛媛県","山口県","秋田県","山梨県","山形県","徳島県","鳥取県","長崎県","香川県","宮崎県","岩手県","熊本県","沖縄県","佐賀県","島根県","高知県","福井県","青森県"];
 const PHONE_MAP={"+1":"United States","+81":"Japan","+886":"Taiwan","+61":"Australia","+852":"Hong Kong","+65":"Singapore","+82":"South Korea","+62":"Indonesia","+66":"Thailand","+60":"Malaysia","+44":"UK","+63":"Philippines","+33":"France","+86":"China","+64":"New Zealand","+91":"India","+49":"Germany","+34":"Spain","+52":"Mexico","+55":"Brazil","+39":"Italy","+353":"Ireland","+41":"Switzerland","+972":"Israel","+971":"UAE","+56":"Chile","+54":"Argentina","+31":"Netherlands","+45":"Denmark","+43":"Austria","+673":"Brunei","+358":"Finland","+48":"Poland","+47":"Norway","+375":"Belarus","+27":"South Africa","+7":"Russia","+32":"Belgium","+40":"Romania","+420":"Czech Republic","+372":"Estonia","+234":"Nigeria","+352":"Luxembourg","+598":"Uruguay","+84":"Vietnam","+46":"Sweden"};
 const COUNTRY_MAP={"United States":"United States","USA":"United States","U.S.A.":"United States","U.S.":"United States","US":"United States","America":"United States","アメリカ":"United States","米国":"United States","Canada":"Canada","カナダ":"Canada","Taiwan":"Taiwan","Republic of China":"Taiwan","台湾":"Taiwan","臺灣":"Taiwan","Australia":"Australia","オーストラリア":"Australia","豪州":"Australia","Hong Kong":"Hong Kong","Hongkong":"Hong Kong","HK":"Hong Kong","香港":"Hong Kong","Singapore":"Singapore","シンガポール":"Singapore","Republic of Korea":"South Korea","Korea":"South Korea","South Korea":"South Korea","韓国":"South Korea","Indonesia":"Indonesia","インドネシア":"Indonesia","Thailand":"Thailand","タイ":"Thailand","Malaysia":"Malaysia","マレーシア":"Malaysia","United Kingdom":"UK","UK":"UK","U.K.":"UK","Britain":"UK","Great Britain":"UK","GB":"UK","England":"UK","イギリス":"UK","英国":"UK","Philippines":"Philippines","フィリピン":"Philippines","France":"France","フランス":"France","China":"China","New Zealand":"New Zealand","ニュージーランド":"New Zealand","India":"India","インド":"India","Spain":"Spain","スペイン":"Spain","Germany":"Germany","ドイツ":"Germany","Brazil":"Brazil","ブラジル":"Brazil","Italy":"Italy","イタリア":"Italy","Ireland":"Ireland","アイルランド":"Ireland","Switzerland":"Switzerland","スイス":"Switzerland","Israel":"Israel","イスラエル":"Israel","United Arab Emirates":"UAE","UAE":"UAE","U.A.E.":"UAE","Chile":"Chile","チリ":"Chile","Argentina":"Argentina","アルゼンチン":"Argentina","Netherlands":"Netherlands","オランダ":"Netherlands","Denmark":"Denmark","デンマーク":"Denmark","Austria":"Austria","オーストリア":"Austria","Brunei Darussalam":"Brunei","Brunei":"Brunei","ブルネイ":"Brunei","Finland":"Finland","フィンランド":"Finland","Poland":"Poland","ポーランド":"Poland","Norway":"Norway","ノルウェー":"Norway","Belarus":"Belarus","ベラルーシ":"Belarus","South Africa":"South Africa","南アフリカ":"South Africa","Russian Federation":"Russia","Russia":"Russia","ロシア":"Russia","Belgium":"Belgium","ベルギー":"Belgium","Romania":"Romania","ルーマニア":"Romania","Czech Republic":"Czech Republic","チェコ":"Czech Republic","Estonia":"Estonia","エストニア":"Estonia","Nigeria":"Nigeria","ナイジェリア":"Nigeria","Luxembourg":"Luxembourg","ルクセンブルク":"Luxembourg","Uruguay":"Uruguay","ウルグアイ":"Uruguay","Viet Nam":"Vietnam","Vietnam":"Vietnam","ベトナム":"Vietnam","Sweden":"Sweden","スウェーデン":"Sweden","Japan":"Japan","日本":"Japan","Other":"Other","その他":"Other","Mexico":"Mexico","メキシコ":"Mexico","中国":"China","People's Republic of China":"China","PRC":"China","中華人民共和国":"China","Beijing":"China","北京":"China","Shanghai":"China","上海":"China","Guangzhou":"China","广州":"China","廣州":"China","Shenzhen":"China","深圳":"China","深セン":"China","Tianjin":"China","天津":"China","Chongqing":"China","重庆":"China","重慶":"China","Chengdu":"China","成都":"China","Hangzhou":"China","杭州":"China","Nanjing":"China","南京":"China","Xi'an":"China","西安":"China","Wuhan":"China","武漢":"China","武汉":"China","Suzhou":"China","蘇州":"China","苏州":"China","Qingdao":"China","青島":"China","青岛":"China"};
@@ -541,12 +483,12 @@ const SEG_ORDER=["Solo","Couple","Family","Group"];
 const SEG_COLORS={Solo:"#7ec8e3",Couple:"#c084fc",Family:"#f59e0b",Group:"#34d399"};
 const SEG_ORDER_DETAILED=["Solo","Couple (1M+1F)","Duo (Male)","Duo (Female)","Family (1 child)","Family (2 children)","Family (3+ children)","Group (All Male)","Group (All Female)","Group (Mixed)"];
 const SEG_COLORS_DETAILED={"Solo":"#7ec8e3","Couple (1M+1F)":"#c084fc","Duo (Male)":"#4ea8de","Duo (Female)":"#e07b54","Family (1 child)":"#fbbf24","Family (2 children)":"#f59e0b","Family (3+ children)":"#d97706","Group (All Male)":"#1d4ed8","Group (All Female)":"#be123c","Group (Mixed)":"#34d399"};
-const DOW_FULL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const DOW_SHORT=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+// DOW_FULL imported from shared.js
+const DOW_SHORT=_DOW_SHORT;
 const DOW_JA=["月","火","水","木","金","土","日"];
 const PALETTE=["#4ea8de","#e07b54","#c084fc","#34d399","#f59e0b","#7ec8e3","#ef4444","#8b5cf6","#06b6d4","#f472b6","#a3e635","#fb923c","#64748b","#e879f9","#2dd4bf"];
 const REQUIRED_COLS=["施設名","予約受付日時","宿泊日（チェックイン）","チェックアウト日","泊数","部屋数","部屋タイプ","大人1(人数)","大人2(人数)","宿泊料金合計","予約料金合計","都道府県","国番号（ 連絡先（主） ）","言語","予約方法","ランク名"];
-const CHILD_COLS=[26,28,30,32,34,36,38,40,42];
+// CHILD_COLS removed — unused (child column lookup uses string names)
 const RANK_ORDER=["No Rank","Regular","Gold","Platinum"];
 const RANK_COLORS=["#64748b","#4ea8de","#c9a84c","#e07b54"];
 
@@ -578,32 +520,11 @@ const ROOM_INVENTORY={
 const TOTAL_ROOMS=Object.values(ROOM_INVENTORY).reduce((a,b)=>a+b,0);
 
 // ─── HELPERS ───
-function getRegion(f){return KANSAI_KW.some(k=>f.includes(k))?"Kansai":"Kanto"}
+// getRegion imported from shared.js
 function getHotelType(f){if(f.includes("Apart")||f.includes("TABI")||f.includes("GRAND"))return"Apart";return"Hotel"}
-function getBrand(f){if(f.includes("イチホテル"))return"ICHI";if(f.includes("GRAND"))return"GRAND MONday";if(f.includes("TABI"))return"TABI";if(f.includes("Apart"))return"MONday Apart";return"hotel MONday"}
+// getBrand imported from shared.js
 function getCountry(p,ph,l){if(p){if(JP_PREFS.includes(p))return"Japan";if(COUNTRY_MAP[p])return COUNTRY_MAP[p]}if(ph&&PHONE_MAP[ph])return PHONE_MAP[ph];if(l){if(l==="日本語")return"Japan";if(l==="英語")return"EN (no country)";if(l.includes("中国語"))return"Taiwan";if(l==="韓国語")return"South Korea"}return"Unknown"}
-function getSegment(a,k){const t=a+k;if(k>0)return"Family";if(t===1)return"Solo";if(t===2)return"Couple";if(t>=3)return"Group";return"Unknown"}
-function getSegmentDetailed(male,female,kids){
-  const adults=male+female;
-  if(kids>0){
-    if(kids===1)return"Family (1 child)";
-    if(kids===2)return"Family (2 children)";
-    return"Family (3+ children)";
-  }
-  if(adults===1)return"Solo";
-  if(adults===2){
-    if(male===1&&female===1)return"Couple (1M+1F)";
-    if(male===2&&female===0)return"Duo (Male)";
-    if(male===0&&female===2)return"Duo (Female)";
-    return"Couple (1M+1F)";
-  }
-  if(adults>=3){
-    if(male>0&&female===0)return"Group (All Male)";
-    if(male===0&&female>0)return"Group (All Female)";
-    return"Group (Mixed)";
-  }
-  return"Unknown";
-}
+// getSegment, getSegmentDetailed imported from shared.js
 function parseYen(v){if(!v)return 0;try{return parseInt(String(v).replace(/,/g,"").replace(/"/g,""))||0}catch{return 0}}
 function simplifyRoom(r){if(!r)return"Other";if(r.includes("ファミリー"))return"Family Room";if(r.includes("スイート")||r.toLowerCase().includes("suite"))return"Suite";if(r.includes("ジャパニーズ")||r.includes("和"))return"Japanese Room";if(r.includes("デラックスツイン"))return"Dlx Twin";if(r.includes("デラックスダブル"))return"Dlx Double";if(r.includes("スタンダードツイン"))return"Std Twin";if(r.includes("スタンダードダブル"))return"Std Double";if(r.includes("スタンダードトリプル"))return"Std Triple";if(r.includes("コンパクトツイン"))return"Compact Twin";if(r.includes("コーナーツイン"))return"Corner Twin";if(r.includes("シングル"))return"Single";if(r.includes("ツイン"))return"Twin";if(r.includes("ダブル"))return"Double";if(r.includes("トリプル"))return"Triple";if(r.includes("おまかせ"))return"Room Assigned";if(r.includes("スタンダード"))return"Standard";return"Other"}
 function fmtY(v){return v>=1e6?"¥"+(v/1e6).toFixed(1)+"M":v>=1000?"¥"+(v/1000).toFixed(0)+"K":"¥"+v}
@@ -627,6 +548,9 @@ function shortFac(n){
     .replace(/^TABI\s*/,"T ");
 }
 
+// Hoisted from processRow to avoid creating a new closure per row
+function getPlanType(pn){const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"}
+
 function processRow(row,headers){
   const hIdx=processRow._cache&&processRow._cache.h===headers?processRow._cache.idx:(()=>{const m={};headers.forEach((h,i)=>{m[h]=i});processRow._cache={h:headers,idx:m};return m})();
   const g=c=>{const i=hIdx[c];return i==null?"":(row[i]??"")};
@@ -636,8 +560,13 @@ function processRow(row,headers){
   if(facility.includes("（旧："))facility=facility.replace(/\s*（旧：.*）\s*$/,"");
   const a1=parseInt(g("大人1(人数)"))||0,a2=parseInt(g("大人2(人数)"))||0,adults=a1+a2;
   let kids=0;
-  const childCountCols=["子供1(人数)","子供2(人数)","子供3(人数)","子供4(人数)","子供5(人数)","子供6(人数)","子供7(人数)","子供8(人数)","子供9(人数)"];
-  for(const cc of childCountCols){const idx=headers.indexOf(cc);if(idx>=0)kids+=parseInt(row[idx]||"0")||0}
+  // Cache child column indices alongside header index to avoid O(9*cols) per row
+  if(!processRow._childIdx||processRow._childH!==headers){
+    const childCountCols=["子供1(人数)","子供2(人数)","子供3(人数)","子供4(人数)","子供5(人数)","子供6(人数)","子供7(人数)","子供8(人数)","子供9(人数)"];
+    processRow._childIdx=childCountCols.map(cc=>headers.indexOf(cc)).filter(i=>i>=0);
+    processRow._childH=headers;
+  }
+  for(const idx of processRow._childIdx){kids+=parseInt(row[idx]||"0")||0}
   let checkin=null,checkout=null,bookingDt=null;
   try{checkin=new Date(g("宿泊日（チェックイン）"));if(isNaN(checkin))checkin=null}catch{}
   try{checkout=new Date(g("チェックアウト日"));if(isNaN(checkout))checkout=null}catch{}
@@ -652,10 +581,9 @@ function processRow(row,headers){
   const salesChannel=g("販売チャネル")||"";
   const email=(g("メールアドレス")||"").trim().toLowerCase();
   const guestName=(g("氏名")||"").trim();
-  const getPlanType=pn=>{const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"};
   const planType=getPlanType(planName);
   const checkinMonth=checkin?`${checkin.getFullYear()}-${String(checkin.getMonth()+1).padStart(2,"0")}`:null;
-  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,month:checkin?checkin.toISOString().slice(0,7):null,bookMonth:bookingDt?bookingDt.toISOString().slice(0,7):null,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,rooms:parseInt(g("部屋数"))||1,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email,guestName,male:a1,female:a2,segmentDetailed:getSegmentDetailed(a1,a2,kids)}
+  return{facility,region:getRegion(facility),hotelType:getHotelType(facility),brand:getBrand(facility),country:getCountry(g("都道府県"),g("国番号（ 連絡先（主） ）"),g("言語")),segment:getSegment(adults,kids),checkin,checkout,bookingDate:bookingDt,checkinMonth,checkinDow:checkin?DOW_FULL[(checkin.getDay()+6)%7]:null,checkoutDow:checkout?DOW_FULL[(checkout.getDay()+6)%7]:null,leadTime,nights:parseInt(g("泊数"))||null,rooms:parseInt(g("部屋数"))||1,totalRev:parseYen(g("予約料金合計")),partySize:adults+kids,adults,kids,device:g("予約方法"),roomSimple:simplifyRoom(g("部屋タイプ")),rank:g("ランク名")||"No Rank",isCancelled,cancelFee,planName,planType,couponName,salesChannel,email,guestName,male:a1,female:a2,segmentDetailed:getSegmentDetailed(a1,a2,kids)}
 }
 
 function decodeBuffer(buf){
@@ -723,13 +651,11 @@ function applyEmailIntlOverride(rows){
   return rows;
 }
 
-function expCSV(rows,headers,fn){const csv=[headers.join(","),...rows.map(r=>headers.map(h=>{const v=r[h];if(v==null)return"";const s=String(v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s}).join(","))].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download=fn;a.click()}
+function expCSV(rows,headers,fn){const csv=[headers.join(","),...rows.map(r=>headers.map(h=>{const v=r[h];if(v==null)return"";const s=String(v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s}).join(","))].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download=fn;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
 
-function expXLS(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v;return tr?tr(String(v)):String(v)};const rows=data.map(r=>"<tr>"+keys.map(k=>"<td>"+tVal(r[k])+"</td>").join("")+"</tr>").join("");const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:spreadsheet"><head><meta charset="utf-8"/></head><body><table><thead><tr>${keys.map(k=>"<th>"+tKey(k)+"</th>").join("")}</tr></thead><tbody>${rows}</tbody></table></body></html>`;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+html],{type:"application/vnd.ms-excel;charset=utf-8"}));a.download=(fn||title||"export")+".xls";a.click()}
+function expXLS(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v;return tr?tr(String(v)):String(v)};const rows=data.map(r=>"<tr>"+keys.map(k=>"<td>"+tVal(r[k])+"</td>").join("")+"</tr>").join("");const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:spreadsheet"><head><meta charset="utf-8"/></head><body><table><thead><tr>${keys.map(k=>"<th>"+tKey(k)+"</th>").join("")}</tr></thead><tbody>${rows}</tbody></table></body></html>`;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+html],{type:"application/vnd.ms-excel;charset=utf-8"}));a.download=(fn||title||"export")+".xls";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
 
-const CT=({active,payload,label,formatter})=>{if(!active||!payload?.length)return null;return(<div style={{background:"#1a3058",border:"1px solid #2a4a78",borderRadius:6,padding:"8px 12px",fontSize:12,color:"#f0ece4"}}><div style={{fontWeight:600,marginBottom:4,color:"#c9a84c"}}>{label}</div>{payload.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}><span style={{width:8,height:8,borderRadius:2,background:p.color,display:"inline-block"}}/><span>{p.name}: {formatter?formatter(p.value):typeof p.value==="number"?p.value.toLocaleString():p.value}</span></div>)}</div>)};
-
-const MS=({options,selected,onChange,placeholder,maxShow=2,S,cl})=>{const[open,setOpen]=useState(false);const ref=useRef();useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);const toggle=v=>onChange(selected.includes(v)?selected.filter(s=>s!==v):[...selected,v]);const label=selected.length===0?placeholder:selected.length<=maxShow?selected.join(", "):`${selected.length} ✓`;return(<div ref={ref} style={{position:"relative",display:"inline-block"}}><button style={{...S.btn,...(selected.length>0?S.ba:{}),minWidth:120,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}} onClick={()=>setOpen(!open)}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{label}</span><span style={{fontSize:8}}>▼</span></button>{open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:100,background:"#142444",border:"1px solid #1e3150",borderRadius:6,marginTop:4,maxHeight:240,overflowY:"auto",minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}><div style={{padding:"4px 8px",borderBottom:"1px solid #1e3150",display:"flex",justifyContent:"space-between"}}><button onClick={()=>onChange([])} style={{...S.btn,padding:"2px 8px",fontSize:10,border:"none"}}>{cl}</button><button onClick={()=>onChange([...options])} style={{...S.btn,padding:"2px 8px",fontSize:10,border:"none"}}>All</button></div>{options.map(o=><div key={o} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:selected.includes(o)?"#c9a84c":"#c8c3b8"}} onClick={()=>toggle(o)}><span style={{width:14,height:14,borderRadius:3,border:"1px solid "+(selected.includes(o)?"#c9a84c":"#1e3150"),background:selected.includes(o)?"rgba(201,168,76,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0}}>{selected.includes(o)?"✓":""}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o}</span></div>)}</div>}</div>)};
+const MS=({options,selected,onChange,placeholder,maxShow=2,S,cl,theme})=>{const[open,setOpen]=useState(false);const ref=useRef();useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);const toggle=v=>onChange(selected.includes(v)?selected.filter(s=>s!==v):[...selected,v]);const label=selected.length===0?placeholder:selected.length<=maxShow?selected.join(", "):`${selected.length} ✓`;return(<div ref={ref} style={{position:"relative",display:"inline-block"}}><button style={{...S.btn,...(selected.length>0?S.ba:{}),minWidth:120,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}} onClick={()=>setOpen(!open)}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{label}</span><span style={{fontSize:8}}>▼</span></button>{open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:100,background:theme?.card||"#142444",border:"1px solid "+(theme?.border||"#1e3150"),borderRadius:6,marginTop:4,maxHeight:240,overflowY:"auto",minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}><div style={{padding:"4px 8px",borderBottom:"1px solid "+(theme?.border||"#1e3150"),display:"flex",justifyContent:"space-between"}}><button onClick={()=>onChange([])} style={{...S.btn,padding:"2px 8px",fontSize:10,border:"none"}}>{cl}</button><button onClick={()=>onChange([...options])} style={{...S.btn,padding:"2px 8px",fontSize:10,border:"none"}}>All</button></div>{options.map(o=><div key={o} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:selected.includes(o)?(theme?.gold||"#c9a84c"):(theme?.text||"#c8c3b8")}} onClick={()=>toggle(o)}><span style={{width:14,height:14,borderRadius:3,border:"1px solid "+(selected.includes(o)?(theme?.gold||"#c9a84c"):(theme?.border||"#1e3150")),background:selected.includes(o)?"rgba(201,168,76,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0}}>{selected.includes(o)?"✓":""}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o}</span></div>)}</div>}</div>)};
 
 // ─── MAIN ───
 export default function App(){
@@ -757,6 +683,7 @@ export default function App(){
       const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");
       result=fmt==="month"?`${y2}-${m2}`:`${y2}-${m2}-${d2}`;
     }
+    if(tzCache.current.map.size>200000)tzCache.current.map.clear();
     tzCache.current.map.set(key,result);
     return result;
   },[tz]);
@@ -848,7 +775,7 @@ const[drSingle,setDrSingle]=useState("");
     if(useCache){try{const c=localStorage.getItem(CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text,true))return}}catch{}}
     fetch(GSHEET_CSV_URL)
       .then(r=>{if(!r.ok)throw new Error(r.status);return r.text()})
-      .then(text=>{if(parseAndSet(text,false)){try{localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch{}}})
+      .then(text=>{if(parseAndSet(text,false)){try{localStorage.setItem(CACHE_KEY,JSON.stringify({ts:Date.now(),text}))}catch(e){console.warn("[YYB] cache write failed (likely quota):",e.message)}}})
       .catch(()=>setSheetStatus("error"));
   },[]);
 
@@ -917,8 +844,8 @@ const[drSingle,setDrSingle]=useState("");
             console.error("[TL] worker threw:",e);
             setTlStatus("error");
           };
-          w.addEventListener("message",onMessage);
-          w.addEventListener("error",onError);
+          w.addEventListener("message",onMessage,{once:true});
+          w.addEventListener("error",onError,{once:true});
           w.postMessage({type:"parse",jobs});
         }else{
           // Fallback: main-thread parse (legacy path, only used if worker failed to init)
@@ -955,14 +882,12 @@ const[drSingle,setDrSingle]=useState("");
     }catch{}
     fetchYYB(false);
     fetchTL(false);
-    setLastFetchTs(Date.now());
   },[fetchYYB,fetchTL]);
 
   // ─── Auto-fetch on mount ───
   useEffect(()=>{
     if(allData.length===0)fetchYYB(true);
     fetchTL(true);
-    setLastFetchTs(Date.now());
   },[]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Enrich TL rows with country info once BOTH yyb + tl data are loaded ───
@@ -985,7 +910,8 @@ const[drSingle,setDrSingle]=useState("");
 
   const filtered=useMemo(()=>{
     const fCSet=fC.length?new Set(fC):null,fSSet=fS.length?new Set(fS):null,fPSet=fP.length?new Set(fP):null,fBSet=fBrands.length?new Set(fBrands):null,fGSet=fGeo.length?new Set(fGeo):null,fDSet=fDOW.length?new Set(fDOW):null;
-    const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
+    // Use T00:00:00 to force local-midnight parsing (new Date("YYYY-MM-DD") is UTC midnight, which breaks timezone-aware comparisons)
+    const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const dateField=fDT==="checkin"?"checkin":fDT==="checkout"?"checkout":"bookingDate";
     const out=[];
     for(let i=0;i<allData.length;i++){const r=allData[i];
@@ -1081,6 +1007,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   // ─── CHART DATA ───
   const mktD=useMemo(()=>!agg?[]:Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
+  const mktDByRev=useMemo(()=>mktD?[...mktD].sort((a,b)=>b.rev-a.rev):[],[mktD]);
   const segD=useMemo(()=>!agg?[]:SEG_ORDER.filter(s=>agg.byS[s]).map(s=>({segment:s,count:agg.byS[s].n,avgRev:Math.round(agg.byS[s].rev/agg.byS[s].n),avgLOS:+(avg(agg.byS[s].nights)).toFixed(2),avgLead:+(avg(agg.byS[s].lead)).toFixed(1)})),[agg]);
   // Detailed segment breakdown computed directly from filtered (not in agg)
   const segDetailedD=useMemo(()=>{
@@ -1099,9 +1026,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const activeSegs=SEG_ORDER_DETAILED.filter(s=>activeSet.has(s));
 
     // Seg by month (stacked)
-    const monthsSet=new Set();filtered.forEach(r=>{const m=getM(r);if(m)monthsSet.add(m)});
+    const monthsSet=new Set();const byMonthMap2=new Map();filtered.forEach(r=>{const m=getM(r);if(m){monthsSet.add(m);if(!byMonthMap2.has(m))byMonthMap2.set(m,[]);byMonthMap2.get(m).push(r)}});
     const months=[...monthsSet].sort();
-    const segMo=months.map(m=>{const row={month:m};filtered.filter(r=>getM(r)===m).forEach(r=>{const s=r.segmentDetailed||"Unknown";row[s]=(row[s]||0)+1});return row});
+    const segMo=months.map(m=>{const row={month:m};(byMonthMap2.get(m)||[]).forEach(r=>{const s=r.segmentDetailed||"Unknown";row[s]=(row[s]||0)+1});return row});
 
     // Seg by country (% by top 12 countries)
     const byCountryCount={};filtered.forEach(r=>{byCountryCount[r.country]=(byCountryCount[r.country]||0)+1});
@@ -1176,7 +1103,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     if(!filtered.length||!agg)return{data:[],countries:[]};
     const months=[...new Set(filtered.map(r=>getM(r)).filter(Boolean))].sort();
     const topN=Object.entries(agg.byC).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8).map(([c])=>c);
-    const data=months.map(m=>{const row={month:m};filtered.filter(r=>getM(r)===m).forEach(r=>{const c=topN.includes(r.country)?r.country:"Other";row[c]=(row[c]||0)+(r.totalRev||0)});return row});
+    const byMonthMap=new Map();filtered.forEach(r=>{const m=getM(r);if(m){if(!byMonthMap.has(m))byMonthMap.set(m,[]);byMonthMap.get(m).push(r)}});
+    const data=months.map(m=>{const row={month:m};(byMonthMap.get(m)||[]).forEach(r=>{const c=topN.includes(r.country)?r.country:"Other";row[c]=(row[c]||0)+(r.totalRev||0)});return row});
     return{data,countries:[...topN,"Other"]};
   },[filtered,agg]);
 
@@ -1203,11 +1131,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     // Monthly stacked by top countries
     const months=Object.keys(agg.byM).sort();
     const topC=[...new Set(Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,8).map(([c])=>c))];
-    const mktMo=months.map(m=>{const row={month:m};filtered.filter(r=>getM(r)===m).forEach(r=>{const c=topC.includes(r.country)?r.country:"Other";row[c]=(row[c]||0)+1});return row});
+    const byMonthMap=new Map();filtered.forEach(r=>{const m=getM(r);if(m){if(!byMonthMap.has(m))byMonthMap.set(m,[]);byMonthMap.get(m).push(r)}});
+    const mktMo=months.map(m=>{const row={month:m};(byMonthMap.get(m)||[]).forEach(r=>{const c=topC.includes(r.country)?r.country:"Other";row[c]=(row[c]||0)+1});return row});
     // Seg by region
     const segReg=SEG_ORDER.map(s=>({segment:s,Kanto:agg.rS.Kanto[s]||0,Kansai:agg.rS.Kansai[s]||0}));
     // Seg by month stacked
-    const segMo=months.map(m=>{const row={month:m};filtered.filter(r=>getM(r)===m).forEach(r=>{row[r.segment]=(row[r.segment]||0)+1});return row});
+    const segMo=months.map(m=>{const row={month:m};(byMonthMap.get(m)||[]).forEach(r=>{row[r.segment]=(row[r.segment]||0)+1});return row});
     // Seg by country %
     const topCforSeg=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,12).map(([c])=>c);
     const segCountry=topCforSeg.map(c=>{const segs=agg.cS[c]||{};const tot=Object.values(segs).reduce((a,b)=>a+b,0);const row={country:c};SEG_ORDER.forEach(s=>{row[s]=tot>0?Math.round(100*(segs[s]||0)/tot):0});return row});
@@ -1228,7 +1157,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dowCI=DOW_FULL.map((d,i)=>({day:dL[i],Kanto:kantoCITot>0?+(((agg.rDow.Kanto[d+"_ci"]||0)/kantoCITot)*100).toFixed(1):0,Kansai:kansaiCITot>0?+(((agg.rDow.Kansai[d+"_ci"]||0)/kansaiCITot)*100).toFixed(1):0}));
     const dowCO=DOW_FULL.map((d,i)=>({day:dL[i],Kanto:kantoCOTot>0?+(((agg.rDow.Kanto[d+"_co"]||0)/kantoCOTot)*100).toFixed(1):0,Kansai:kansaiCOTot>0?+(((agg.rDow.Kansai[d+"_co"]||0)/kansaiCOTot)*100).toFixed(1):0}));
     const kantoN=Object.values(agg.rC.Kanto).reduce((a,b)=>a+b,0);const kansaiN=Object.values(agg.rC.Kansai).reduce((a,b)=>a+b,0);
-    const scale=kansaiN>0?Math.round(kantoN/kansaiN):1;
     // Device by region
     const devR=["スマートフォン","パソコン","タブレット"].map(d=>({device:d==="スマートフォン"?(lang==="ja"?"スマホ":"Smartphone"):d==="パソコン"?"PC":d==="タブレット"?(lang==="ja"?"タブレット":"Tablet"):"Other",Kanto:agg.rDev.Kanto[d]||0,Kansai:agg.rDev.Kansai[d]||0}));
     // ADR by seg
@@ -1249,7 +1177,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const topRkC=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,6).map(([c])=>c);
     const rankC=topRkC.map(c=>{const row={country:c};RANK_ORDER.forEach(rk=>{row[rk]=agg.rkC[c]?.[rk]||0});return row});
 
-    return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,scale,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
+    return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
   },[tab,agg,filtered,dL,lang,tz]);
 
   // ─── COMPARE TAB ───
@@ -1265,6 +1193,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fS.length)d=d.filter(r=>fS.includes(r.segment));
       if(fP.length)d=d.filter(r=>fP.includes(r.facility));
       if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+      if(fDOW.length)d=d.filter(r=>fDOW.includes(r.checkinDow));
       return d;
     };
     const base=applyFilters([...allData]);
@@ -1286,7 +1215,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       return{totalCount:data.length,totalRev,totalNights:totalRoomNights,adr,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
-    const pctChg=(cur,prev)=>prev>0?((cur-prev)/prev*100).toFixed(1)+"%":(cur>0?"new":"0%");
     const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
     const countryRows=allCountries.map(c=>({country:c,countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
@@ -1298,8 +1226,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const countChart=[...countryRows].sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
     const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
     const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
-    return{a,b,pctChg,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
-  },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt]);
+    return{a,b,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
+  },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt]);
 
   // ─── PACE REPORT ───
   const paceRpt=useMemo(()=>{
@@ -1315,6 +1243,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fS.length)d=d.filter(r=>fS.includes(r.segment));
       if(fP.length)d=d.filter(r=>fP.includes(r.facility));
       if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+      if(fDOW.length)d=d.filter(r=>fDOW.includes(r.checkinDow));
       return d;
     };
     const base=applyFilters([...allData]);
@@ -1346,16 +1275,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     // Build cumulative data for chart: [{day:1, "2026-04":X, "2026-03":Y, ...}, ...]
     const maxDay=31;
     const chartData=[];
+    // Track running cumulative totals per month (O(days*months) instead of O(days²*months))
+    const cum={};months.forEach(m=>{cum[m]={count:0,rev:0}});
     for(let day=1;day<=maxDay;day++){
       const row={day};
       months.forEach(m=>{
-        let cumCount=0,cumRev=0;
-        for(let d=1;d<=day;d++){
-          if(monthData[m][d]){cumCount+=monthData[m][d].count;cumRev+=monthData[m][d].rev}
-        }
+        if(monthData[m][day]){cum[m].count+=monthData[m][day].count;cum[m].rev+=monthData[m][day].rev}
         // For current month, only show up to today's day
         if(m===currentMonth&&day>todayDay){row[m]=null}
-        else{row[m]=paceMetric==="count"?cumCount:cumRev}
+        else{row[m]=paceMetric==="count"?cum[m].count:cum[m].rev}
       });
       // Skip rows where ALL months are 0 or null
       if(months.some(m=>row[m]>0))chartData.push(row);
@@ -1383,7 +1311,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const projectedRev=todayDay>0?Math.round(curAtDay.rev/todayDay*daysInMonth):0;
 
     return{months,currentMonth,todayDay,chartData,summaryRows,curAtDay,lastAtDay,projectedCount,projectedRev,daysInMonth};
-  },[tab,allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,paceMetric]);
+  },[tab,allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,paceMetric]);
 
   // ─── CANCELLATION RATE TRACKER ───
   const cancelRpt=useMemo(()=>{
@@ -1397,11 +1325,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     if(fS.length)base=base.filter(r=>fS.includes(r.segment));
     if(fP.length)base=base.filter(r=>fP.includes(r.facility));
     if(fGeo.length)base=base.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+    if(fDOW.length)base=base.filter(r=>fDOW.includes(r.checkinDow));
     // Apply date range
-    if(fDF||fDTo){const from=fDF?new Date(fDF):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;base=base.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}
+    if(fDF||fDTo){const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;base=base.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}
     if(!base.length)return{empty:true};
 
-    const getMonth=r=>getM(r);
     const totalN=base.length;
     const cancelledN=base.filter(r=>r.isCancelled).length;
     const overallRate=totalN>0?+((cancelledN/totalN)*100).toFixed(1):0;
@@ -1410,7 +1338,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
     // Monthly trend
     const byMonth={};
-    base.forEach(r=>{const m=getMonth(r);if(!m)return;if(!byMonth[m])byMonth[m]={total:0,cancelled:0,lostRev:0};byMonth[m].total++;if(r.isCancelled){byMonth[m].cancelled++;byMonth[m].lostRev+=r.totalRev||0}});
+    base.forEach(r=>{const m=getM(r);if(!m)return;if(!byMonth[m])byMonth[m]={total:0,cancelled:0,lostRev:0};byMonth[m].total++;if(r.isCancelled){byMonth[m].cancelled++;byMonth[m].lostRev+=r.totalRev||0}});
     const monthTrend=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev}));
 
     // By country (top 15 by total volume)
@@ -1431,7 +1359,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const facByRate=[...facRows].sort((a,b)=>b.rate-a.rate);
 
     return{totalN,cancelledN,overallRate,lostRev,totalFee,monthTrend,countryRows,countryByRate,segRows,facRows,facByRate};
-  },[tab,allData,fDT,fDF,fDTo,fHType,fBrands,fR,fC,fS,fP,fGeo,tz,tzFmt,monthMode]);
+  },[tab,allData,fDT,fDF,fDTo,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,monthMode]);
 
   // ─── LOS DISTRIBUTION ───
   const losRpt=useMemo(()=>{
@@ -1479,7 +1407,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
     const overallAvg=+(withNights.reduce((a,r)=>a+r.nights,0)/withNights.length).toFixed(2);
     return{histData,segLOS,countryLOS,detailRows,overallAvg,totalWithNights:withNights.length};
-  },[tab,filtered,monthMode]);
+  },[tab,filtered]);
 
   // ─── REVPAR ───
   const revparRpt=useMemo(()=>{
@@ -1521,9 +1449,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     });
     // Calculate total days in the filtered period — must use check-in dates regardless of fDT,
     // because the room inventory denominator is anchored to physical nights of occupancy.
-    const allDates=withRooms.map(r=>tzFmt(r.checkin)).filter(Boolean).sort();
-    const minDate=allDates.length?allDates[0]:null;
-    const maxDate=allDates.length?allDates[allDates.length-1]:null;
+    let minDate=null,maxDate=null;
+    for(let i=0;i<withRooms.length;i++){const d=tzFmt(withRooms[i].checkin);if(!d)continue;if(!minDate||d<minDate)minDate=d;if(!maxDate||d>maxDate)maxDate=d}
     const totalDays=minDate&&maxDate?Math.max(1,Math.round((new Date(maxDate)-new Date(minDate))/864e5)+1):1;
 
     const facRows=Object.entries(byFac).map(([f,v])=>{
@@ -1541,8 +1468,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
     // Overall
     const totalAvail=TOTAL_ROOMS*totalDays;
-    const totalRev=withRooms.reduce((a,r)=>a+(r.totalRev||0),0);
-    const totalNightsSold=withRooms.reduce((a,r)=>a+((r.nights||0)*(r.rooms||1)),0);
+    const totalRev=Object.values(byFac).reduce((a,v)=>a+v.rev,0);
+    const totalNightsSold=Object.values(byFac).reduce((a,v)=>a+v.nightsSold,0);
     const overallRevpar=totalAvail>0?Math.round(totalRev/totalAvail):0;
     const overallOcc=totalAvail>0?+((totalNightsSold/totalAvail)*100).toFixed(1):0;
     const overallAdr=totalNightsSold>0?Math.round(totalRev/totalNightsSold):0;
@@ -1727,8 +1654,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const stats=computeGuestStats(g);
       segments2.forEach(seg=>{
         if(!tightestTable[seg])return;
-        tightestTable[seg].total++;
-        firstSecondTable[seg].total++;
+        if(g.dates.length>=2){tightestTable[seg].total++;firstSecondTable[seg].total++}
         if(stats.tightest!==null){const idx=bucketIdx(stats.tightest);if(idx>=0)tightestTable[seg].buckets[idx]++}
         if(stats.firstSecond!==null){const idx=bucketIdx(stats.firstSecond);if(idx>=0)firstSecondTable[seg].buckets[idx]++}
       });
@@ -1844,11 +1770,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const adrData=countryRows.map(r=>({country:r.country,adr:r.adr})).sort((a,b)=>b.adr-a.adr);
 
     // === Section 2: 直販比率 — stacked bar by booking date, segmented by check-in month ===
-    const localDate2=dt=>tzFmt(dt);
-    const bookDates=[...new Set(curData.map(r=>localDate2(r.bookingDate)).filter(Boolean))].sort();
+    const bookDates=[...new Set(curData.map(r=>tzFmt(r.bookingDate)).filter(Boolean))].sort();
     const ciMonths=[...new Set(curData.map(r=>r.checkinMonth).filter(Boolean))].sort().slice(0,6);
     const directRatio=bookDates.map(bd=>{
-      const dayData=curData.filter(r=>localDate2(r.bookingDate)===bd);
+      const dayData=curData.filter(r=>tzFmt(r.bookingDate)===bd);
       const total=dayData.length;if(!total)return null;
       const row={date:bd};
       ciMonths.forEach(m=>{const cnt=dayData.filter(r=>r.checkinMonth===m).length;row[m]=+((cnt/total)*100).toFixed(1)});
@@ -1947,7 +1872,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     let totalRev=0,totalBookings=0,totalRoomNights=0;
     const byBucket={ota:{rev:0,bookings:0,roomNights:0},rta:{rev:0,bookings:0,roomNights:0},direct:{rev:0,bookings:0,roomNights:0}};
     const byDay={},byMonth={},byFac={},byChannelName={};
-    const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const DOW=DOW_SHORT;
     const byDow={};DOW.forEach(d=>{byDow[d]={day:d,ota:0,rta:0,direct:0}});
 
     for(let i=0;i<tlFiltered.length;i++){
@@ -2017,6 +1942,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowRows:DOW.map(d=>byDow[d]),
       bucketKeys:buckets,
       channelNameList,channelNameByBucket,
+      top20Channels:channelNameList.slice(0,20),
     };
   },[tab,tlFiltered,tlAllStatusFiltered,monthMode]);
 
@@ -2024,7 +1950,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const tlRevenueRpt=useMemo(()=>{
     if(tab!=="tl-revenue"||!tlFiltered.length)return null;
     const byMonth={},byDay={},byFac={},bySeg={};
-    const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const DOW=DOW_SHORT;
     const byDow={};DOW.forEach(d=>{byDow[d]={day:d,rev:0,count:0}});
     // rev = totalRev (revenue + revenue_other) for revenue display; roomRev = revenue only for ADR.
     let totalRev=0,totalRoomRev=0,totalRoomNights=0,count=0;
@@ -2065,10 +1991,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const r=tlFiltered[i];if(r.status==="取消")continue;
       const k=segKey(r);if(!k)continue;
       if(k==="Unknown")continue;
-      if(!byS[k])byS[k]={count:0,rev:0,nights:[],lead:[]};
+      if(!byS[k])byS[k]={count:0,rev:0,nightsSum:0,nightsCount:0,leadSum:0,leadCount:0};
       byS[k].count++;byS[k].rev+=r.totalRev;
-      if(r.nights)byS[k].nights.push(r.nights);
-      if(r.leadTime!=null)byS[k].lead.push(r.leadTime);
+      if(r.nights){byS[k].nightsSum+=r.nights;byS[k].nightsCount++}
+      if(r.leadTime!=null){byS[k].leadSum+=r.leadTime;byS[k].leadCount++}
       if(!byFacSeg[r.facility])byFacSeg[r.facility]={facility:r.facility,name:shortFac(r.facility),_total:0};
       byFacSeg[r.facility][k]=(byFacSeg[r.facility][k]||0)+1;
       byFacSeg[r.facility]._total++;
@@ -2076,8 +2002,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const rows=ORDER.filter(s=>byS[s]).map(s=>({
       segment:s,count:byS[s].count,
       avgRev:byS[s].count>0?Math.round(byS[s].rev/byS[s].count):0,
-      avgLOS:byS[s].nights.length?+avg(byS[s].nights).toFixed(2):0,
-      avgLead:byS[s].lead.length?+avg(byS[s].lead).toFixed(1):0,
+      avgLOS:byS[s].nightsCount>0?+(byS[s].nightsSum/byS[s].nightsCount).toFixed(2):0,
+      avgLead:byS[s].leadCount>0?+(byS[s].leadSum/byS[s].leadCount).toFixed(1):0,
     }));
     const activeSegs=ORDER.filter(s=>byS[s]);
     const facSegRows=Object.values(byFacSeg).sort((a,b)=>b._total-a._total).map(f=>{
@@ -2093,16 +2019,22 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     if(tab!=="tl-daily"||!tlData.length||!drFrom)return null;
     const from=drFrom,to=drTo||drFrom;
     const inRange=dStr=>dStr>=from&&dStr<=to;
+    const fPSet=fP.length?new Set(fP):null;
+    const fCBSet=fChannelBucket.length?new Set(fChannelBucket):null;
+    const fCNSet=fTlChannelName.length?new Set(fTlChannelName):null;
+    const fTBSet=fTlBrand.length?new Set(fTlBrand):null;
+    const fSSet=fS.length?new Set(fS):null;
+    const fDSet=fDOW.length?new Set(fDOW):null;
     // Apply global filters except date (the tab has its own date picker)
     const apply=r=>{
-      if(fP.length&&!fP.includes(r.facility))return false;
-      if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
-      if(fTlChannelName.length&&!fTlChannelName.includes(r.channel_name))return false;
-      if(fTlBrand.length&&!fTlBrand.includes(r.brand))return false;
+      if(fPSet&&!fPSet.has(r.facility))return false;
+      if(fCBSet&&!fCBSet.has(r.channelBucket))return false;
+      if(fCNSet&&!fCNSet.has(r.channel_name))return false;
+      if(fTBSet&&!fTBSet.has(r.brand))return false;
       if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)return false;
       if(fR!=="All"&&r.region!==fR)return false;
-      if(fS.length&&!fS.includes(r.segment))return false;
-      if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
+      if(fSSet&&!fSSet.has(r.segment))return false;
+      if(fDSet&&!fDSet.has(r.checkinDow))return false;
       if(fTlStatus==="net"){if(r.status==="取消"||(r.status==="予約"&&r.sameDayCancelled))return false}
       else if(fTlStatus==="cancelled"){if(r.status!=="取消"&&!r.sameDayCancelled)return false}
       else if(fTlStatus==="modified"){if(r.status!=="変更")return false}
@@ -2181,7 +2113,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const tlOverviewRpt=useMemo(()=>{
     if(tab!=="tl-overview"||!tlFiltered.length)return null;
     const byMo={},byMkt={},bySeg={},byDow={};
-    const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const DOW=DOW_SHORT;
     DOW.forEach(d=>{byDow[d]={day:d,count:0,rev:0}});
     for(let i=0;i<tlFiltered.length;i++){
       const r=tlFiltered[i];if(r.status==="取消")continue;
@@ -2231,7 +2163,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const tlBookingRpt=useMemo(()=>{
     if(tab!=="tl-booking"||!tlFiltered.length)return null;
     const leadBuckets={"0-3":0,"4-7":0,"8-14":0,"15-30":0,"31-60":0,"61+":0};
-    const byDow={};const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const byDow={};const DOW=DOW_SHORT;
     DOW.forEach(d=>{byDow[d]={day:d,count:0}});
     const byMonthDow={};
     for(let i=0;i<tlFiltered.length;i++){
@@ -2282,27 +2214,26 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
     if(!dataA.length&&!dataB.length)return{empty:true};
     const aggregate=data=>{
-      let totalRev=0;
+      let totalRev=0,totalCount=0;
       const byCountry={},bySegment={},byFacility={};
       data.forEach(r=>{
         if(r.status==="取消")return;
-        totalRev+=r.totalRev;
+        totalCount++;totalRev+=r.totalRev;
         const c=r.country||"Unknown";
         if(!byCountry[c])byCountry[c]={count:0,rev:0};byCountry[c].count++;byCountry[c].rev+=r.totalRev;
         if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev;
         if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev;
       });
-      return{totalCount:data.length,totalRev,byCountry,bySegment,byFacility};
+      return{totalCount,totalRev,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
-    const pctChg=(c,p)=>p>0?((c-p)/p*100).toFixed(1)+"%":(c>0?"new":"0%");
     const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
     const countryRows=allCountries.map(c=>({country:c,countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
     const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
     const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
-    return{a,b,pctChg,countryRows,segRows,facRows};
+    return{a,b,countryRows,segRows,facRows};
   },[tab,tlData,cmpA,cmpB,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus]);
 
   // ─── TL Pace ───
@@ -2435,7 +2366,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const revSR={Kanto:{},Kansai:{}};
     const byC={Kanto:{},Kansai:{}};
     const monthlyByReg={};
-    const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    const DOW=DOW_SHORT;
     ["Kanto","Kansai"].forEach(rg=>{DOW.forEach(d=>{dowCI[rg][d]=0;dowCO[rg][d]=0})});
     let kN=0,sN=0,kR=0,sR=0;
     for(let i=0;i<tlFiltered.length;i++){
@@ -2553,7 +2484,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   // Styles
   useEffect(()=>{localStorage.setItem("rgl_theme",theme)},[theme]);
   const dk=theme==="dark";
-  const TH={
+  const TH=useMemo(()=>({
     bg:dk?"#080e1a":"#f5f5f7",
     card:dk?"#0f1928":"#ffffff",
     border:dk?"#1e3150":"#e0e0e8",
@@ -2576,8 +2507,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     sidebarBg:dk?"#0a1124":"#fafafc",
     sidebarBorder:dk?"#1e3150":"#e0e0e8",
     sidebarHover:dk?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.04)",
-  };
-  const S={app:{fontFamily:"'DM Sans',sans-serif",background:TH.bg,color:TH.text,minHeight:"100vh"},inner:{maxWidth:1440,margin:"0 auto",padding:isMobile?"12px 6px":"24px 16px"},hdr:{borderBottom:"1px solid "+TH.border,paddingBottom:20,marginBottom:24},h1:{fontSize:24,fontWeight:700,color:TH.textStrong,letterSpacing:-.5,margin:0},gold:{color:TH.gold},sub:{fontSize:12,color:TH.textMuted,marginTop:4,fontFamily:"'JetBrains Mono',monospace"},card:{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:isMobile?10:16,marginBottom:12,overflow:"hidden",minWidth:0},ct:{fontSize:13,fontWeight:600,color:TH.textStrong,marginBottom:10},kpi:{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:"12px 14px",minWidth:140,flex:"1 1 140px"},kl:{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:TH.textMuted,fontFamily:"'JetBrains Mono',monospace"},kv:{fontSize:22,fontWeight:700,color:TH.textStrong,marginTop:2},btn:{background:TH.card,border:"1px solid "+TH.border,color:TH.text,fontSize:12,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all .15s"},ba:{background:TH.accent,borderColor:TH.accentBorder,color:TH.gold},bg:{background:"rgba(201,168,76,0.15)",border:"1px solid "+TH.gold,color:TH.gold,fontSize:12,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"},sel:{background:TH.input,border:"1px solid "+TH.border,color:TH.text,fontSize:12,padding:"5px 8px",borderRadius:5,fontFamily:"'DM Sans',sans-serif",outline:"none"},inp:{background:TH.input,border:"1px solid "+TH.border,color:TH.text,fontSize:12,padding:"5px 8px",borderRadius:5,outline:"none"},tag:c=>({fontSize:10,fontWeight:500,padding:"2px 8px",borderRadius:4,background:c+"22",color:c,marginLeft:6,display:"inline-block"}),tbl:{width:"100%",borderCollapse:"collapse",fontSize:isMobile?10:12},th:{textAlign:"left",fontWeight:600,color:TH.gold,fontSize:isMobile?8:10,textTransform:"uppercase",letterSpacing:.5,padding:isMobile?"4px 4px":"6px 8px",borderBottom:"1px solid "+TH.border,fontFamily:"'JetBrains Mono',monospace",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"},td:{padding:isMobile?"3px 4px":"5px 8px",borderBottom:"1px solid "+TH.border+"66",fontSize:12,color:TH.text},upl:{border:"2px dashed "+TH.border,borderRadius:10,padding:"40px 20px",textAlign:"center",cursor:"pointer"},m:{fontFamily:"'JetBrains Mono',monospace"},fl:{fontSize:10,color:TH.textMuted,marginBottom:3,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"},lt:{display:"flex",background:TH.input,borderRadius:6,overflow:"hidden",border:"1px solid "+TH.border},lb:a=>({padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:a?TH.gold:"transparent",color:a?(dk?"#080e1a":"#ffffff"):TH.textMuted,fontFamily:"'DM Sans',sans-serif"}),insight:{background:TH.insightBg,border:"1px solid "+TH.insightBorder,borderRadius:8,padding:14,marginBottom:14,fontSize:12,color:TH.textMuted,lineHeight:1.6}};
+  }),[dk]);
+  const S=useMemo(()=>({app:{fontFamily:"'DM Sans',sans-serif",background:TH.bg,color:TH.text,minHeight:"100vh"},inner:{maxWidth:1440,margin:"0 auto",padding:isMobile?"12px 6px":"24px 16px"},hdr:{borderBottom:"1px solid "+TH.border,paddingBottom:20,marginBottom:24},h1:{fontSize:24,fontWeight:700,color:TH.textStrong,letterSpacing:-.5,margin:0},gold:{color:TH.gold},sub:{fontSize:12,color:TH.textMuted,marginTop:4,fontFamily:"'JetBrains Mono',monospace"},card:{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:isMobile?10:16,marginBottom:12,overflow:"hidden",minWidth:0},ct:{fontSize:13,fontWeight:600,color:TH.textStrong,marginBottom:10},kpi:{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:"12px 14px",minWidth:140,flex:"1 1 140px"},kl:{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:TH.textMuted,fontFamily:"'JetBrains Mono',monospace"},kv:{fontSize:22,fontWeight:700,color:TH.textStrong,marginTop:2},btn:{background:TH.card,border:"1px solid "+TH.border,color:TH.text,fontSize:12,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all .15s"},ba:{background:TH.accent,borderColor:TH.accentBorder,color:TH.gold},bg:{background:"rgba(201,168,76,0.15)",border:"1px solid "+TH.gold,color:TH.gold,fontSize:12,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"},sel:{background:TH.input,border:"1px solid "+TH.border,color:TH.text,fontSize:12,padding:"5px 8px",borderRadius:5,fontFamily:"'DM Sans',sans-serif",outline:"none"},inp:{background:TH.input,border:"1px solid "+TH.border,color:TH.text,fontSize:12,padding:"5px 8px",borderRadius:5,outline:"none"},tag:c=>({fontSize:10,fontWeight:500,padding:"2px 8px",borderRadius:4,background:c+"22",color:c,marginLeft:6,display:"inline-block"}),tbl:{width:"100%",borderCollapse:"collapse",fontSize:isMobile?10:12},th:{textAlign:"left",fontWeight:600,color:TH.gold,fontSize:isMobile?8:10,textTransform:"uppercase",letterSpacing:.5,padding:isMobile?"4px 4px":"6px 8px",borderBottom:"1px solid "+TH.border,fontFamily:"'JetBrains Mono',monospace",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"},td:{padding:isMobile?"3px 4px":"5px 8px",borderBottom:"1px solid "+TH.border+"66",fontSize:12,color:TH.text},upl:{border:"2px dashed "+TH.border,borderRadius:10,padding:"40px 20px",textAlign:"center",cursor:"pointer"},m:{fontFamily:"'JetBrains Mono',monospace"},fl:{fontSize:10,color:TH.textMuted,marginBottom:3,textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace"},lt:{display:"flex",background:TH.input,borderRadius:6,overflow:"hidden",border:"1px solid "+TH.border},lb:a=>({padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",border:"none",background:a?TH.gold:"transparent",color:a?(dk?"#080e1a":"#ffffff"):TH.textMuted,fontFamily:"'DM Sans',sans-serif"}),insight:{background:TH.insightBg,border:"1px solid "+TH.insightBorder,borderRadius:8,padding:14,marginBottom:14,fontSize:12,color:TH.textMuted,lineHeight:1.6}}),[TH,isMobile,dk]);
   const CT=({active,payload,label,formatter})=>{if(!active||!payload?.length)return null;return(<div style={{background:TH.tooltipBg,border:"1px solid "+TH.tooltipBorder,borderRadius:6,padding:"8px 12px",fontSize:12,color:TH.tooltipText}}><div style={{fontWeight:600,marginBottom:4,color:TH.gold}}>{label}</div>{payload.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}><span style={{width:8,height:8,borderRadius:2,background:p.color,display:"inline-block"}}/><span>{p.name}: {formatter?formatter(p.value):typeof p.value==="number"?p.value.toLocaleString():p.value}</span></div>)}</div>)};
   const LT=()=><div style={S.lt}><button style={S.lb(lang==="en")} onClick={()=>setLang("en")}>EN</button><button style={S.lb(lang==="ja")} onClick={()=>setLang("ja")}>日本語</button></div>;
   const trFn=v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v);
@@ -2622,6 +2553,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const TlTick=({x,y,payload,anchor})=><text x={x} y={y} textAnchor={anchor||"middle"} fill={TH.tickFill} fontSize={11} dy={12}>{tl(payload.value)}</text>;
   const TlTickV=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={11} dy={4}>{tl(payload.value)}</text>;
   const TlTickV2=({x,y,payload})=>{const v=tl(payload.value);if(isMobile){const short=v.length>6?v.slice(0,6)+"…":v;return<text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={7} transform={`rotate(-45,${x},${y})`} dy={4}>{short}</text>}const parts=v.length>10?[v.slice(0,10),v.slice(10)]:[v];return<text x={x} y={y} textAnchor="middle" fill={TH.tickFill} fontSize={9}>{parts.map((p,i)=><tspan key={i} x={x} dy={i===0?12:11}>{p}</tspan>)}</text>};
+  const TlTickV9=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>;
+  const TlTickV9R=({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>;
 
   const TABS=[
     {id:"daily",l:t.dailyReport,src:"yyb",i:"📋"},
@@ -2661,8 +2594,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const isTlTab=activeTabSrc==="tl";
 
   if(!allData.length)return(
-    <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-    <div style={{...S.inner,maxWidth:700,paddingTop:60}}>
+    <div style={S.app}>    <div style={{...S.inner,maxWidth:700,paddingTop:60}}>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8}}><div style={S.lt}><button style={S.lb(theme==="dark")} onClick={()=>setTheme("dark")}>{t.darkMode}</button><button style={S.lb(theme==="light")} onClick={()=>setTheme("light")}>{t.lightMode}</button></div><div><select style={{...S.sel,fontSize:10,padding:"4px 6px"}} value={tz} onChange={e=>setTz(e.target.value)} title={t.timezone}><option value="Asia/Tokyo">JST (UTC+9)</option><option value="America/New_York">EST (UTC-5)</option><option value="America/Chicago">CST (UTC-6)</option><option value="America/Los_Angeles">PST (UTC-8)</option><option value="Europe/London">GMT (UTC+0)</option><option value="Europe/Paris">CET (UTC+1)</option><option value="Asia/Shanghai">CST (UTC+8)</option><option value="Asia/Kolkata">IST (UTC+5:30)</option><option value="Australia/Sydney">AEST (UTC+11)</option><option value="Pacific/Auckland">NZST (UTC+12)</option><option value="UTC">UTC</option></select></div><LT/></div>
       <div style={{textAlign:"center",marginBottom:40}}><h1 style={{...S.h1,fontSize:28}}>{t.uploadTitle} <span style={S.gold}>{t.uploadAccent}</span> <span style={{fontSize:10,color:TH.textMuted,fontWeight:400,fontFamily:"'JetBrains Mono',monospace"}}>v{APP_VERSION}</span></h1></div>
       {sheetStatus==="loading"&&<div style={{textAlign:"center",marginBottom:24,overflow:"hidden",position:"relative",height:100}}>
@@ -2683,8 +2615,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   );
 
   return(
-    <div style={S.app}><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-    {/* Mobile sidebar toggle — rendered at app root so position:fixed sticks to viewport regardless of flex containers */}
+    <div style={S.app}>    {/* Mobile sidebar toggle — rendered at app root so position:fixed sticks to viewport regardless of flex containers */}
     {isMobile&&sidebarCollapsed&&<button className="no-print" onClick={()=>setSidebarCollapsed(false)} style={{position:"fixed",top:8,left:8,zIndex:1000,background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:6,padding:"6px 10px",fontSize:16,color:TH.gold,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.5)"}}>☰</button>}
     <div style={{display:"flex",minHeight:"100vh"}}>
       {/* ─── SIDEBAR ─── */}
@@ -2729,19 +2660,19 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </div>
         {!isTlTab&&<div><div style={S.fl}>{t.statusFilter}</div><div style={{display:"flex",gap:3}}>{[["confirmed",t.statusConfirmed],["cancelled",t.statusCancelled],["all",t.statusAll]].map(([v,l])=><button key={v} style={{...S.btn,...(fCancel===v?S.ba:{})}} onClick={()=>setFCancel(v)}>{l}</button>)}</div></div>}
         {!isTlTab&&<div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fHType===v?S.ba:{})}} onClick={()=>setFHType(v)}>{l}</button>)}</div></div>}
-        {!isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={S} cl={t.clear}/></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={S} cl={t.clear} theme={TH}/></div>}
         <div><div style={S.fl}>{t.region}</div><div style={{display:"flex",gap:3}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...S.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>
-        {!isTlTab&&<div><div style={S.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={S} cl={t.clear}/></div>}
-        <div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear}/></div>
-        {!isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
-        {isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear}/></div>}
+        {!isTlTab&&<div><div style={S.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={S} cl={t.clear} theme={TH}/></div>}
+        <div><div style={S.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={S} cl={t.clear} theme={TH}/></div>
+        {!isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear} theme={TH}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={S} cl={t.clear} theme={TH}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.hotelType}</div><div style={{display:"flex",gap:3}}>{[["All",t.all],["Hotel",t.hotelTypeHotel],["Apart",t.hotelTypeApart]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlHotelType===v?S.ba:{})}} onClick={()=>setFTlHotelType(v)}>{l}</button>)}</div></div>}
-        {isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uTlBrand} selected={fTlBrand} onChange={setFTlBrand} placeholder={t.allBrands} S={S} cl={t.clear}/></div>}
-        {isTlTab&&<div><div style={S.fl}>{t.tlChannelBucket}</div><MS options={["ota","rta","direct"]} selected={fChannelBucket} onChange={setFChannelBucket} placeholder={t.all} S={S} cl={t.clear}/></div>}
-        {isTlTab&&<div><div style={S.fl}>{t.tlChannelName}</div><MS options={uTlChannelName} selected={fTlChannelName} onChange={setFTlChannelName} placeholder={t.all} maxShow={1} S={S} cl={t.clear}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.brand}</div><MS options={uTlBrand} selected={fTlBrand} onChange={setFTlBrand} placeholder={t.allBrands} S={S} cl={t.clear} theme={TH}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.tlChannelBucket}</div><MS options={["ota","rta","direct"]} selected={fChannelBucket} onChange={setFChannelBucket} placeholder={t.all} S={S} cl={t.clear} theme={TH}/></div>}
+        {isTlTab&&<div><div style={S.fl}>{t.tlChannelName}</div><MS options={uTlChannelName} selected={fTlChannelName} onChange={setFTlChannelName} placeholder={t.all} maxShow={1} S={S} cl={t.clear} theme={TH}/></div>}
         {isTlTab&&<div><div style={S.fl}>{t.tlStatus}</div><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{[["net",t.tlStatusNet],["all",t.tlStatusAll],["cancelled",t.tlStatusCancelled],["modified",t.tlStatusModified]].map(([v,l])=><button key={v} style={{...S.btn,...(fTlStatus===v?S.ba:{})}} onClick={()=>setFTlStatus(v)}>{l}</button>)}</div></div>}
-{!isTlTab&&<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear}/></div>}
-<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear}/></div>
+{!isTlTab&&<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear} theme={TH}/></div>}
+<div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear} theme={TH}/></div>
         <div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></>}</select></div>
         <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
         <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
@@ -2850,7 +2781,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div style={{marginTop:14,borderTop:"1px solid "+TH.border,paddingTop:14}}>
             <div style={{display:"flex",gap:16,alignItems:"flex-end",marginBottom:14}}>
               <div><div style={S.fl}>{t.drSingleDate}</div><input type="date" style={S.inp} value={drSingle} onChange={e=>setDrSingle(e.target.value)}/></div>
-              <div style={{fontSize:9,color:TH.textMuted,fontStyle:"italic"}}>※数字は8:40以降に確定</div>
+              <div style={{fontSize:9,color:TH.textMuted,fontStyle:"italic"}}>{t.drNote}</div>
             </div>
             {(()=>{
               const localD=dt=>tzFmt(dt);
@@ -2990,7 +2921,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 [t.reservations,compareRpt.a.totalCount,compareRpt.b.totalCount],
                 [t.totalRevenue,compareRpt.a.totalRev,compareRpt.b.totalRev],
                 [t.drADR,compareRpt.a.adr,compareRpt.b.adr],
-              ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue||label===t.drADR;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,color:"#4ea8de"}}>A</div><div style={{...S.kv,fontSize:18}}>{fmt(va)}</div></div><div><div style={{fontSize:10,color:TH.gold}}>B</div><div style={{...S.kv,fontSize:18}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({compareRpt.pctChg(va,vb)})</div></div>})}
+              ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue||label===t.drADR;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,color:"#4ea8de"}}>A</div><div style={{...S.kv,fontSize:18}}>{fmt(va)}</div></div><div><div style={{fontSize:10,color:TH.gold}}>B</div><div style={{...S.kv,fontSize:18}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({pctChg(va,vb)})</div></div>})}
             </div>
             <DraggableGrid {...dgProps("compare")}>
               <div key="cmp-country"><SortTbl
@@ -3023,11 +2954,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div><div style={S.fl}>{t.paceTitle}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(paceMetric==="count"?S.ba:{})}} onClick={()=>setPaceMetric("count")}>{t.paceToggleRes}</button><button style={{...S.btn,...(paceMetric==="rev"?S.ba:{})}} onClick={()=>setPaceMetric("rev")}>{t.paceToggleRev}</button></div></div>
           </div>
           {paceRpt?<>
+            {(()=>{const paceDelta=paceMetric==="count"?paceRpt.curAtDay.count-paceRpt.lastAtDay.count:paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev;return(
             <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
               <div style={S.kpi}><div style={S.kl}>{paceRpt.currentMonth} {t.paceSoFar}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.curAtDay.count):"¥"+fmtN(paceRpt.curAtDay.rev)}</div></div>
-              {paceRpt.lastAtDay&&<div style={S.kpi}><div style={S.kl}>{paceRpt.months[1]} {t.paceSoFar}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.lastAtDay.count):"¥"+fmtN(paceRpt.lastAtDay.rev)}</div><div style={{fontSize:11,marginTop:4,color:(paceMetric==="count"?paceRpt.curAtDay.count-paceRpt.lastAtDay.count:paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev)>0?"#34d399":"#ef4444"}}>{(paceMetric==="count"?paceRpt.curAtDay.count-paceRpt.lastAtDay.count:paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev)>0?"+":""}{paceMetric==="count"?(paceRpt.curAtDay.count-paceRpt.lastAtDay.count):fmtN(paceRpt.curAtDay.rev-paceRpt.lastAtDay.rev)}</div></div>}
+              {paceRpt.lastAtDay&&<div style={S.kpi}><div style={S.kl}>{paceRpt.months[1]} {t.paceSoFar}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.lastAtDay.count):"¥"+fmtN(paceRpt.lastAtDay.rev)}</div><div style={{fontSize:11,marginTop:4,color:paceDelta>0?"#34d399":"#ef4444"}}>{paceDelta>0?"+":""}{paceMetric==="count"?paceDelta:fmtN(paceDelta)}</div></div>}
               <div style={S.kpi}><div style={S.kl}>{t.paceProjected}</div><div style={S.kv}>{paceMetric==="count"?fmtN(paceRpt.projectedCount):"¥"+fmtN(paceRpt.projectedRev)}</div></div>
-            </div>
+            </div>)})()}
             <DraggableGrid {...dgProps("pace")}>
               <div key="pace-chart"><CC grid title={t.paceTitle} id="pace-chart" nm="pace" data={paceRpt.chartData}><LineChart data={paceRpt.chartData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk} label={{value:"Day of Month",position:"insideBottom",offset:-5,fill:TH.tickFill,fontSize:10}}/><YAxis tick={tk} tickFormatter={paceMetric==="rev"?fmtY:undefined}/><Tooltip content={<CT formatter={paceMetric==="rev"?v=>"¥"+v.toLocaleString():undefined}/>}/><Legend wrapperStyle={{fontSize:10}}/>{paceRpt.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={i===0?TH.gold:PALETTE[i%PALETTE.length]} strokeWidth={i===0?3:1.5} dot={i===0?{fill:TH.gold,r:3}:false} name={m} connectNulls={false}/>)}</LineChart></CC></div>
               <div key="pace-summary"><SortTbl
@@ -3049,7 +2981,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-mk"><CC grid title={t.topMarkets} id="ch-mk" nm="top_markets" h={320} data={mktD.slice(0,10)}><BarChart data={mktD.slice(0,10)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c9a84c" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-dw"><CC grid title={t.checkinDOW} id="ch-dw" nm="dow" h={320} data={dowD}><BarChart data={dowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></BarChart></CC></div>
           <div key="ch-mo-rev"><CC grid title={t.monthlyRev} id="ch-mo-rev" nm="monthly_rev_ov" data={moD}><BarChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
-          <div key="ch-rev-country"><CC grid title={t.revByCountry} id="ch-rev-country" nm="rev_country_ov" h={Math.max(300,mktD.length*24)} data={[...mktD].sort((a,b)=>b.rev-a.rev)}><BarChart data={[...mktD].sort((a,b)=>b.rev-a.rev)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-rev-country"><CC grid title={t.revByCountry} id="ch-rev-country" nm="rev_country_ov" h={Math.max(300,mktD.length*24)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
           <div key="ch-res-day"><CC grid title={t.resByDay} id="ch-res-day" nm="res_day" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-rev-day"><CC grid title={t.revByDay} id="ch-rev-day" nm="rev_day" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
         </DraggableGrid></>}
@@ -3080,7 +3012,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {tab==="markets"&&<div><DraggableGrid {...dgProps("markets")}>
           <div key="ch-mf"><CC grid title={t.allMarketsCount} id="ch-mf" nm="markets" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-mr"><CC grid title={t.avgRevByMarket} id="ch-mr" nm="markets_rev" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
-          <div key="ch-mrev"><CC grid title={t.revByCountry} id="ch-mrev" nm="mkt_rev_total" h={Math.max(300,mktD.length*28)} data={[...mktD].sort((a,b)=>b.rev-a.rev)}><BarChart data={[...mktD].sort((a,b)=>b.rev-a.rev)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-mrev"><CC grid title={t.revByCountry} id="ch-mrev" nm="mkt_rev_total" h={Math.max(300,mktD.length*28)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
           <div key="ch-ml"><CC grid title={t.avgLOSByCountry} id="ch-ml" nm="mkt_los" h={Math.max(300,mktLOS.length*28)} data={mktLOS}><BarChart data={mktLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
           <div key="ch-mld"><CC grid title={t.avgLeadByCountry} id="ch-mld" nm="mkt_lead" h={Math.max(300,mktLead.length*28)} data={mktLead}><BarChart data={mktLead} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Bar dataKey="avgLead" fill="#e07b54" radius={[0,4,4,0]} name={t.avgLeadTime}/></BarChart></CC></div>
           <div key="ch-msc">{kvk&&<CC grid title={t.segMixByCountry} id="ch-msc" nm="seg_mix_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
@@ -3117,7 +3049,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-mdow"><CC grid title={t.monthlyDOW+" ("+t.checkInLabel+")"} id="ch-mdow" nm="monthly_dow_ci" data={monthDowD.ciData}><LineChart data={monthDowD.ciData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{monthDowD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
           <div key="ch-mdow2"><CC grid title={t.monthlyDOW+" ("+t.checkOutLabel+")"} id="ch-mdow2" nm="monthly_dow_co" data={monthDowD.coData}><LineChart data={monthDowD.coData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{monthDowD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
           <div key="ch-bt"><CC grid title={t.monthlyTrend} id="ch-bt" nm="trend" h={300} data={moD}><LineChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><YAxis yAxisId="r" orientation="right" tick={tks} tickFormatter={fmtY}/><Tooltip content={<CT/>}/><Legend/><Line type="monotone" dataKey="count" stroke="#c9a84c" strokeWidth={2} dot={{fill:"#c9a84c",r:4}} name={t.reservations}/><Line type="monotone" dataKey="avgRev" stroke="#4ea8de" strokeWidth={2} dot={{fill:"#4ea8de",r:4}} name={t.avgRevRes} yAxisId="r"/></LineChart></CC></div>
-          <div key="ch-bv"><CC grid title={t.bookingDevice} id="ch-bv" nm="device" data={(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});return Object.entries(m).map(([name,value])=>({name,value}))})()}>{(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});const dd=Object.entries(m).map(([name,value])=>({name,value}));return(<PieChart><Pie data={dd} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${name} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{dd.map((_,i)=><Cell key={i} fill={PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart>)})()}</CC></div>
+          <div key="ch-bv">{(()=>{const m={};filtered.forEach(r=>{const d=r.device==="スマートフォン"?t.smartphone:r.device==="パソコン"?t.pc:r.device==="タブレット"?t.tablet:"Other";m[d]=(m[d]||0)+1});const dd=Object.entries(m).map(([name,value])=>({name,value}));return(<CC grid title={t.bookingDevice} id="ch-bv" nm="device" data={dd}><PieChart><Pie data={dd} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${name} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{dd.map((_,i)=><Cell key={i} fill={PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></CC>)})()}</div>
         </DraggableGrid></>}
 
         {/* MEMBER */}
@@ -3131,8 +3063,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           {memberRpt?<DraggableGrid {...dgProps("member")}>
             <div key="mb-overview"><CC grid title={t.memberRepeatRate} id="mb-overview" nm="member_overview" data={memberRpt.overviewPie}><PieChart><Pie data={memberRpt.overviewPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="65%" label={({name,percent,cx,cy,midAngle,outerRadius:r})=>{const x2=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y2=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);const label=name==="repeat"?t.memberRepeater:t.memberFirstTimer;return<text x={x2} y={y2} textAnchor={x2>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${label} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}><Cell fill="#34d399"/><Cell fill="#4ea8de"/></Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
             <div key="mb-jpintl"><CC grid title={t.memberByCountryType} id="mb-jpintl" nm="member_jpintl" data={memberRpt.jpIntlData}><BarChart data={memberRpt.jpIntlData}><CartesianGrid {...gl}/><XAxis dataKey="type" tick={tk}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}><Cell fill="#c9a84c"/><Cell fill="#4ea8de"/></Bar></BarChart></CC></div>
-            <div key="mb-cntry-stack"><CC grid title={t.memberCountryStack} id="mb-cntry-stack" nm="member_cntry_stack" data={memberRpt.countryRptRows}><BarChart data={memberRpt.countryRptRows.map(r=>({country:r.country,firstTimerPct:r.total>0?+((r.firstTimers/r.total)*100).toFixed(1):0,repeaterPct:r.rate}))}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT formatter={v=>v+"%"}/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="firstTimerPct" stackId="a" fill="#4ea8de" name={t.memberFirstTimer}/><Bar dataKey="repeaterPct" stackId="a" fill="#34d399" name={t.memberRepeater}/></BarChart></CC></div>
-            <div key="mb-cntry-counts"><CC grid title={t.memberCountryCounts} id="mb-cntry-counts" nm="member_cntry_counts" data={memberRpt.countryRptRows}><BarChart data={memberRpt.countryRptRows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tk}/><Tooltip content={<CT/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="firstTimers" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberFirstTimer}/><Bar dataKey="repeaters" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeater}/></BarChart></CC></div>
+            <div key="mb-cntry-stack"><CC grid title={t.memberCountryStack} id="mb-cntry-stack" nm="member_cntry_stack" data={memberRpt.countryRptRows}><BarChart data={memberRpt.countryRptRows.map(r=>({country:r.country,firstTimerPct:r.total>0?+((r.firstTimers/r.total)*100).toFixed(1):0,repeaterPct:r.rate}))}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV9R/>} height={70} interval={0}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><Tooltip content={<CT formatter={v=>v+"%"}/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="firstTimerPct" stackId="a" fill="#4ea8de" name={t.memberFirstTimer}/><Bar dataKey="repeaterPct" stackId="a" fill="#34d399" name={t.memberRepeater}/></BarChart></CC></div>
+            <div key="mb-cntry-counts"><CC grid title={t.memberCountryCounts} id="mb-cntry-counts" nm="member_cntry_counts" data={memberRpt.countryRptRows}><BarChart data={memberRpt.countryRptRows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV9R/>} height={70} interval={0}/><YAxis tick={tk}/><Tooltip content={<CT/>} labelFormatter={v=>tl(v)}/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="firstTimers" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberFirstTimer}/><Bar dataKey="repeaters" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeater}/></BarChart></CC></div>
             <div key="mb-rank"><CC grid title={t.memberByRank} id="mb-rank" nm="member_rank" data={memberRpt.rankRows}><ComposedChart data={memberRpt.rankRows}><CartesianGrid {...gl}/><XAxis dataKey="rank" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"} domain={[0,100]}/><YAxis yAxisId="count" orientation="right" tick={false} axisLine={false}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="rate" fill="#34d399" radius={[4,4,0,0]} name={t.memberRepeatRate}/><Bar dataKey="total" fill="#4ea8de" radius={[4,4,0,0]} name={t.memberTotal} opacity={0.4} yAxisId="count"/></ComposedChart></CC></div>
             <div key="mb-seg"><CC grid title={t.memberBySegment} id="mb-seg" nm="member_seg" data={memberRpt.segRows}><BarChart data={memberRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" radius={[4,4,0,0]} name={t.memberRepeatRate}>{memberRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
             <div key="mb-fac"><CC grid title={t.memberByFac} id="mb-fac" nm="member_fac" data={memberRpt.facByRate}><BarChart data={memberRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#34d399" radius={[0,4,4,0]} name={t.memberRepeatRate}/></BarChart></CC></div>
@@ -3190,7 +3122,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-drev"><CC grid title={t.dailyRev} id="ch-drev" nm="daily_rev" data={dailyD}><BarChart data={dailyD}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
           <div key="ch-rdow"><CC grid title={t.revByDOW} id="ch-rdow" nm="rev_dow" data={revDowD}><BarChart data={revDowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/></BarChart></CC></div>
           <div key="ch-rdowm"><CC grid title={t.revByDOWMonth} id="ch-rdowm" nm="rev_dow_month" data={revDowMonthD.data}><LineChart data={revDowMonthD.data}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revDowMonthD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
-          <div key="ch-rev-country-r"><CC grid title={t.revByCountry} id="ch-rev-country-r" nm="rev_country" h={Math.max(300,mktD.length*24)} data={[...mktD].sort((a,b)=>b.rev-a.rev)}><BarChart data={[...mktD].sort((a,b)=>b.rev-a.rev)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-rev-country-r"><CC grid title={t.revByCountry} id="ch-rev-country-r" nm="rev_country" h={Math.max(300,mktD.length*24)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
         </DraggableGrid></>}
 
         {/* CANCELLATIONS */}
@@ -3235,7 +3167,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           </DraggableGrid>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>No data</div>}
         </>}
 
-        {/* ROOMS */}
+        {/* ADR */}
         {tab==="adr"&&adrRpt&&<div>
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
             <div style={{...S.kpi,borderColor:TH.gold}}><div style={S.kl}>Overall ADR</div><div style={{...S.kv,color:TH.gold}}>¥{fmtN(adrRpt.overallAdr)}</div></div>
@@ -3248,7 +3180,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <BarChart data={adrRpt.facRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" fill={TH.gold} radius={[0,4,4,0]} name="ADR"/></BarChart>
             </CC></div>
             <div key="adr-country"><CC grid title="ADR by Country (min 5 rsv)" id="adr-country" nm="adr_country" data={adrRpt.countryRows}>
-              <BarChart data={adrRpt.countryRows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>} labelFormatter={v=>tl(v)}/><Bar dataKey="adr" fill="#4ea8de" radius={[4,4,0,0]} name="ADR"/></BarChart>
+              <BarChart data={adrRpt.countryRows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV9R/>} height={70} interval={0}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>} labelFormatter={v=>tl(v)}/><Bar dataKey="adr" fill="#4ea8de" radius={[4,4,0,0]} name="ADR"/></BarChart>
             </CC></div>
             <div key="adr-seg"><CC grid title="ADR by Segment" id="adr-seg" nm="adr_seg" data={adrRpt.segRows}>
               <BarChart data={adrRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="adr" name="ADR">{adrRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart>
@@ -3311,7 +3243,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 <button style={{...S.btn,...(tlGroupBy==="day"?S.ba:{})}} onClick={()=>setTlGroupBy("day")}>{t.tlGroupByDay}</button>
                 <button style={{...S.btn,...(tlGroupBy==="month"?S.ba:{})}} onClick={()=>setTlGroupBy("month")}>{t.tlGroupByMonth}</button>
               </div>
-              <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5,marginLeft:10}}>Metric:</span>
+              <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5,marginLeft:10}}>{t.metricLabel}:</span>
               <div style={{display:"flex",gap:3}}>
                 <button style={{...S.btn,...(tlMetric==="revenue"?S.ba:{})}} onClick={()=>setTlMetric("revenue")}>{t.tlMetricRev}</button>
                 <button style={{...S.btn,...(tlMetric==="bookings"?S.ba:{})}} onClick={()=>setTlMetric("bookings")}>{t.tlMetricBookings}</button>
@@ -3377,14 +3309,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 </BarChart>
               </CC></div>
               {/* Top channel-name drilldown (OTA granularity) */}
-              <div key="tl-channel-name"><CC grid title={t.tlTopChannels} id="tl-channel-name" nm="tl_channel_name" h={Math.max(280,tlChannelRpt.channelNameList.slice(0,20).length*24)} data={tlChannelRpt.channelNameList.slice(0,20)}>
-                <BarChart data={tlChannelRpt.channelNameList.slice(0,20)} layout="vertical">
+              <div key="tl-channel-name"><CC grid title={t.tlTopChannels} id="tl-channel-name" nm="tl_channel_name" h={Math.max(280,tlChannelRpt.top20Channels.length*24)} data={tlChannelRpt.top20Channels}>
+                <BarChart data={tlChannelRpt.top20Channels} layout="vertical">
                   <CartesianGrid {...gl}/>
                   <XAxis type="number" tick={tks} tickFormatter={fmtY}/>
                   <YAxis dataKey="channel" type="category" width={180} tick={tk} interval={0}/>
                   <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>
                   <Bar dataKey="rev" radius={[0,4,4,0]} name={t.tlMetricRev}>
-                    {tlChannelRpt.channelNameList.slice(0,20).map((c,i)=><Cell key={i} fill={CHANNEL_COLORS[c.bucket]||"#888"}/>)}
+                    {tlChannelRpt.top20Channels.map((c,i)=><Cell key={i} fill={CHANNEL_COLORS[c.bucket]||"#888"}/>)}
                   </Bar>
                 </BarChart>
               </CC></div>
@@ -3547,7 +3479,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {/* TL OVERVIEW */}
         {tab==="tl-overview"&&tlOverviewRpt&&<DraggableGrid {...dgProps("tl-overview")}>
           <div key="tlo-mo"><CC grid title="Monthly Reservations" id="tlo-mo" nm="tl_ov_mo" data={tlOverviewRpt.moRows}><BarChart data={tlOverviewRpt.moRows}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill={SOURCE_COLORS.tl} radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC></div>
-          <div key="tlo-mkt"><CC grid title="Top Markets (by reservations)" id="tlo-mkt" nm="tl_ov_mkt" data={tlOverviewRpt.mktRows}><BarChart data={tlOverviewRpt.mktRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
+          <div key="tlo-mkt"><CC grid title="Top Markets (by reservations)" id="tlo-mkt" nm="tl_ov_mkt" data={tlOverviewRpt.mktRows}><BarChart data={tlOverviewRpt.mktRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="tlo-seg"><CC grid title="Segment Distribution" id="tlo-seg" nm="tl_ov_seg" data={tlOverviewRpt.segRows}><BarChart data={tlOverviewRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" name={t.reservations}>{tlOverviewRpt.segRows.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
           <div key="tlo-dow"><CC grid title="Check-in DOW" id="tlo-dow" nm="tl_ov_dow" data={tlOverviewRpt.dowRows}><BarChart data={tlOverviewRpt.dowRows}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill={SOURCE_COLORS.tl} radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="tlo-mo-rev"><CC grid title="Monthly Revenue (税抜)" id="tlo-mo-rev" nm="tl_ov_mo_rev" data={tlOverviewRpt.moRows}><LineChart data={tlOverviewRpt.moRows}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Line type="monotone" dataKey="rev" stroke={SOURCE_COLORS.tl} strokeWidth={2} dot={{r:3}} name={t.tlMetricRev}/></LineChart></CC></div>
@@ -3562,7 +3494,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <DraggableGrid {...dgProps("tl-los")}>
             <div key="tll-hist"><CC grid title="LOS Distribution" id="tll-hist" nm="tl_los_hist" data={tlLosRpt.detailRows}><BarChart data={tlLosRpt.detailRows}><CartesianGrid {...gl}/><XAxis dataKey="nights" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill={SOURCE_COLORS.tl} radius={[4,4,0,0]} name={t.reservations}/></BarChart></CC></div>
             <div key="tll-seg"><CC grid title="LOS by Segment" id="tll-seg" nm="tl_los_seg" data={tlLosRpt.segLOS}><BarChart data={tlLosRpt.segLOS}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="avgLOS" name={t.avgLOS}>{tlLosRpt.segLOS.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Bar></BarChart></CC></div>
-            <div key="tll-country"><CC grid title="LOS by Country (min 5 rsv)" id="tll-country" nm="tl_los_country" data={tlLosRpt.countryLOS}><BarChart data={tlLosRpt.countryLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
+            <div key="tll-country"><CC grid title="LOS by Country (min 5 rsv)" id="tll-country" nm="tl_los_country" data={tlLosRpt.countryLOS}><BarChart data={tlLosRpt.countryLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
           </DraggableGrid>
         </div>}
 
@@ -3589,10 +3521,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
               <div style={S.kpi}><div style={S.kl}>{t.cmpPeriodA} Rev</div><div style={S.kv}>¥{fmtN(tlCompareRpt.a.totalRev)}</div></div>
               <div style={S.kpi}><div style={S.kl}>{t.cmpPeriodB} Rev</div><div style={S.kv}>¥{fmtN(tlCompareRpt.b.totalRev)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Rev</div><div style={S.kv}>{tlCompareRpt.pctChg(tlCompareRpt.a.totalRev,tlCompareRpt.b.totalRev)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Rev</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalRev,tlCompareRpt.b.totalRev)}</div></div>
               <div style={S.kpi}><div style={S.kl}>A Res</div><div style={S.kv}>{fmtN(tlCompareRpt.a.totalCount)}</div></div>
               <div style={S.kpi}><div style={S.kl}>B Res</div><div style={S.kv}>{fmtN(tlCompareRpt.b.totalCount)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Res</div><div style={S.kv}>{tlCompareRpt.pctChg(tlCompareRpt.a.totalCount,tlCompareRpt.b.totalCount)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Res</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalCount,tlCompareRpt.b.totalCount)}</div></div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
               <SortTbl
@@ -3621,7 +3553,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {tab==="tl-pace"&&tlPaceRpt&&<div>
           <div style={{...S.card,background:"rgba(94,234,212,0.06)",border:"1px solid rgba(94,234,212,0.2)",padding:"8px 12px",marginBottom:12,fontSize:10,color:TH.textMuted,lineHeight:1.5}}>{t.tlHintPaceStatus}</div>
           <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5}}>Metric:</span>
+            <span style={{fontSize:10,color:TH.textMuted,letterSpacing:0.5}}>{t.metricLabel}:</span>
             <div style={{display:"flex",gap:3}}>
               <button style={{...S.btn,...(paceMetric==="count"?S.ba:{})}} onClick={()=>setPaceMetric("count")}>{t.paceToggleRes}</button>
               <button style={{...S.btn,...(paceMetric==="rev"?S.ba:{})}} onClick={()=>setPaceMetric("rev")}>{t.paceToggleRev}</button>
@@ -3663,7 +3595,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="tla-country"><CC grid title="ADR by Country (min 5 rsv, 税抜)" id="tla-country" nm="tl_adr_country" data={tlAdrRpt.countryRows}>
               <BarChart data={tlAdrRpt.countryRows}>
                 <CartesianGrid {...gl}/>
-                <XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/>
+                <XAxis dataKey="country" tick={<TlTickV9R/>} height={70} interval={0}/>
                 <YAxis tick={tk} tickFormatter={fmtY}/>
                 <Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>} labelFormatter={v=>tl(v)}/>
                 <Bar dataKey="adr" fill="#4ea8de" radius={[4,4,0,0]} name="ADR"/>
@@ -3731,8 +3663,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div style={S.kpi}><div style={S.kl}>{t.kansai} Rev</div><div style={S.kv}>¥{fmtN(tlKvkRpt.sR)}</div></div>
           </div>
           <DraggableGrid {...dgProps("tl-kvk")}>
-            <div key="tlkv-mk-kt"><CC grid title={t.kvkKantoMarkets} id="tlkv-mk-kt" nm="tl_kvk_mk_kt" data={tlKvkRpt.mkKanto}><BarChart data={tlKvkRpt.mkKanto} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]}/></BarChart></CC></div>
-            <div key="tlkv-mk-ks"><CC grid title={t.kvkKansaiMarkets} id="tlkv-mk-ks" nm="tl_kvk_mk_ks" data={tlKvkRpt.mkKansai}><BarChart data={tlKvkRpt.mkKansai} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#e07b54" radius={[0,4,4,0]}/></BarChart></CC></div>
+            <div key="tlkv-mk-kt"><CC grid title={t.kvkKantoMarkets} id="tlkv-mk-kt" nm="tl_kvk_mk_kt" data={tlKvkRpt.mkKanto}><BarChart data={tlKvkRpt.mkKanto} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]}/></BarChart></CC></div>
+            <div key="tlkv-mk-ks"><CC grid title={t.kvkKansaiMarkets} id="tlkv-mk-ks" nm="tl_kvk_mk_ks" data={tlKvkRpt.mkKansai}><BarChart data={tlKvkRpt.mkKansai} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#e07b54" radius={[0,4,4,0]}/></BarChart></CC></div>
             <div key="tlkv-mk-mo"><CC grid title={t.kvkMarketMonthly} id="tlkv-mk-mo" nm="tl_kvk_mk_mo" data={tlKvkRpt.mktMo}><BarChart data={tlKvkRpt.mktMo}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" stackId="a" fill="#4ea8de"/><Bar dataKey="Kansai" stackId="a" fill="#e07b54"/></BarChart></CC></div>
             <div key="tlkv-sg-rg"><CC grid title={t.kvkSegByRegion} id="tlkv-sg-rg" nm="tl_kvk_seg_rg" data={tlKvkRpt.segRegRows}><BarChart data={tlKvkRpt.segRegRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de"/><Bar dataKey="Kansai" fill="#e07b54"/></BarChart></CC></div>
             <div key="tlkv-los-sr"><CC grid title={t.kvkLOSBySegRegion} id="tlkv-los-sr" nm="tl_kvk_los_sr" data={tlKvkRpt.losSRRows}><BarChart data={tlKvkRpt.losSRRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de"/><Bar dataKey="Kansai" fill="#e07b54"/></BarChart></CC></div>
@@ -3744,10 +3676,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* TL MARKETS */}
         {tab==="tl-markets"&&tlMarketsRpt&&<DraggableGrid {...dgProps("tl-markets")}>
-          <div key="tlmk-country"><CC grid title="Top Source Markets" id="tlmk-country" nm="tl_mk_country" h={Math.max(320,tlMarketsRpt.rows.length*26)} data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={130} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={10} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
-          <div key="tlmk-rev"><CC grid title="Avg Revenue by Market (税抜)" id="tlmk-rev" nm="tl_mk_rev" data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={110} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill={TH.gold} radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
-          <div key="tlmk-los"><CC grid title="Avg LOS by Market" id="tlmk-los" nm="tl_mk_los" data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={110} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
-          <div key="tlmk-lead"><CC grid title="Avg Lead Time by Market" id="tlmk-lead" nm="tl_mk_lead" data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4} transform={`rotate(-45,${x},${y})`}>{tl(payload.value)}</text>} height={70} interval={0}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="avgLead" fill="#e07b54" radius={[4,4,0,0]} name={t.avgLeadTime}/></BarChart></CC></div>
+          <div key="tlmk-country"><CC grid title="Top Source Markets" id="tlmk-country" nm="tl_mk_country" h={Math.max(320,tlMarketsRpt.rows.length*26)} data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={130} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
+          <div key="tlmk-rev"><CC grid title="Avg Revenue by Market (税抜)" id="tlmk-rev" nm="tl_mk_rev" data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={110} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill={TH.gold} radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
+          <div key="tlmk-los"><CC grid title="Avg LOS by Market" id="tlmk-los" nm="tl_mk_los" data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={110} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
+          <div key="tlmk-lead"><CC grid title="Avg Lead Time by Market" id="tlmk-lead" nm="tl_mk_lead" data={tlMarketsRpt.rows}><BarChart data={tlMarketsRpt.rows}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV9R/>} height={70} interval={0}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Bar dataKey="avgLead" fill="#e07b54" radius={[4,4,0,0]} name={t.avgLeadTime}/></BarChart></CC></div>
         </DraggableGrid>}
 
         {/* TL CANCELLATIONS */}
@@ -3761,7 +3693,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           </div>
           <DraggableGrid {...dgProps("tl-cancellations")}>
             <div key="tlcn-trend"><CC grid title="Monthly Cancel Rate" id="tlcn-trend" nm="tl_cn_trend" data={tlCancelRpt.monthTrend}><LineChart data={tlCancelRpt.monthTrend}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Line type="monotone" dataKey="rate" stroke="#ef4444" strokeWidth={2} dot={{r:3}} name="Rate %"/></LineChart></CC></div>
-            <div key="tlcn-country"><CC grid title="Cancel Rate by Country" id="tlcn-country" nm="tl_cn_country" data={tlCancelRpt.countryRows}><BarChart data={tlCancelRpt.countryRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={110} tick={({x,y,payload})=><text x={x} y={y} textAnchor="end" fill={TH.tickFill} fontSize={9} dy={4}>{tl(payload.value)}</text>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name="Rate %"/></BarChart></CC></div>
+            <div key="tlcn-country"><CC grid title="Cancel Rate by Country" id="tlcn-country" nm="tl_cn_country" data={tlCancelRpt.countryRows}><BarChart data={tlCancelRpt.countryRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={110} tick={<TlTickV9/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name="Rate %"/></BarChart></CC></div>
             <div key="tlcn-seg"><CC grid title="Cancel Rate by Segment" id="tlcn-seg" nm="tl_cn_seg" data={tlCancelRpt.segRows}><BarChart data={tlCancelRpt.segRows}><CartesianGrid {...gl}/><XAxis dataKey="segment" tick={<TlTick/>}/><YAxis tick={tks} tickFormatter={v=>v+"%"}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[4,4,0,0]} name="Rate %"/></BarChart></CC></div>
             <div key="tlcn-fac"><CC grid title="Cancel Rate by Facility" id="tlcn-fac" nm="tl_cn_fac" h={Math.max(300,tlCancelRpt.facByRate.length*22)} data={tlCancelRpt.facByRate}><BarChart data={tlCancelRpt.facByRate} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="rate" fill="#ef4444" radius={[0,4,4,0]} name="Rate %"/></BarChart></CC></div>
             <div key="tlcn-detail"><SortTbl
@@ -3775,7 +3707,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* TL RAW DATA */}
         {tab==="tl-data"&&<div style={S.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{fmtN(tlFiltered.length)} rows filtered</div></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{fmtN(tlFiltered.length)} rows filtered</div><button style={S.bg} onClick={()=>expCSV(tlTRows.map(r=>{const o={};TL_RAW_COLS.forEach((c,i)=>{o[TL_RAW_HEADERS[i]]=r[c]??""});return o}),TL_RAW_HEADERS,"tl_filtered.csv")}>⬇ {t.exportFiltered}</button></div>
           <div style={{overflowX:"auto"}}>
             <table style={S.tbl}><thead><tr>{tlTH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTlSort(p=>({col:tlTC[i],asc:p.col===tlTC[i]?!p.asc:true}));setTlPage(0)}}>{h} {tlSort.col===tlTC[i]?(tlSort.asc?"↑":"↓"):""}</th>)}</tr></thead>
             <tbody>{tlPaged.map((r,ri)=><tr key={ri}>{tlTC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","rooms","adults_male","adults_female","children","totalRev"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"||c==="planName"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="channelBucket"?<span style={S.tag(CHANNEL_COLORS[r[c]]||"#888")}>{r[c]}</span>:c==="status"?<span style={S.tag(r[c]==="取消"?"#ef4444":r[c]==="変更"?"#c9a84c":"#34d399")}>{r[c]}</span>:String(r[c]??"")}</td>)}</tr>)}</tbody></table>
