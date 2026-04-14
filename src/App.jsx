@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.93";
+const APP_VERSION="1.94";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="5";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -2900,7 +2900,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             </div>
             {(()=>{
               const sd=drSingle;if(!sd)return null;
-              const dayData=allData.filter(r=>tzFmt(r.bookingDate)===sd);
+              // Apply all global YYB filters EXCEPT the date range filter (single-day has its own date picker).
+              // fCancel intentionally skipped — the cancel subsection within this view needs access to cancellations regardless.
+              const dayData=allData.filter(r=>{
+                if(tzFmt(r.bookingDate)!==sd)return false;
+                if(fHType!=="All"&&r.hotelType!==fHType)return false;
+                if(fBrands.length&&!fBrands.includes(r.brand))return false;
+                if(fR!=="All"&&r.region!==fR)return false;
+                if(fC.length&&!fC.includes(r.country))return false;
+                if(fS.length&&!fS.includes(r.segment))return false;
+                if(fP.length&&!fP.includes(r.facility))return false;
+                if(fGeo.length&&!fGeo.includes(GEO_REGION(r.country)))return false;
+                if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
+                return true;
+              });
               if(!dayData.length)return<div style={{color:TH.textMuted,textAlign:"center",padding:20}}>{t.drNoData}</div>;
               return<SingleDayBreakdown
                 sd={sd}
@@ -3492,9 +3505,20 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             </div>
             {(()=>{
               const sd=drSingle;if(!sd)return null;
-              const dayData=tlData.filter(r=>r.dateStr===sd&&r.status!=="取消"||(r.dateStr===sd&&r.isCancelled));
-              // Include all rows for this reception date (including cancellations, which are shown separately in the cancel section)
-              const allDayData=tlData.filter(r=>r.dateStr===sd);
+              // Apply all global TL filters EXCEPT the date range filter (single-day has its own date picker).
+              // fTlStatus intentionally skipped — the cancel subsection within this view needs access to cancellations regardless.
+              const allDayData=tlData.filter(r=>{
+                if(r.dateStr!==sd)return false;
+                if(fP.length&&!fP.includes(r.facility))return false;
+                if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
+                if(fTlChannelName.length&&!fTlChannelName.includes(r.channel_name))return false;
+                if(fTlBrand.length&&!fTlBrand.includes(r.brand))return false;
+                if(fTlHotelType!=="All"&&r.hotelType!==fTlHotelType)return false;
+                if(fR!=="All"&&r.region!==fR)return false;
+                if(fS.length&&!fS.includes(r.segment))return false;
+                if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
+                return true;
+              });
               if(!allDayData.length)return<div style={{color:TH.textMuted,textAlign:"center",padding:20}}>{t.drNoData}</div>;
               return<SingleDayBreakdown
                 sd={sd}

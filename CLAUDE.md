@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.93
+Current: 1.94
 
 Recent changes:
+- v1.94: **Single-day section respects global filters.** Both YYB and TL single-day breakdowns now apply all global filters (region, country, segment, property, brand, hotel type, geo, DOW, channel, etc.) EXCEPT the date range filter (which is overridden by `drSingle`) and the status/cancel filter (which would hide the cancel subsection's data). This is a deliberate exception to the status filter — without it, the cancel subsection would be empty whenever `fCancel` is "confirmed" or `fTlStatus` is "net" (the default).
 - v1.93: **TL daily report single-day section + YYB single-day i18n fix.**
   1. Extracted the YYB daily report's single-day breakdown (施設別 Hotel/Apart/Direct tables + cancellation tables) into a reusable `SingleDayBreakdown` component defined inside App. It takes `getCheckinMonth`, `getHotelBucket`, `isDirect`, `isCancelled`, and `includePlanTables` as props so both YYB and TL can use it with their different row shapes.
   2. Added the same single-day section to the TL Daily Report tab, below the existing KPIs/tables. Includes 施設別 (Hotel/Apart/Direct) + cancellation breakdown (by facility, by country). Uses `r.dateStr` for reception date filtering, `r.checkinStr.slice(0,7)` for check-in month, `r.hotelType` for hotel/apart split, `r.channelBucket==="direct"` for direct bucket, and `r.isCancelled || r.sameDayCancelled` for cancellations. Revenue uses `r.totalRev` with a "税抜" suffix in column headers (matching the rest of the TL UI). Does NOT include plan tables (TL plan data is structured differently — deferred).
