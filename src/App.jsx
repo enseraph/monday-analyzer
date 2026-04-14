@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.98";
+const APP_VERSION="1.99";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="5";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -746,10 +746,10 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
     const monthLabel=lang==="ja"?`${yr}年${mo+1}月`:`${EN_MONTHS[mo]} ${yr}`;
     const dayHeaders=lang==="ja"?["日","月","火","水","木","金","土"]:["S","M","T","W","T","F","S"];
     const todayIso=toIso(today);
-    return<div style={{padding:"8px 14px",minWidth:isMobile?240:280,borderBottom:"1px solid "+theme.border+"55"}}>
-      <div style={{textAlign:"center",fontWeight:600,fontSize:12,color:theme.textStrong,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>{monthLabel}</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,fontSize:11}}>
-        {dayHeaders.map((d,i)=><div key={i} style={{textAlign:"center",color:theme.textMuted,padding:"2px 0",fontSize:9,fontFamily:"'JetBrains Mono',monospace"}}>{d}</div>)}
+    return<div style={{padding:"4px 8px",minWidth:isMobile?220:230,borderBottom:"1px solid "+theme.border+"55"}}>
+      <div style={{textAlign:"center",fontWeight:600,fontSize:11,color:theme.textStrong,marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{monthLabel}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:0,fontSize:10}}>
+        {dayHeaders.map((d,i)=><div key={i} style={{textAlign:"center",color:theme.textMuted,padding:"1px 0",fontSize:8,fontFamily:"'JetBrains Mono',monospace"}}>{d}</div>)}
         {cells.map((d,i)=>{
           if(d===null)return<div key={i}/>;
           const iso=toIso(new Date(yr,mo,d));
@@ -759,7 +759,7 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
           return<div key={i}
             onClick={()=>clickDate(yr,mo,d)}
             onMouseEnter={()=>{if(dFrom&&!dTo)setHoverDay(iso)}}
-            style={{textAlign:"center",padding:"5px 0",cursor:"pointer",borderRadius:edge?4:0,fontSize:11,
+            style={{textAlign:"center",padding:"3px 0",cursor:"pointer",borderRadius:edge?3:0,fontSize:10,
               background:edge?theme.gold:(inR?"rgba(201,168,76,0.15)":"transparent"),
               color:edge?(theme.bg==="#080e1a"?"#080e1a":"#fff"):theme.text,
               fontWeight:edge?700:(isToday?600:400),
@@ -776,37 +776,31 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📅 {headerLabel}</span>
       <span style={{fontSize:8}}>▼</span>
     </button>
-    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:1000,marginTop:4,background:theme.card,border:"1px solid "+theme.border,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,0.4)",display:"flex",flexDirection:isMobile?"column":"row",overflow:"hidden",maxHeight:"calc(100vh - 120px)"}}>
-      <div style={{borderRight:isMobile?"none":"1px solid "+theme.border,borderBottom:isMobile?"1px solid "+theme.border:"none",padding:6,minWidth:130,display:"flex",flexDirection:"column",gap:1,overflowY:"auto",flexShrink:0}}>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:1000,marginTop:4,background:theme.card,border:"1px solid "+theme.border,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,0.4)",display:"flex",flexDirection:isMobile?"column":"row",overflow:"hidden",maxHeight:"min(360px, calc(100vh - 40px))"}}>
+      <div style={{borderRight:isMobile?"none":"1px solid "+theme.border,borderBottom:isMobile?"1px solid "+theme.border:"none",padding:4,minWidth:110,display:"flex",flexDirection:"column",gap:0,overflowY:"auto",flexShrink:0}}>
         {presets.map(p=><div key={p.key} onClick={()=>applyPreset(p)}
-          style={{padding:"5px 10px",cursor:"pointer",fontSize:11,borderRadius:4,
+          style={{padding:"3px 8px",cursor:"pointer",fontSize:10,borderRadius:3,
             color:activePreset===p.key?theme.gold:theme.text,
             background:activePreset===p.key?"rgba(201,168,76,0.12)":"transparent",
             fontWeight:activePreset===p.key?600:400}}>
           {p.label}
         </div>)}
       </div>
-      <div style={{padding:8,display:"flex",flexDirection:"column",minHeight:0,flex:1}}>
-        <div style={{display:"flex",gap:8,marginBottom:6,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
-          <div>
-            <div style={{fontSize:9,color:theme.textMuted,marginBottom:2,fontFamily:"'JetBrains Mono',monospace"}}>{t.drFrom}</div>
-            <input type="date" value={dFrom} onChange={e=>{setDFrom(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:11}}/>
-          </div>
-          <div>
-            <div style={{fontSize:9,color:theme.textMuted,marginBottom:2,fontFamily:"'JetBrains Mono',monospace"}}>{t.drTo}</div>
-            <input type="date" value={dTo} onChange={e=>{setDTo(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:11}}/>
-          </div>
-          <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>shiftMonth(-1)} title="Prev month (or scroll)">◀</button>
-            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>shiftMonth(1)} title="Next month (or scroll)">▶</button>
+      <div style={{padding:6,display:"flex",flexDirection:"column",minHeight:0,flex:1}}>
+        <div style={{display:"flex",gap:6,marginBottom:4,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+          <input type="date" value={dFrom} onChange={e=>{setDFrom(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:10,padding:"3px 5px"}} title={t.drFrom}/>
+          <input type="date" value={dTo} onChange={e=>{setDTo(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:10,padding:"3px 5px"}} title={t.drTo}/>
+          <div style={{marginLeft:"auto",display:"flex",gap:2}}>
+            <button style={{...S.btn,fontSize:10,padding:"2px 6px"}} onClick={()=>shiftMonth(-1)} title="Prev month">◀</button>
+            <button style={{...S.btn,fontSize:10,padding:"2px 6px"}} onClick={()=>shiftMonth(1)} title="Next month">▶</button>
           </div>
         </div>
-        <div ref={scrollerRef} style={{flex:1,minHeight:200,maxHeight:isMobile?360:420,overflowY:"auto",overscrollBehavior:"contain",border:"1px solid "+theme.border,borderRadius:4}} onMouseLeave={()=>setHoverDay(null)}>
+        <div ref={scrollerRef} style={{flex:1,minHeight:140,overflowY:"auto",overscrollBehavior:"contain",border:"1px solid "+theme.border,borderRadius:3}} onMouseLeave={()=>setHoverDay(null)}>
           {monthList.map(({yr,mo})=><div key={`${yr}-${mo}`} ref={el=>{monthRefs.current[`${yr}-${mo}`]=el}}>{renderMonth(yr,mo)}</div>)}
         </div>
-        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid "+theme.border,flexShrink:0}}>
-          <button style={{...S.btn,fontSize:12}} onClick={()=>setOpen(false)}>{t.cancel}</button>
-          <button style={{...S.btn,fontSize:12,background:theme.gold,color:theme.bg==="#080e1a"?"#080e1a":"#fff",borderColor:theme.gold,fontWeight:600}} onClick={()=>{if(dFrom){onApply(dFrom,dTo||dFrom);setOpen(false)}}}>{t.apply}</button>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginTop:4,paddingTop:4,borderTop:"1px solid "+theme.border,flexShrink:0}}>
+          <button style={{...S.btn,fontSize:11,padding:"3px 10px"}} onClick={()=>setOpen(false)}>{t.cancel}</button>
+          <button style={{...S.btn,fontSize:11,padding:"3px 10px",background:theme.gold,color:theme.bg==="#080e1a"?"#080e1a":"#fff",borderColor:theme.gold,fontWeight:600}} onClick={()=>{if(dFrom){onApply(dFrom,dTo||dFrom);setOpen(false)}}}>{t.apply}</button>
         </div>
       </div>
     </div>}

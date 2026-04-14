@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.98
+Current: 1.99
 
 Recent changes:
+- v1.99: **Date picker made significantly smaller.** Outer max-height reduced to `min(360px, calc(100vh - 40px))` (was 420px+). Month cells tightened to 10px font with 3px vertical padding. Preset sidebar trimmed to 110px min-width with 10px font. Inputs compacted (dropped the "Start"/"End" labels — inputs are self-explanatory with the button label above). Month list min-height reduced to 140px so it fits on shorter viewports.
 - v1.98: **Date picker viewport-aware sizing.** Picker now caps its total height at `calc(100vh - 120px)` so Apply/Cancel buttons are always visible. The month list scroller is flex-grow inside the picker frame — takes available space but shrinks when the viewport is short. Preset sidebar, input row, and footer all have `flexShrink: 0` to stay fixed; only the month list scroller flexes. Prevents the bottom of the picker from being cut off on smaller screens.
 - v1.97: **Date picker redesigned as vertical scrollable month list.** Matches Google Ads/GA4 pattern more faithfully: 72 months (current year ±3) rendered in a vertically scrollable container. Native browser scroll handles wheel events; `overscroll-behavior: contain` + `overflow-y: auto` on the scroller prevents page-scroll chaining. When the picker opens or a preset is clicked, the target month auto-scrolls into view. ◀/▶ buttons shift the scroll position by ±1 month (calculated from the currently top-most visible month via offset refs). Removed the dual-month side-by-side layout and the custom `onWheel` handler.
 - v1.96: **Date picker scroll-to-navigate.** Mouse wheel over the calendar area advances/retreats one month per scroll tick (throttled at 180ms). Prev/Next arrow buttons still work. Prevents page scroll while scrolling within the calendar.
