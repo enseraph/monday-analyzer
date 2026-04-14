@@ -4,6 +4,7 @@
 |---|---|---|---|
 | `monday-analyzer-backup-20260413` | 2026-04-13 | v1.89 | Pre-audit backup before v1.90 refactor |
 | `monday-analyzer-backup-v1.90` | 2026-04-13 | v1.90 | Post-audit, pre-remaining-fixes backup |
+| `monday-analyzer-backup-v1.94` | 2026-04-14 | v1.94 | Pre–date-range-picker refactor |
 
 *Note: v1.91, v1.92, v1.93 changes are incremental and backed by git history (commits on `master`). Use `git checkout <commit-sha>` to restore any version.*
 

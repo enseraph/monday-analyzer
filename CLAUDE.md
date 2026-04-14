@@ -123,9 +123,18 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.94
+Current: 1.95
 
 Recent changes:
+- v1.95: **Google Ads / GA4 style date range picker.** New `DateRangePicker` component replaces the From/To inputs in the global filter bar. Features:
+  - **Preset sidebar**: Today, Yesterday, Last 7 / 14 / 28 days, This month, Last month, This year, Last year, Custom (localized EN/JA).
+  - **Dual-month calendar view** on desktop, single-month on mobile. Click a start date, then an end date; hover preview shows the range before the second click commits.
+  - **Apply-on-confirm**: draft state only commits to `fDF`/`fDTo` when Apply is clicked. Cancel or click-outside discards the draft. Prevents expensive recomputes mid-selection.
+  - **Start/End date inputs** at top of picker for keyboard entry.
+  - **Today highlighted** with gold border; selected range in gold background with solid-gold edges for start/end.
+  - **Button shows formatted range**: "Apr 1, 2026 — Apr 14, 2026" in EN or "2026/4/1 — 2026/4/14" in JA.
+  - Daily Report, Compare tab, and TL Compare tab keep their existing inline date inputs (not replaced in this pass — Compare tabs have dual-range UX with quick presets already).
+  - Component is module-level (not re-created per render) and themed via `theme` prop.
 - v1.94: **Single-day section respects global filters.** Both YYB and TL single-day breakdowns now apply all global filters (region, country, segment, property, brand, hotel type, geo, DOW, channel, etc.) EXCEPT the date range filter (which is overridden by `drSingle`) and the status/cancel filter (which would hide the cancel subsection's data). This is a deliberate exception to the status filter — without it, the cancel subsection would be empty whenever `fCancel` is "confirmed" or `fTlStatus` is "net" (the default).
 - v1.93: **TL daily report single-day section + YYB single-day i18n fix.**
   1. Extracted the YYB daily report's single-day breakdown (施設別 Hotel/Apart/Direct tables + cancellation tables) into a reusable `SingleDayBreakdown` component defined inside App. It takes `getCheckinMonth`, `getHotelBucket`, `isDirect`, `isCancelled`, and `includePlanTables` as props so both YYB and TL can use it with their different row shapes.

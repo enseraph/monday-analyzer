@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.94";
+const APP_VERSION="1.95";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="5";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -317,6 +317,9 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     drAfterLabel:"After",drDirect:"Direct",
     revShare:"Rev Share",
     _PlanNR:"Non-Refundable",_PlanStudent:"Student",_PlanOther:"Other",
+    dateRange:"Date range",selectDateRange:"Select date range",cancel:"Cancel",apply:"Apply",
+    presetToday:"Today",presetYesterday:"Yesterday",presetLast7:"Last 7 days",presetLast14:"Last 14 days",presetLast28:"Last 28 days",
+    presetThisMonth:"This month",presetLastMonth:"Last month",presetThisYear:"This year",presetLastYear:"Last year",presetCustom:"Custom",
     tlMonthlyRev:"Monthly Revenue",tlDailyRev:"Daily Revenue",tlRevByFacility:"Revenue by Facility",
     tlRevBySeg:"Revenue by Segment",tlRevByDow:"Revenue by DOW",
     tlSegDist:"Segment Distribution",tlSegRev:"Segment Revenue Share",tlSegLos:"Avg LOS by Segment",tlSegLead:"Avg Lead Time by Segment",tlSegFac:"Segment by Facility",
@@ -465,6 +468,9 @@ segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     drAfterLabel:"以降",drDirect:"直販",
     revShare:"売上シェア",
     _PlanNR:"返金不可",_PlanStudent:"学生",_PlanOther:"その他",
+    dateRange:"期間",selectDateRange:"期間を選択",cancel:"キャンセル",apply:"適用",
+    presetToday:"今日",presetYesterday:"昨日",presetLast7:"過去7日間",presetLast14:"過去14日間",presetLast28:"過去28日間",
+    presetThisMonth:"今月",presetLastMonth:"先月",presetThisYear:"今年",presetLastYear:"昨年",presetCustom:"カスタム",
     tlMonthlyRev:"月別売上",tlDailyRev:"日別売上",tlRevByFacility:"施設別売上",
     tlRevBySeg:"タイプ別売上",tlRevByDow:"曜日別売上",
     tlSegDist:"タイプ別分布",tlSegRev:"タイプ別売上シェア",tlSegLos:"タイプ別平均泊数",tlSegLead:"タイプ別平均LT",tlSegFac:"施設別タイプ",
@@ -658,6 +664,127 @@ function applyEmailIntlOverride(rows){
 function expCSV(rows,headers,fn){const csv=[headers.join(","),...rows.map(r=>headers.map(h=>{const v=r[h];if(v==null)return"";const s=String(v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s}).join(","))].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download=fn;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
 
 function expXLS(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v;return tr?tr(String(v)):String(v)};const rows=data.map(r=>"<tr>"+keys.map(k=>"<td>"+tVal(r[k])+"</td>").join("")+"</tr>").join("");const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:spreadsheet"><head><meta charset="utf-8"/></head><body><table><thead><tr>${keys.map(k=>"<th>"+tKey(k)+"</th>").join("")}</tr></thead><tbody>${rows}</tbody></table></body></html>`;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+html],{type:"application/vnd.ms-excel;charset=utf-8"}));a.download=(fn||title||"export")+".xls";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
+
+// ─── Date Range Picker (Google Ads / GA4 style) ───
+// Props: from (ISO "YYYY-MM-DD"), to (ISO), onApply(from,to), S, theme, t, lang, isMobile
+// Apply-on-confirm: draft state only commits when Apply is clicked.
+const EN_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
+  const[open,setOpen]=useState(false);
+  const[dFrom,setDFrom]=useState(from||"");
+  const[dTo,setDTo]=useState(to||"");
+  const[viewYr,setViewYr]=useState(()=>(from?new Date(from+"T00:00:00"):new Date()).getFullYear());
+  const[viewMo,setViewMo]=useState(()=>(from?new Date(from+"T00:00:00"):new Date()).getMonth());
+  const[activePreset,setActivePreset]=useState("custom");
+  const[hoverDay,setHoverDay]=useState(null);
+  const ref=useRef();
+  useEffect(()=>{if(open){setDFrom(from||"");setDTo(to||"");setActivePreset("custom")}},[open,from,to]);
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
+  const toIso=d=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),dd=String(d.getDate()).padStart(2,"0");return`${y}-${m}-${dd}`};
+  const parseIso=s=>s?new Date(s+"T00:00:00"):null;
+  const fmtShort=iso=>{if(!iso)return"";const d=parseIso(iso);return lang==="ja"?`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`:`${EN_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`};
+  const today=new Date();today.setHours(0,0,0,0);
+  const yesterday=new Date(today);yesterday.setDate(today.getDate()-1);
+  const presets=[
+    {key:"today",label:t.presetToday,fn:()=>({from:toIso(today),to:toIso(today)})},
+    {key:"yesterday",label:t.presetYesterday,fn:()=>({from:toIso(yesterday),to:toIso(yesterday)})},
+    {key:"last7",label:t.presetLast7,fn:()=>{const f=new Date(today);f.setDate(today.getDate()-6);return{from:toIso(f),to:toIso(today)}}},
+    {key:"last14",label:t.presetLast14,fn:()=>{const f=new Date(today);f.setDate(today.getDate()-13);return{from:toIso(f),to:toIso(today)}}},
+    {key:"last28",label:t.presetLast28,fn:()=>{const f=new Date(today);f.setDate(today.getDate()-27);return{from:toIso(f),to:toIso(today)}}},
+    {key:"thisMonth",label:t.presetThisMonth,fn:()=>({from:toIso(new Date(today.getFullYear(),today.getMonth(),1)),to:toIso(today)})},
+    {key:"lastMonth",label:t.presetLastMonth,fn:()=>({from:toIso(new Date(today.getFullYear(),today.getMonth()-1,1)),to:toIso(new Date(today.getFullYear(),today.getMonth(),0))})},
+    {key:"thisYear",label:t.presetThisYear,fn:()=>({from:toIso(new Date(today.getFullYear(),0,1)),to:toIso(today)})},
+    {key:"lastYear",label:t.presetLastYear,fn:()=>({from:toIso(new Date(today.getFullYear()-1,0,1)),to:toIso(new Date(today.getFullYear()-1,11,31))})},
+    {key:"custom",label:t.presetCustom,fn:null},
+  ];
+  const applyPreset=p=>{
+    setActivePreset(p.key);
+    if(p.fn){const{from:f,to:tt}=p.fn();setDFrom(f);setDTo(tt);const d=parseIso(f);setViewYr(d.getFullYear());setViewMo(d.getMonth())}
+  };
+  const clickDate=(yr,mo,day)=>{
+    const iso=toIso(new Date(yr,mo,day));
+    setActivePreset("custom");
+    if(!dFrom||(dFrom&&dTo)){setDFrom(iso);setDTo("")}
+    else{if(iso<dFrom){setDTo(dFrom);setDFrom(iso)}else{setDTo(iso)}}
+  };
+  const inRange=(yr,mo,day)=>{if(!dFrom)return false;const iso=toIso(new Date(yr,mo,day));const endBound=dTo||(hoverDay&&dFrom&&!dTo?hoverDay:"");if(!endBound)return iso===dFrom;const lo=dFrom<endBound?dFrom:endBound,hi=dFrom<endBound?endBound:dFrom;return iso>=lo&&iso<=hi};
+  const isEdge=(yr,mo,day)=>{const iso=toIso(new Date(yr,mo,day));return iso===dFrom||iso===dTo};
+  const renderMonth=(yr,mo)=>{
+    const firstDay=new Date(yr,mo,1).getDay();
+    const daysInMo=new Date(yr,mo+1,0).getDate();
+    const cells=[];for(let i=0;i<firstDay;i++)cells.push(null);for(let d=1;d<=daysInMo;d++)cells.push(d);
+    const monthLabel=lang==="ja"?`${yr}年${mo+1}月`:`${EN_MONTHS[mo]} ${yr}`;
+    const dayHeaders=lang==="ja"?["日","月","火","水","木","金","土"]:["S","M","T","W","T","F","S"];
+    const todayIso=toIso(today);
+    return<div style={{padding:"4px 8px",minWidth:isMobile?240:220}}>
+      <div style={{textAlign:"center",fontWeight:600,fontSize:12,color:theme.textStrong,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>{monthLabel}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,fontSize:11}}>
+        {dayHeaders.map((d,i)=><div key={i} style={{textAlign:"center",color:theme.textMuted,padding:"2px 0",fontSize:9,fontFamily:"'JetBrains Mono',monospace"}}>{d}</div>)}
+        {cells.map((d,i)=>{
+          if(d===null)return<div key={i}/>;
+          const iso=toIso(new Date(yr,mo,d));
+          const inR=inRange(yr,mo,d);
+          const edge=isEdge(yr,mo,d);
+          const isToday=iso===todayIso;
+          return<div key={i}
+            onClick={()=>clickDate(yr,mo,d)}
+            onMouseEnter={()=>{if(dFrom&&!dTo)setHoverDay(iso)}}
+            style={{textAlign:"center",padding:"5px 0",cursor:"pointer",borderRadius:edge?4:0,fontSize:11,
+              background:edge?theme.gold:(inR?"rgba(201,168,76,0.15)":"transparent"),
+              color:edge?(theme.bg==="#080e1a"?"#080e1a":"#fff"):theme.text,
+              fontWeight:edge?700:(isToday?600:400),
+              border:isToday&&!edge?"1px solid "+theme.gold:"1px solid transparent",
+              boxSizing:"border-box"
+            }}>{d}</div>;
+        })}
+      </div>
+    </div>;
+  };
+  const nextY=viewMo===11?viewYr+1:viewYr,nextM=viewMo===11?0:viewMo+1;
+  const btnLabel=dFrom&&dTo?`${fmtShort(dFrom)} — ${fmtShort(dTo)}`:(dFrom?`${fmtShort(dFrom)}`:t.selectDateRange);
+  const headerLabel=from&&to?`${fmtShort(from)} — ${fmtShort(to)}`:(from?fmtShort(from):t.selectDateRange);
+  return<div ref={ref} style={{position:"relative",display:"inline-block"}}>
+    <button style={{...S.btn,minWidth:isMobile?160:220,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}} onClick={()=>setOpen(!open)}>
+      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📅 {headerLabel}</span>
+      <span style={{fontSize:8}}>▼</span>
+    </button>
+    {open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:1000,marginTop:4,background:theme.card,border:"1px solid "+theme.border,borderRadius:6,boxShadow:"0 8px 24px rgba(0,0,0,0.4)",display:"flex",flexDirection:isMobile?"column":"row",overflow:"hidden"}}>
+      <div style={{borderRight:isMobile?"none":"1px solid "+theme.border,borderBottom:isMobile?"1px solid "+theme.border:"none",padding:6,minWidth:130,display:"flex",flexDirection:"column",gap:1}}>
+        {presets.map(p=><div key={p.key} onClick={()=>applyPreset(p)}
+          style={{padding:"5px 10px",cursor:"pointer",fontSize:11,borderRadius:4,
+            color:activePreset===p.key?theme.gold:theme.text,
+            background:activePreset===p.key?"rgba(201,168,76,0.12)":"transparent",
+            fontWeight:activePreset===p.key?600:400}}>
+          {p.label}
+        </div>)}
+      </div>
+      <div style={{padding:8,display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",gap:8,marginBottom:6,alignItems:"center",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:9,color:theme.textMuted,marginBottom:2,fontFamily:"'JetBrains Mono',monospace"}}>{t.drFrom}</div>
+            <input type="date" value={dFrom} onChange={e=>{setDFrom(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:11}}/>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:theme.textMuted,marginBottom:2,fontFamily:"'JetBrains Mono',monospace"}}>{t.drTo}</div>
+            <input type="date" value={dTo} onChange={e=>{setDTo(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:11}}/>
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",gap:4}}>
+            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>{if(viewMo===0){setViewYr(y=>y-1);setViewMo(11)}else setViewMo(m=>m-1)}}>◀</button>
+            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>{if(viewMo===11){setViewYr(y=>y+1);setViewMo(0)}else setViewMo(m=>m+1)}}>▶</button>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:12,onMouseLeave:()=>setHoverDay(null)}} onMouseLeave={()=>setHoverDay(null)}>
+          {renderMonth(viewYr,viewMo)}
+          {!isMobile&&renderMonth(nextY,nextM)}
+        </div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid "+theme.border}}>
+          <button style={{...S.btn,fontSize:12}} onClick={()=>setOpen(false)}>{t.cancel}</button>
+          <button style={{...S.btn,fontSize:12,background:theme.gold,color:theme.bg==="#080e1a"?"#080e1a":"#fff",borderColor:theme.gold,fontWeight:600}} onClick={()=>{if(dFrom){onApply(dFrom,dTo||dFrom);setOpen(false)}}}>{t.apply}</button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+};
 
 const MS=({options,selected,onChange,placeholder,maxShow=2,S,cl,theme,displayFn})=>{const[open,setOpen]=useState(false);const[search,setSearch]=useState("");const ref=useRef();const searchRef=useRef();useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);useEffect(()=>{if(open){setSearch("");setTimeout(()=>searchRef.current?.focus(),50)}},[open]);const df=v=>displayFn?displayFn(v):v;const toggle=v=>onChange(selected.includes(v)?selected.filter(s=>s!==v):[...selected,v]);const label=selected.length===0?placeholder:selected.length<=maxShow?selected.map(df).join(", "):`${selected.length} ✓`;const filtered=search?options.filter(o=>{const d=df(o).toLowerCase(),raw=o.toLowerCase(),q=search.toLowerCase();return d.includes(q)||raw.includes(q)}):options;return(<div ref={ref} style={{position:"relative",display:"inline-block"}}><button style={{...S.btn,...(selected.length>0?S.ba:{}),minWidth:120,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:4}} onClick={()=>setOpen(!open)}><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{label}</span><span style={{fontSize:8}}>▼</span></button>{open&&<div style={{position:"absolute",top:"100%",left:0,zIndex:100,background:theme?.card||"#142444",border:"1px solid "+(theme?.border||"#1e3150"),borderRadius:6,marginTop:4,maxHeight:300,overflowY:"auto",minWidth:220,boxShadow:"0 8px 24px rgba(0,0,0,0.5)"}}><div style={{padding:"4px 8px",borderBottom:"1px solid "+(theme?.border||"#1e3150")}}><input ref={searchRef} type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{width:"100%",boxSizing:"border-box",background:theme?.input||"#0f1928",border:"1px solid "+(theme?.border||"#1e3150"),borderRadius:4,padding:"4px 8px",fontSize:11,color:theme?.text||"#c8c3b8",outline:"none",marginBottom:4}} onClick={e=>e.stopPropagation()}/><div style={{display:"flex",justifyContent:"space-between"}}><button onClick={()=>onChange([])} style={{...S.btn,padding:"2px 8px",fontSize:10,border:"none"}}>{cl}</button><button onClick={()=>onChange([...options])} style={{...S.btn,padding:"2px 8px",fontSize:10,border:"none"}}>All</button></div></div>{filtered.map(o=><div key={o} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",cursor:"pointer",fontSize:12,color:selected.includes(o)?(theme?.gold||"#c9a84c"):(theme?.text||"#c8c3b8")}} onClick={()=>toggle(o)}><span style={{width:14,height:14,borderRadius:3,border:"1px solid "+(selected.includes(o)?(theme?.gold||"#c9a84c"):(theme?.border||"#1e3150")),background:selected.includes(o)?"rgba(201,168,76,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0}}>{selected.includes(o)?"✓":""}</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{df(o)}</span></div>)}{filtered.length===0&&<div style={{padding:"8px 10px",fontSize:11,color:theme?.textMuted||"#888"}}>No matches</div>}</div>}</div>)};
 
@@ -2789,8 +2916,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 {!isTlTab&&<div><div style={S.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={S} cl={t.clear} theme={TH} displayFn={tl}/></div>}
 <div><div style={S.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={S} cl={t.clear} theme={TH} displayFn={tl}/></div>
         <div><div style={S.fl}>{t.dateType}</div><select style={S.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></>}</select></div>
-        <div><div style={S.fl}>{t.from}</div><input type="date" style={S.inp} value={fDF} onChange={e=>setFDF(e.target.value)}/></div>
-        <div><div style={S.fl}>{t.to}</div><input type="date" style={S.inp} value={fDTo} onChange={e=>setFDTo(e.target.value)}/></div>
+        <div><div style={S.fl}>{t.dateRange}</div><DateRangePicker from={fDF} to={fDTo} onApply={(f,tt)=>{setFDF(f);setFDTo(tt)}} S={S} theme={TH} t={t} lang={lang} isMobile={isMobile}/></div>
         <div><div style={S.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:3}}><button style={{...S.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...S.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
         <button style={{...S.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setActivePreset(null)}}>{t.reset}</button>
         <button style={{...S.btn,fontSize:16,padding:"4px 10px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
