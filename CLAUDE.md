@@ -123,9 +123,26 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.91
+Current: 1.93
 
 Recent changes:
+- v1.93: **TL daily report single-day section + YYB single-day i18n fix.**
+  1. Extracted the YYB daily report's single-day breakdown (施設別 Hotel/Apart/Direct tables + cancellation tables) into a reusable `SingleDayBreakdown` component defined inside App. It takes `getCheckinMonth`, `getHotelBucket`, `isDirect`, `isCancelled`, and `includePlanTables` as props so both YYB and TL can use it with their different row shapes.
+  2. Added the same single-day section to the TL Daily Report tab, below the existing KPIs/tables. Includes 施設別 (Hotel/Apart/Direct) + cancellation breakdown (by facility, by country). Uses `r.dateStr` for reception date filtering, `r.checkinStr.slice(0,7)` for check-in month, `r.hotelType` for hotel/apart split, `r.channelBucket==="direct"` for direct bucket, and `r.isCancelled || r.sameDayCancelled` for cancellations. Revenue uses `r.totalRev` with a "税抜" suffix in column headers (matching the rest of the TL UI). Does NOT include plan tables (TL plan data is structured differently — deferred).
+  3. **YYB single-day section i18n fixed.** Previously the 施設別 / 売上 / 件数 / 以降 / 直販 / 売上シェア / 返金不可 / 学生 / その他 / "Grand total" labels were hardcoded in Japanese regardless of language setting. Now:
+     - Month columns: "4月"/"5月" in JA, "Apr"/"May" in EN (uses `EN_MONTHS_SHORT` constant).
+     - "以降" → `t.drAfterLabel` ("After" / "以降")
+     - "件数" → `t.drCount` ("Res" / "件数")
+     - "売上" → `t.drRevenue` ("Revenue" / "売上")
+     - "売上シェア" → `t.drRevShare` ("Rev Share" / "売上シェア")
+     - "直販" → `t.drDirect` ("Direct" / "直販")
+     - "Grand total" → `t.drGrandTotal` ("Grand total" / "合計")
+     - Plan type names (返金不可/学生/その他) translated via `tl()` which now includes `_PlanNR`/`_PlanStudent`/`_PlanOther` keys
+     - Country names translated via `tl()` in the cancel-by-country table
+  4. The `drSingle` state is shared between YYB and TL daily tabs (date picker remembers the selection when switching).
+- v1.92: **MS dropdown search + i18n country names.**
+  1. `MS` (MultiSelect) component gains a `displayFn` prop and a search input. Country, segment, geo area, and DOW dropdowns now show translated names in JP mode via `displayFn={tl}`. Search matches against both raw and translated values.
+  2. Search auto-focuses on dropdown open, shows "No matches" when filter returns nothing.
 - v1.91: **Remaining audit fixes (27 items).**
   1. **MS dropdown themed** — MultiSelect dropdown now receives `theme` prop and uses themed colors instead of hardcoded dark-mode values. Works correctly in both dark and light modes. Unused module-level `CT` component deleted (was shadowed by the inner themed version).
   2. **Worker handler `{once:true}`** — TL worker `addEventListener` calls now use `{once:true}` to prevent stale handler accumulation on rapid `fetchTL` calls.
