@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.96
+Current: 1.97
 
 Recent changes:
+- v1.97: **Date picker redesigned as vertical scrollable month list.** Matches Google Ads/GA4 pattern more faithfully: 72 months (current year ±3) rendered in a vertically scrollable container. Native browser scroll handles wheel events; `overscroll-behavior: contain` + `overflow-y: auto` on the scroller prevents page-scroll chaining. When the picker opens or a preset is clicked, the target month auto-scrolls into view. ◀/▶ buttons shift the scroll position by ±1 month (calculated from the currently top-most visible month via offset refs). Removed the dual-month side-by-side layout and the custom `onWheel` handler.
 - v1.96: **Date picker scroll-to-navigate.** Mouse wheel over the calendar area advances/retreats one month per scroll tick (throttled at 180ms). Prev/Next arrow buttons still work. Prevents page scroll while scrolling within the calendar.
 - v1.95: **Google Ads / GA4 style date range picker.** New `DateRangePicker` component replaces the From/To inputs in the global filter bar. Features:
   - **Preset sidebar**: Today, Yesterday, Last 7 / 14 / 28 days, This month, Last month, This year, Last year, Custom (localized EN/JA).

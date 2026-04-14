@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.96";
+const APP_VERSION="1.97";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="5";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -673,25 +673,43 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
   const[open,setOpen]=useState(false);
   const[dFrom,setDFrom]=useState(from||"");
   const[dTo,setDTo]=useState(to||"");
-  const[viewYr,setViewYr]=useState(()=>(from?new Date(from+"T00:00:00"):new Date()).getFullYear());
-  const[viewMo,setViewMo]=useState(()=>(from?new Date(from+"T00:00:00"):new Date()).getMonth());
   const[activePreset,setActivePreset]=useState("custom");
   const[hoverDay,setHoverDay]=useState(null);
   const ref=useRef();
-  const wheelLock=useRef(false);
-  const shiftMonth=dir=>{
-    if(dir>0){if(viewMo===11){setViewYr(y=>y+1);setViewMo(0)}else setViewMo(m=>m+1)}
-    else{if(viewMo===0){setViewYr(y=>y-1);setViewMo(11)}else setViewMo(m=>m-1)}
+  const scrollerRef=useRef();
+  const monthRefs=useRef({});
+  // Render 6 years of months: current year ±3
+  const monthList=useMemo(()=>{
+    const list=[];const now=new Date();const startY=now.getFullYear()-3,endY=now.getFullYear()+2;
+    for(let y=startY;y<=endY;y++)for(let m=0;m<=11;m++)list.push({yr:y,mo:m});
+    return list;
+  },[]);
+  const scrollToMonth=(yr,mo)=>{
+    const key=`${yr}-${mo}`;const el=monthRefs.current[key];
+    if(el&&scrollerRef.current){scrollerRef.current.scrollTop=el.offsetTop-scrollerRef.current.offsetTop}
   };
-  const onWheel=e=>{
-    if(Math.abs(e.deltaY)<5)return;
-    e.preventDefault();e.stopPropagation();
-    if(wheelLock.current)return;
-    wheelLock.current=true;setTimeout(()=>{wheelLock.current=false},180);
-    shiftMonth(e.deltaY>0?1:-1);
-  };
-  useEffect(()=>{if(open){setDFrom(from||"");setDTo(to||"");setActivePreset("custom")}},[open,from,to]);
+  // On open, scroll to the draft-from month (or today if none)
+  useEffect(()=>{
+    if(open){
+      setDFrom(from||"");setDTo(to||"");setActivePreset("custom");
+      const target=from?new Date(from+"T00:00:00"):new Date();
+      setTimeout(()=>scrollToMonth(target.getFullYear(),target.getMonth()),30);
+    }
+  },[open,from,to]);
   useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
+  const shiftMonth=dir=>{
+    if(!scrollerRef.current)return;
+    // Find current top-most visible month and scroll to neighbor
+    const scroller=scrollerRef.current;
+    const scrollTop=scroller.scrollTop;
+    const entries=Object.entries(monthRefs.current).filter(([,el])=>el);
+    let closest=null,closestDiff=Infinity;
+    entries.forEach(([k,el])=>{const diff=Math.abs((el.offsetTop-scroller.offsetTop)-scrollTop);if(diff<closestDiff){closestDiff=diff;closest=k}});
+    if(!closest)return;
+    const[yy,mm]=closest.split("-").map(Number);
+    const d=new Date(yy,mm+dir,1);
+    scrollToMonth(d.getFullYear(),d.getMonth());
+  };
   const toIso=d=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),dd=String(d.getDate()).padStart(2,"0");return`${y}-${m}-${dd}`};
   const parseIso=s=>s?new Date(s+"T00:00:00"):null;
   const fmtShort=iso=>{if(!iso)return"";const d=parseIso(iso);return lang==="ja"?`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`:`${EN_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`};
@@ -711,7 +729,7 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
   ];
   const applyPreset=p=>{
     setActivePreset(p.key);
-    if(p.fn){const{from:f,to:tt}=p.fn();setDFrom(f);setDTo(tt);const d=parseIso(f);setViewYr(d.getFullYear());setViewMo(d.getMonth())}
+    if(p.fn){const{from:f,to:tt}=p.fn();setDFrom(f);setDTo(tt);const d=parseIso(f);setTimeout(()=>scrollToMonth(d.getFullYear(),d.getMonth()),20)}
   };
   const clickDate=(yr,mo,day)=>{
     const iso=toIso(new Date(yr,mo,day));
@@ -728,7 +746,7 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
     const monthLabel=lang==="ja"?`${yr}年${mo+1}月`:`${EN_MONTHS[mo]} ${yr}`;
     const dayHeaders=lang==="ja"?["日","月","火","水","木","金","土"]:["S","M","T","W","T","F","S"];
     const todayIso=toIso(today);
-    return<div style={{padding:"4px 8px",minWidth:isMobile?240:220}}>
+    return<div style={{padding:"8px 14px",minWidth:isMobile?240:280,borderBottom:"1px solid "+theme.border+"55"}}>
       <div style={{textAlign:"center",fontWeight:600,fontSize:12,color:theme.textStrong,marginBottom:6,fontFamily:"'DM Sans',sans-serif"}}>{monthLabel}</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,fontSize:11}}>
         {dayHeaders.map((d,i)=><div key={i} style={{textAlign:"center",color:theme.textMuted,padding:"2px 0",fontSize:9,fontFamily:"'JetBrains Mono',monospace"}}>{d}</div>)}
@@ -752,8 +770,6 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
       </div>
     </div>;
   };
-  const nextY=viewMo===11?viewYr+1:viewYr,nextM=viewMo===11?0:viewMo+1;
-  const btnLabel=dFrom&&dTo?`${fmtShort(dFrom)} — ${fmtShort(dTo)}`:(dFrom?`${fmtShort(dFrom)}`:t.selectDateRange);
   const headerLabel=from&&to?`${fmtShort(from)} — ${fmtShort(to)}`:(from?fmtShort(from):t.selectDateRange);
   return<div ref={ref} style={{position:"relative",display:"inline-block"}}>
     <button style={{...S.btn,minWidth:isMobile?160:220,textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}} onClick={()=>setOpen(!open)}>
@@ -785,9 +801,8 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
             <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>shiftMonth(1)} title="Next month (or scroll)">▶</button>
           </div>
         </div>
-        <div style={{display:"flex",gap:12}} onMouseLeave={()=>setHoverDay(null)} onWheel={onWheel}>
-          {renderMonth(viewYr,viewMo)}
-          {!isMobile&&renderMonth(nextY,nextM)}
+        <div ref={scrollerRef} style={{maxHeight:isMobile?360:420,overflowY:"auto",overscrollBehavior:"contain",border:"1px solid "+theme.border,borderRadius:4}} onMouseLeave={()=>setHoverDay(null)}>
+          {monthList.map(({yr,mo})=><div key={`${yr}-${mo}`} ref={el=>{monthRefs.current[`${yr}-${mo}`]=el}}>{renderMonth(yr,mo)}</div>)}
         </div>
         <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid "+theme.border}}>
           <button style={{...S.btn,fontSize:12}} onClick={()=>setOpen(false)}>{t.cancel}</button>
