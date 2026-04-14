@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.95
+Current: 1.96
 
 Recent changes:
+- v1.96: **Date picker scroll-to-navigate.** Mouse wheel over the calendar area advances/retreats one month per scroll tick (throttled at 180ms). Prev/Next arrow buttons still work. Prevents page scroll while scrolling within the calendar.
 - v1.95: **Google Ads / GA4 style date range picker.** New `DateRangePicker` component replaces the From/To inputs in the global filter bar. Features:
   - **Preset sidebar**: Today, Yesterday, Last 7 / 14 / 28 days, This month, Last month, This year, Last year, Custom (localized EN/JA).
   - **Dual-month calendar view** on desktop, single-month on mobile. Click a start date, then an end date; hover preview shows the range before the second click commits.

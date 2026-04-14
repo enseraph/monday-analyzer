@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.95";
+const APP_VERSION="1.96";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="5";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -678,6 +678,18 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
   const[activePreset,setActivePreset]=useState("custom");
   const[hoverDay,setHoverDay]=useState(null);
   const ref=useRef();
+  const wheelLock=useRef(false);
+  const shiftMonth=dir=>{
+    if(dir>0){if(viewMo===11){setViewYr(y=>y+1);setViewMo(0)}else setViewMo(m=>m+1)}
+    else{if(viewMo===0){setViewYr(y=>y-1);setViewMo(11)}else setViewMo(m=>m-1)}
+  };
+  const onWheel=e=>{
+    if(Math.abs(e.deltaY)<5)return;
+    e.preventDefault();e.stopPropagation();
+    if(wheelLock.current)return;
+    wheelLock.current=true;setTimeout(()=>{wheelLock.current=false},180);
+    shiftMonth(e.deltaY>0?1:-1);
+  };
   useEffect(()=>{if(open){setDFrom(from||"");setDTo(to||"");setActivePreset("custom")}},[open,from,to]);
   useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
   const toIso=d=>{const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),dd=String(d.getDate()).padStart(2,"0");return`${y}-${m}-${dd}`};
@@ -769,11 +781,11 @@ const DateRangePicker=({from,to,onApply,S,theme,t,lang,isMobile})=>{
             <input type="date" value={dTo} onChange={e=>{setDTo(e.target.value);setActivePreset("custom")}} style={{...S.inp,fontSize:11}}/>
           </div>
           <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>{if(viewMo===0){setViewYr(y=>y-1);setViewMo(11)}else setViewMo(m=>m-1)}}>◀</button>
-            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>{if(viewMo===11){setViewYr(y=>y+1);setViewMo(0)}else setViewMo(m=>m+1)}}>▶</button>
+            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>shiftMonth(-1)} title="Prev month (or scroll)">◀</button>
+            <button style={{...S.btn,fontSize:11,padding:"2px 8px"}} onClick={()=>shiftMonth(1)} title="Next month (or scroll)">▶</button>
           </div>
         </div>
-        <div style={{display:"flex",gap:12,onMouseLeave:()=>setHoverDay(null)}} onMouseLeave={()=>setHoverDay(null)}>
+        <div style={{display:"flex",gap:12}} onMouseLeave={()=>setHoverDay(null)} onWheel={onWheel}>
           {renderMonth(viewYr,viewMo)}
           {!isMobile&&renderMonth(nextY,nextM)}
         </div>
