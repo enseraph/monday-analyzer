@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="2.02";
+const APP_VERSION="2.03";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="7";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -1256,18 +1256,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const rmD=useMemo(()=>!agg?[]:Object.entries(agg.byRm).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([r,c])=>({room:r,count:c})),[agg]);
   const facD=useMemo(()=>!agg?[]:Object.entries(agg.byF).sort((a,b)=>b[1].n-a[1].n).map(([nm,f])=>({name:shortFac(nm),fullName:nm,region:f.region,n:f.n,avgRev:f.n>0?Math.round(f.rev/f.n):0,intlPct:f.n>0?+((f.intl/f.n)*100).toFixed(1):0,avgLOS:f.nights.length?+(avg(f.nights)).toFixed(1):0,topSeg:Object.entries(f.segs).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"})),[agg]);
 
-  // Facility time-series — daily/monthly count + revenue per top-10 facility (uses filtered data, respects global date range)
+  // Facility time-series — daily/monthly count + revenue per facility (ALL facilities, sorted by total volume desc)
+  // Uses filtered data so respects the global date range filter.
   const facTimeRpt=useMemo(()=>{
     if(tab!=="facilities"||!filtered.length)return null;
-    // Top 10 facilities by reservation count in current filtered set
     const totals={};
     filtered.forEach(r=>{totals[r.facility]=(totals[r.facility]||0)+1});
-    const topFacs=Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([f])=>f);
-    if(!topFacs.length)return null;
-    const topSet=new Set(topFacs);
+    const facs=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([f])=>f);
+    if(!facs.length)return null;
     const dMap={},mMap={};
     filtered.forEach(r=>{
-      if(!topSet.has(r.facility))return;
       const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;
       const dStr=tzFmt(dt);if(!dStr)return;
       const mStr=dStr.slice(0,7);
@@ -1279,15 +1277,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       mMap[mStr][r.facility].count++;mMap[mStr][r.facility].rev+=r.totalRev||0;
     });
     const dKeys=Object.keys(dMap).sort(),mKeys=Object.keys(mMap).sort();
-    const buildRow=(map,key,xField,xVal,metric)=>{const row={[xField]:xVal};topFacs.forEach(f=>{row[f]=map[key]?.[f]?.[metric]||0});return row};
+    const buildRow=(map,key,xField,xVal,metric)=>{const row={[xField]:xVal};facs.forEach(f=>{row[f]=map[key]?.[f]?.[metric]||0});return row};
     return{
-      topFacs,
+      facs,
       dailyCount:dKeys.map(d=>buildRow(dMap,d,"date",d,"count")),
       dailyRev:dKeys.map(d=>buildRow(dMap,d,"date",d,"rev")),
       monthlyCount:mKeys.map(m=>buildRow(mMap,m,"month",m,"count")),
       monthlyRev:mKeys.map(m=>buildRow(mMap,m,"month",m,"rev")),
     };
   },[tab,filtered,fDT,tz,tzFmt]);
+  // Color helper for many facilities: PALETTE first, then golden-angle HSL for the rest
+  const facColor=(i)=>i<PALETTE.length?PALETTE[i]:`hsl(${(i*137.508)%360}, 65%, 55%)`;
 
   // Daily aggregation
   const dailyD=useMemo(()=>{
@@ -3491,10 +3491,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="fac-los"><CC grid title={t.facLOSByFacility} id="fac-los" nm="fac_los" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
             <div key="fac-kvk"><CC grid title={t.facKvKCompare} id="fac-kvk" nm="fac_kvk" data={kvkFac}><BarChart data={kvkFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Kanto")}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={tl("Kansai")}/></BarChart></CC></div>
             <div key="fac-hva"><CC grid title={t.facHvACompare} id="fac-hva" nm="fac_hva" data={hvaFac}><BarChart data={hvaFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Hotel" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Hotel")}/><Bar dataKey="Apart" fill="#c9a84c" radius={[4,4,0,0]} name={tl("Apart")}/></BarChart></CC></div>
-            <div key="fac-daily-count"><CC grid title={t.facDailyCount} id="fac-daily-count" nm="fac_daily_count" data={facTimeRpt?.dailyCount||[]}>{facTimeRpt?<BarChart data={facTimeRpt.dailyCount}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.topFacs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={PALETTE[i%PALETTE.length]} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
-            <div key="fac-daily-rev"><CC grid title={t.facDailyRev} id="fac-daily-rev" nm="fac_daily_rev" data={facTimeRpt?.dailyRev||[]}>{facTimeRpt?<BarChart data={facTimeRpt.dailyRev}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.topFacs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={PALETTE[i%PALETTE.length]} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
-            <div key="fac-monthly-count"><CC grid title={t.facMonthlyCount} id="fac-monthly-count" nm="fac_monthly_count" data={facTimeRpt?.monthlyCount||[]}>{facTimeRpt?<BarChart data={facTimeRpt.monthlyCount}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.topFacs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={PALETTE[i%PALETTE.length]} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
-            <div key="fac-monthly-rev"><CC grid title={t.facMonthlyRev} id="fac-monthly-rev" nm="fac_monthly_rev" data={facTimeRpt?.monthlyRev||[]}>{facTimeRpt?<BarChart data={facTimeRpt.monthlyRev}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.topFacs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={PALETTE[i%PALETTE.length]} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-daily-count"><CC grid title={t.facDailyCount} id="fac-daily-count" nm="fac_daily_count" data={facTimeRpt?.dailyCount||[]}>{facTimeRpt?<BarChart data={facTimeRpt.dailyCount}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-daily-rev"><CC grid title={t.facDailyRev} id="fac-daily-rev" nm="fac_daily_rev" data={facTimeRpt?.dailyRev||[]}>{facTimeRpt?<BarChart data={facTimeRpt.dailyRev}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-monthly-count"><CC grid title={t.facMonthlyCount} id="fac-monthly-count" nm="fac_monthly_count" data={facTimeRpt?.monthlyCount||[]}>{facTimeRpt?<BarChart data={facTimeRpt.monthlyCount}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-monthly-rev"><CC grid title={t.facMonthlyRev} id="fac-monthly-rev" nm="fac_monthly_rev" data={facTimeRpt?.monthlyRev||[]}>{facTimeRpt?<BarChart data={facTimeRpt.monthlyRev}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
           </DraggableGrid>
           <SortTbl
             data={facD}
