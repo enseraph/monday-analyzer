@@ -123,9 +123,14 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.10
+Current: 2.11
 
 Recent changes:
+- v2.11: **Facility name fixes + FACILITY_ALIASES map.**
+  1. Fixed `MONday Apart 銀座新富町` → `MONday Apart Premium 銀座新富町` in ROOM_INVENTORY and FACILITY_OPENING_DATES (actual data has "Premium"; my v2.04 entry was wrong).
+  2. Added `Premium Apart MONday 浜松町ステーション` opening date: 2026-03-27.
+  3. Added `FACILITY_ALIASES` map in `src/constants.js` for merging renamed facilities. Applied in processRow after the existing normalization steps. Currently contains `"MONday Apart Premium 浅草" → "GRAND MONday 浅草"` (rebrand; both names appear in YYB data). The canonical name is now "GRAND MONday 浅草" — brand auto-classifies as "GRAND MONday", old+new data aggregates together.
+  4. Renamed constants.js entries from old "MONday Apart Premium 浅草" to canonical "GRAND MONday 浅草" (25 rooms, 2024-06-28 opening).
 - v2.10: **Hotel classification hardening.**
   1. **Expanded `KANSAI_KW`** in `src/shared.js`. Was 6 specific area keywords (京都丸太町, 京都烏丸二条, 京都駅, 京都駅鴨川, 京都五条, 大阪難波). Now 5 broader geographic keywords (京都, 大阪, 難波, 心斎橋, 河原町) that cover all existing Kansai facilities + the visible pipeline (京都河原町, 大阪難波中, 心斎橋, etc.). Any future Kyoto or Osaka hotel with a recognizable place name will auto-classify correctly.
   2. **New file `src/constants.js`** — maintenance constants for new-facility updates. Currently contains `ROOM_INVENTORY`, `TOTAL_ROOMS`, `FACILITY_OPENING_DATES`, `NEW_HOTEL_CUTOFF`, `isNewFacility`, `FACILITIES_WITH_PREOPEN_DATA`, `PRE_OPEN_RAMP_DAYS`, `COHORT_DAYS`. When a new hotel launches, this is the single file to edit. App.jsx now imports from `./constants.js`.

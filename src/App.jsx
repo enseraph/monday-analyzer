@@ -8,9 +8,9 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 // Maintenance constants — edit src/constants.js when new facilities launch
-import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
+import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.10";
+const APP_VERSION="2.11";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="8";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -613,6 +613,8 @@ function processRow(row,headers){
   // Normalize facility name variants
   if(facility.includes("舞浜ビュー")&&!facility.includes("舞浜ビューⅠ"))facility=facility.replace(/舞浜ビュー.*$/,"舞浜ビューⅠ");
   if(facility.includes("（旧："))facility=facility.replace(/\s*（旧：.*）\s*$/,"");
+  // Apply alias map (merges renamed facilities — e.g. MONday Apart Premium 浅草 → GRAND MONday 浅草)
+  if(FACILITY_ALIASES[facility])facility=FACILITY_ALIASES[facility];
   const a1=parseInt(g("大人1(人数)"))||0,a2=parseInt(g("大人2(人数)"))||0,adults=a1+a2;
   let kids=0;
   // Cache child column indices alongside header index to avoid O(9*cols) per row
