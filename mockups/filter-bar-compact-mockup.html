@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Filter Bar Compactness Mockup</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    <style>
+      body{margin:0;padding:24px;background:#080e1a;color:#c8c3b8;font-family:'DM Sans',sans-serif;min-height:100vh}
+      h2{color:#f0ece4;font-size:16px;font-weight:600;margin:24px 0 8px 0;letter-spacing:-0.5px}
+      .note{font-size:11px;color:#a0977f;margin-bottom:12px;font-family:'JetBrains Mono',monospace}
+      .filter-card{background:#0f1928;border:1px solid #1e3150;border-radius:8px;padding:16px;margin-bottom:24px;overflow:visible}
+      .filter-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+
+      /* ── CURRENT (v2.06) ── */
+      .cur .fl{font-size:10px;color:#a0977f;margin-bottom:3px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;letter-spacing:0.5px}
+      .cur .btn{background:#0f1928;border:1px solid #1e3150;color:#c8c3b8;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:'DM Sans',sans-serif}
+      .cur .btn.active{background:rgba(201,168,76,0.12);border-color:#c9a84c;color:#c9a84c}
+      .cur .inp{background:#142444;border:1px solid #1e3150;color:#c8c3b8;font-size:12px;padding:5px 8px;border-radius:5px}
+      .cur .btn-grp{display:flex;gap:3px}
+      .cur .ms{background:#0f1928;border:1px solid #1e3150;color:#c8c3b8;font-size:12px;padding:6px 14px;border-radius:6px;min-width:120px;text-align:left;display:inline-flex;align-items:center;justify-content:space-between;gap:4px}
+      .cur .ms.active{background:rgba(201,168,76,0.12);border-color:#c9a84c;color:#c9a84c}
+
+      /* ── COMPACT (proposed 20% smaller) ── */
+      .cmp .fl{font-size:8px;color:#a0977f;margin-bottom:2px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;letter-spacing:0.4px}
+      .cmp .btn{background:#0f1928;border:1px solid #1e3150;color:#c8c3b8;font-size:10px;padding:4px 10px;border-radius:5px;cursor:pointer;font-family:'DM Sans',sans-serif}
+      .cmp .btn.active{background:rgba(201,168,76,0.12);border-color:#c9a84c;color:#c9a84c}
+      .cmp .inp{background:#142444;border:1px solid #1e3150;color:#c8c3b8;font-size:10px;padding:3px 6px;border-radius:4px}
+      .cmp .btn-grp{display:flex;gap:2px}
+      .cmp .ms{background:#0f1928;border:1px solid #1e3150;color:#c8c3b8;font-size:10px;padding:4px 10px;border-radius:5px;min-width:100px;text-align:left;display:inline-flex;align-items:center;justify-content:space-between;gap:3px}
+      .cmp .ms.active{background:rgba(201,168,76,0.12);border-color:#c9a84c;color:#c9a84c}
+
+      .caret{font-size:7px;opacity:0.7}
+      .datebtn{display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif}
+      .sep{display:inline-block;width:1px;height:28px;background:#1e3150;margin:0 4px;align-self:flex-end}
+      .measure{font-family:'JetBrains Mono',monospace;font-size:10px;color:#34d399;margin-top:4px}
+    </style>
+  </head>
+  <body>
+    <h2>Filter Bar — Current (v2.06)</h2>
+    <div class="note">Font 12px • Padding 6×14px • Border-radius 6px • Label 10px</div>
+    <div class="filter-card cur">
+      <div class="filter-row">
+        <div>
+          <div class="fl">Status</div>
+          <div class="btn-grp">
+            <button class="btn active">Confirmed</button>
+            <button class="btn">Cancelled</button>
+            <button class="btn">All</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Type</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">Hotel</button>
+            <button class="btn">Apart</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Brand</div>
+          <button class="ms">All brands <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Region</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">Kanto</button>
+            <button class="btn">Kansai</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Country</div>
+          <button class="ms">All countries <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Country view</div>
+          <div class="btn-grp">
+            <button class="btn active">Aggregate</button>
+            <button class="btn">Per country</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Segment</div>
+          <button class="ms">All segments <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Property</div>
+          <button class="ms">All properties <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Facility age</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">New only</button>
+            <button class="btn">Old only</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Age view</div>
+          <div class="btn-grp">
+            <button class="btn active">Aggregate</button>
+            <button class="btn">New vs Old</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Geo area</div>
+          <button class="ms">All areas <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Day of week</div>
+          <button class="ms">All days <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Date type</div>
+          <button class="ms">Booking <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Date range</div>
+          <button class="ms" style="min-width:220px">📅 Apr 1, 2026 — Apr 15, 2026 <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Month axis</div>
+          <div class="btn-grp">
+            <button class="btn">By Stay</button>
+            <button class="btn active">By Booking</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">&nbsp;</div>
+          <button class="btn">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="measure">Height ≈ 160px depending on wrap. Button unit ≈ 32px tall.</div>
+
+    <h2>Filter Bar — Compact (-20%)</h2>
+    <div class="note">Font 10px • Padding 4×10px • Border-radius 5px • Label 8px</div>
+    <div class="filter-card cmp">
+      <div class="filter-row">
+        <div>
+          <div class="fl">Status</div>
+          <div class="btn-grp">
+            <button class="btn active">Confirmed</button>
+            <button class="btn">Cancelled</button>
+            <button class="btn">All</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Type</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">Hotel</button>
+            <button class="btn">Apart</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Brand</div>
+          <button class="ms">All brands <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Region</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">Kanto</button>
+            <button class="btn">Kansai</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Country</div>
+          <button class="ms">All countries <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Country view</div>
+          <div class="btn-grp">
+            <button class="btn active">Aggregate</button>
+            <button class="btn">Per country</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Segment</div>
+          <button class="ms">All segments <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Property</div>
+          <button class="ms">All properties <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Facility age</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">New only</button>
+            <button class="btn">Old only</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Age view</div>
+          <div class="btn-grp">
+            <button class="btn active">Aggregate</button>
+            <button class="btn">New vs Old</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Geo area</div>
+          <button class="ms">All areas <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Day of week</div>
+          <button class="ms">All days <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Date type</div>
+          <button class="ms">Booking <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Date range</div>
+          <button class="ms" style="min-width:200px">📅 Apr 1, 2026 — Apr 15, 2026 <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Month axis</div>
+          <div class="btn-grp">
+            <button class="btn">By Stay</button>
+            <button class="btn active">By Booking</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">&nbsp;</div>
+          <button class="btn">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="measure">Height ≈ 130px. Button unit ≈ 24px tall. Saves ~25% vertical space overall.</div>
+
+    <h2 style="margin-top:40px">Compact + view toggles behind a gear icon</h2>
+    <div class="note">Adds Option C on top of compact sizing — Country View + Age View hide behind ⚙ button</div>
+    <div class="filter-card cmp">
+      <div class="filter-row">
+        <div>
+          <div class="fl">Status</div>
+          <div class="btn-grp">
+            <button class="btn active">Confirmed</button>
+            <button class="btn">Cancelled</button>
+            <button class="btn">All</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Type</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">Hotel</button>
+            <button class="btn">Apart</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Brand</div>
+          <button class="ms">All brands <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Region</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">Kanto</button>
+            <button class="btn">Kansai</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Country</div>
+          <button class="ms">All countries <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Segment</div>
+          <button class="ms">All segments <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Property</div>
+          <button class="ms">All properties <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Facility age</div>
+          <div class="btn-grp">
+            <button class="btn active">All</button>
+            <button class="btn">New only</button>
+            <button class="btn">Old only</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">Geo area</div>
+          <button class="ms">All areas <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Day of week</div>
+          <button class="ms">All days <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Date type</div>
+          <button class="ms">Booking <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Date range</div>
+          <button class="ms" style="min-width:200px">📅 Apr 1, 2026 — Apr 15, 2026 <span class="caret">▼</span></button>
+        </div>
+        <div>
+          <div class="fl">Month axis</div>
+          <div class="btn-grp">
+            <button class="btn">By Stay</button>
+            <button class="btn active">By Booking</button>
+          </div>
+        </div>
+        <div>
+          <div class="fl">&nbsp;</div>
+          <button class="btn" title="View options">⚙ Views</button>
+        </div>
+        <div>
+          <div class="fl">&nbsp;</div>
+          <button class="btn">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="measure">Height ≈ 100px. Most compact option. View toggles moved to a popover behind ⚙.</div>
+  </body>
+</html>

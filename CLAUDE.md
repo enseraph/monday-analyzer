@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.06
+Current: 2.07
 
 Recent changes:
+- v2.07: **Compact filter bar.** Added `Sc` (compact S) memoized style variant used only inside the global filter bar. Reduces font 12px→10px, button padding 6×14→4×10, border-radius 6→5, label font 10→8, select/input padding 5×8→3×6. All MS multiselects, DateRangePicker, and button groups inside the filter bar now receive `Sc` via the `S` prop. Rest of the app keeps the original `S` sizing untouched. Saves ~25-30% vertical space on the filter bar (down from ~160px to ~120px depending on wrap).
 - v2.06: **Global facility-age filter + age view toggle.**
   1. Two new global controls in the filter bar (visible on all YYB + TL tabs):
      - **Facility age** [All | New only | Old only] — restricts data site-wide (Option A). Plugged into every filter chain: `filtered` (YYB), `compareRpt`/`paceRpt`/`cancelRpt` applyFilters, YYB single-day block, `tlFilteredBoth`, `tlCompareRpt`/`tlPaceRpt`/`tlCancelRpt` apply, TL single-day block.
