@@ -123,9 +123,16 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.04
+Current: 2.05
 
 Recent changes:
+- v2.05: **Per-country view toggle in global filter bar.**
+  1. Added `countryViewMode` state ("aggregate" | "perCountry") and a toggle control in the global filter bar, immediately after the Country multiselect. Labels: "Aggregate" (default) / "Per country". Disabled (greyed out) when fewer than 2 countries are selected.
+  2. When active, compatible charts rebuild as per-country stacked series (one color per selected country, sorted by reservation volume). All countries in the selection are shown (not capped) — per user preference, since typical selections stay small. Uses golden-angle HSL color extension past PALETTE length (same as facilities) to keep series visually distinct.
+  3. `perCountrySeries` useMemo computes monthly/daily count+rev and DOW count+rev breakdowns in a single pass over `filtered`. Memo returns `null` when mode is "aggregate" or fewer than 2 countries selected — charts fall through to their original aggregated data shape.
+  4. **Charts updated** (YYB-side, 8 charts): Overview — Monthly Res, Monthly Rev, Daily Res, Daily Rev; Revenue — Monthly Rev, Daily Rev, Revenue by DOW; Booking — Check-in/Checkout DOW (replaces the dual checkin/checkout bars with per-country stacks when active).
+  5. Charts that are already country-centric (Top Markets, Rev by Country, Country Summary, Rev by Market × Month) are intentionally unchanged — the toggle does nothing on them. KPI cards, pie charts, tables, and segment/facility breakdowns are also unchanged.
+  6. Legends auto-display when per-country mode is active; names are run through `tl()` so JP mode shows Japanese country names.
 - v2.04: **Facility opening dates + New-vs-Old grouping toggle.**
   1. Added `FACILITY_OPENING_DATES` constant (32 entries) sourced from `250430JHAT Property List.xlsx` 施設一覧 sheet. Keys match canonical names from `ROOM_INVENTORY`. Mapped renamed facilities (e.g., Apart 日本橋水天宮前 → MONday Apart 日本橋人形町; 京橋VPO → GRAND MONday 銀座).
   2. Added `NEW_HOTEL_CUTOFF = "2025-12-05"` (Premium hotel MONday 舞浜ビューⅠ opening) and `isNewFacility(f)` helper. Facilities with missing opening dates default to "Old".
