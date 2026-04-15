@@ -123,9 +123,14 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.09
+Current: 2.10
 
 Recent changes:
+- v2.10: **Hotel classification hardening.**
+  1. **Expanded `KANSAI_KW`** in `src/shared.js`. Was 6 specific area keywords (京都丸太町, 京都烏丸二条, 京都駅, 京都駅鴨川, 京都五条, 大阪難波). Now 5 broader geographic keywords (京都, 大阪, 難波, 心斎橋, 河原町) that cover all existing Kansai facilities + the visible pipeline (京都河原町, 大阪難波中, 心斎橋, etc.). Any future Kyoto or Osaka hotel with a recognizable place name will auto-classify correctly.
+  2. **New file `src/constants.js`** — maintenance constants for new-facility updates. Currently contains `ROOM_INVENTORY`, `TOTAL_ROOMS`, `FACILITY_OPENING_DATES`, `NEW_HOTEL_CUTOFF`, `isNewFacility`, `FACILITIES_WITH_PREOPEN_DATA`, `PRE_OPEN_RAMP_DAYS`, `COHORT_DAYS`. When a new hotel launches, this is the single file to edit. App.jsx now imports from `./constants.js`.
+  3. **Unclassified facilities banner** — surfaces when the data contains any facility name that isn't in `ROOM_INVENTORY` or `FACILITY_OPENING_DATES`. Shows above the filter bar with: the warning label, the missing facility names (comma-separated, monospace), and a hint pointing to `src/constants.js`. Dismissible per-session. Gives operators visible signal when the maps are stale. Logic: `unclassifiedFacs` useMemo scans `uP ∪ uTlFac` against both maps, flags missing entries. State `unclassifiedDismissed` hides the banner until next page load.
+  4. Regions: facility classification remains automatic from name matching (getRegion / getBrand / getHotelType in shared.js), but now with wider Kansai coverage. New brands like Good MONday or post-rebrand Premium MONday still fall back to "hotel MONday" via getBrand — update `src/shared.js` if a new brand launches.
 - v2.09: **Defensive dedup at parse time + cleanup script.**
   1. New `dedupYybRows(rows, headers)` helper at module scope. Builds a `Set` keyed by `(施設名, 予約番号, 予約受付日時)` and filters out any row whose key has already been seen. Fail-open: if the dedup key columns are missing, all rows pass through unchanged.
   2. Wired into both YYB data paths — `fetchYYB` (Google Sheet CSV fetch, including cached reads) and `handleFiles` (manual CSV upload). When duplicates are skipped, a `console.info` log fires and the file-list pill shows "— N duplicates skipped" so operators have visibility.

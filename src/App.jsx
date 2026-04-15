@@ -7,8 +7,10 @@ import { toPng } from "html-to-image";
 import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
+// Maintenance constants — edit src/constants.js when new facilities launch
+import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.09";
+const APP_VERSION="2.10";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="8";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -269,6 +271,7 @@ openingTableTitle:"New Facility Summary",
 openingColOpen:"Opening",openingColDaysOpen:"Days open",openingColPreOpen:"Pre-open",openingColPostOpen:"Post-open",openingColPreOpenRev:"Pre-open ¥",openingColLead:"Avg lead",openingColFirstBk:"First booking",openingColWk1:"Wk1 Occ",openingColMo1Occ:"Mo1 Occ",openingColMo1Adr:"Mo1 ADR",openingColYTD:"YTD ¥",openingColPrePct:"Pre-open %",
 openingNoData:"No data for the selected facilities (check filters or facility selection).",
 openingPreLabel:"Pre-open",openingPostLabel:"Post-open",
+unclassifiedBanner:"Unclassified facilities detected",unclassifiedMissingRoom:"Missing room inventory (ROOM_INVENTORY)",unclassifiedMissingOpening:"Missing opening date (FACILITY_OPENING_DATES)",unclassifiedHint:"Add these to src/constants.js for full RevPAR / Hotel Opening tab support.",unclassifiedDismiss:"Dismiss",
 cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
@@ -438,6 +441,7 @@ openingTableTitle:"新規施設サマリー",
 openingColOpen:"開業日",openingColDaysOpen:"経過日数",openingColPreOpen:"開業前",openingColPostOpen:"開業後",openingColPreOpenRev:"開業前¥",openingColLead:"平均LT",openingColFirstBk:"初予約日",openingColWk1:"初週稼働率",openingColMo1Occ:"初月稼働率",openingColMo1Adr:"初月ADR",openingColYTD:"今年¥",openingColPrePct:"開業前%",
 openingNoData:"選択された施設のデータがありません。",
 openingPreLabel:"開業前",openingPostLabel:"開業後",
+unclassifiedBanner:"未分類の施設を検出",unclassifiedMissingRoom:"客室数が未登録 (ROOM_INVENTORY)",unclassifiedMissingOpening:"開業日が未登録 (FACILITY_OPENING_DATES)",unclassifiedHint:"RevPAR / 開業分析を完全に機能させるには、src/constants.js に追加してください。",unclassifiedDismiss:"非表示",
 cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
@@ -550,68 +554,8 @@ const GEO_REGION=c=>{
   return"Asia";
 };
 
-const ROOM_INVENTORY={
-  "hotel MONday Premium 豊洲":263,"hotel MONday 東京西葛西":129,"hotel MONday Premium 上野御徒町":124,
-  "hotel MONday 浅草":115,"イチホテル上野新御徒町":108,"イチホテル浅草橋":103,"hotel MONday 羽田空港":102,
-  "イチホテル東京八丁堀":102,"hotel MONday 京都丸太町":100,"hotel MONday 秋葉原浅草橋":94,
-  "hotel MONday 京都烏丸二条":92,"Premium hotel MONday 舞浜ビューⅠ":57,
-  "MONday Apart Premium 上野":71,"MONday Apart Premium 日本橋":56,"MONday Apart Premium 上野御徒町":50,
-  "GRAND MONday 銀座":45,"Premium Apart MONday 銀座EAST":43,"MONday Apart Premium 京都駅":41,
-  "MONday Apart 銀座新富町":40,"MONday Apart 上野新御徒町":36,"Premium Apart MONday 京都五条":36,
-  "MONday Apart Premium 大阪難波WEST":28,"MONday Apart Premium 秋葉原浅草橋ステーション":27,
-  "MONday Apart Premium 秋葉原":27,"MONday Apart 浅草橋秋葉原":27,"MONday Apart 日本橋人形町":26,
-  "MONday Apart Premium 浅草":25,"MONday Apart 浜松町大門":22,"MONday Apart Premium 京都駅鴨川":22,
-  "Premium Apart MONday 浜松町ステーション":9,"MONday Apart Premium 浜松町":27,"TABI上野":35,
-  "GRAND MONday 上野御徒町":50,
-};
-const TOTAL_ROOMS=Object.values(ROOM_INVENTORY).reduce((a,b)=>a+b,0);
-
-// Facility opening dates (ISO "YYYY-MM-DD") — sourced from 250430JHAT Property List.xlsx 施設一覧 sheet.
-// Keys match the canonical facility names used throughout the tool (i.e. ROOM_INVENTORY keys).
-// Missing entries → treated as "unknown" (default to "old" in new-vs-old grouping).
-const FACILITY_OPENING_DATES={
-  "hotel MONday Premium 豊洲":"2018-10-27",
-  "hotel MONday 東京西葛西":"2019-02-05",
-  "hotel MONday 羽田空港":"2020-04-01",
-  "イチホテル上野新御徒町":"2020-04-01",
-  "イチホテル浅草橋":"2020-04-01",
-  "hotel MONday 浅草":"2020-07-04",
-  "イチホテル東京八丁堀":"2020-07-18",
-  "hotel MONday 秋葉原浅草橋":"2020-07-20",
-  "hotel MONday Premium 上野御徒町":"2020-07-21",
-  "hotel MONday 京都烏丸二条":"2020-07-23",
-  "hotel MONday 京都丸太町":"2021-10-17",
-  "MONday Apart 上野新御徒町":"2020-08-04",
-  "MONday Apart 浜松町大門":"2020-08-05",
-  "MONday Apart Premium 浜松町":"2020-08-19",
-  "MONday Apart 日本橋人形町":"2020-09-01",
-  "MONday Apart Premium 秋葉原":"2020-11-14",
-  "MONday Apart Premium 秋葉原浅草橋ステーション":"2020-11-13",
-  "MONday Apart Premium 日本橋":"2021-04-16",
-  "MONday Apart 銀座新富町":"2021-04-23",
-  "MONday Apart Premium 上野":"2021-08-05",
-  "MONday Apart Premium 上野御徒町":"2021-10-12",
-  "MONday Apart 浅草橋秋葉原":"2021-12-10",
-  "MONday Apart Premium 京都駅":"2021-12-18",
-  "MONday Apart Premium 浅草":"2024-06-28",
-  "MONday Apart Premium 京都駅鴨川":"2024-11-28",
-  "MONday Apart Premium 大阪難波WEST":"2024-12-20",
-  "Premium Apart MONday 銀座EAST":"2025-04-25",
-  "GRAND MONday 銀座":"2025-04-28",
-  "Premium Apart MONday 京都五条":"2025-05-20",
-  "Premium hotel MONday 舞浜ビューⅠ":"2025-12-05",
-  "TABI上野":"2026-04-10",
-  "GRAND MONday 上野御徒町":"2026-05-01",
-};
-// Cutoff for "new" facility group — Maihama View I opening date
-const NEW_HOTEL_CUTOFF="2025-12-05";
-const isNewFacility=f=>{const d=FACILITY_OPENING_DATES[f];return d?d>=NEW_HOTEL_CUTOFF:false};
-// Hotel Opening tab helpers
-const PRE_OPEN_RAMP_DAYS=180; // show up to 180 days of pre-opening booking ramp
-const COHORT_DAYS=180; // show first N days post-opening for cohort comparison
+// ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS imported from ./constants.js
 const getDaysBetween=(iso1,iso2)=>{if(!iso1||!iso2)return null;const d1=new Date(iso1+"T00:00:00"),d2=new Date(iso2+"T00:00:00");return Math.round((d2-d1)/864e5)};
-// Facilities with YYB-era opening dates (post-2024-01-01) — meaningful pre-open data available
-const FACILITIES_WITH_PREOPEN_DATA=Object.keys(FACILITY_OPENING_DATES).filter(f=>FACILITY_OPENING_DATES[f]>="2024-01-01").sort((a,b)=>FACILITY_OPENING_DATES[b].localeCompare(FACILITY_OPENING_DATES[a]));
 
 // ─── HELPERS ───
 // getRegion imported from shared.js
@@ -1215,6 +1159,21 @@ const[drSingle,setDrSingle]=useState("");
   const uTlBrand=useMemo(()=>[...new Set(tlData.map(r=>r.brand).filter(Boolean))].sort(),[tlData]);
   const uC=useMemo(()=>[...new Set(allData.map(r=>r.country))].sort(),[allData]);
   const uP=useMemo(()=>[...new Set(allData.map(r=>r.facility))].sort(),[allData]);
+  // Unclassified facilities detection — facilities in data but missing from ROOM_INVENTORY or FACILITY_OPENING_DATES.
+  // Surfaces a banner prompting the operator to update src/constants.js when new hotels launch.
+  const unclassifiedFacs=useMemo(()=>{
+    const yybFacs=new Set(uP);
+    const tlFacs=new Set(uTlFac);
+    const allFacs=new Set([...yybFacs,...tlFacs]);
+    const missingRoom=[],missingOpening=[];
+    allFacs.forEach(f=>{
+      if(!f)return;
+      if(!ROOM_INVENTORY[f])missingRoom.push(f);
+      if(!FACILITY_OPENING_DATES[f])missingOpening.push(f);
+    });
+    return{missingRoom,missingOpening,anyMissing:missingRoom.length>0||missingOpening.length>0};
+  },[uP,uTlFac]);
+  const[unclassifiedDismissed,setUnclassifiedDismissed]=useState(false);
   const uS=useMemo(()=>[...new Set(allData.map(r=>r.segment))].filter(s=>s!=="Unknown").sort(),[allData]);
   const uB=useMemo(()=>[...new Set(allData.map(r=>r.brand))].sort(),[allData]);
 const uGeo=useMemo(()=>[...new Set(allData.map(r=>GEO_REGION(r.country)))].sort(),[allData]);
@@ -3441,6 +3400,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         <div style={{marginTop:10,fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.dataCoverage}</div>
         {errs.length>0&&<div style={{marginTop:8}}>{errs.map((e,i)=><div key={i} style={{fontSize:11,color:"#ef4444"}}>⚠ {e}</div>)}</div>}
       </div>
+      {/* Unclassified facilities warning banner — surfaces when data has facilities missing from constants.js */}
+      {unclassifiedFacs.anyMissing&&!unclassifiedDismissed&&<div style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.4)",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:11,color:TH.text,display:"flex",gap:10,alignItems:"flex-start"}}>
+        <span style={{fontSize:16,lineHeight:"16px"}}>⚠</span>
+        <div style={{flex:1,lineHeight:1.5}}>
+          <div style={{fontWeight:600,color:"#f59e0b",marginBottom:4}}>{t.unclassifiedBanner}</div>
+          {unclassifiedFacs.missingRoom.length>0&&<div style={{marginBottom:3}}><span style={{color:TH.textMuted,fontSize:10}}>{t.unclassifiedMissingRoom}:</span> <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10}}>{unclassifiedFacs.missingRoom.join(", ")}</span></div>}
+          {unclassifiedFacs.missingOpening.length>0&&<div style={{marginBottom:3}}><span style={{color:TH.textMuted,fontSize:10}}>{t.unclassifiedMissingOpening}:</span> <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10}}>{unclassifiedFacs.missingOpening.join(", ")}</span></div>}
+          <div style={{fontStyle:"italic",color:TH.textMuted,marginTop:4}}>{t.unclassifiedHint}</div>
+        </div>
+        <button style={{...S.btn,fontSize:10,padding:"3px 10px"}} onClick={()=>setUnclassifiedDismissed(true)}>{t.unclassifiedDismiss}</button>
+      </div>}
       {/* Filters */}
       {filtersOpen?<div style={{...S.card,overflow:"visible",marginBottom:16,display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap",position:"sticky",top:0,zIndex:50,background:TH.filterBg,backdropFilter:"blur(8px)",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",padding:12}}>
         <div style={{display:"flex",gap:6,alignItems:"center",flexBasis:"100%",marginBottom:4,flexWrap:"wrap"}}>

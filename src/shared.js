@@ -1,7 +1,10 @@
 // Shared helpers used by both App.jsx and tlWorker.js
 // Any changes here must be verified in both consumers.
 
-export const KANSAI_KW=["京都丸太町","京都烏丸二条","京都駅","京都駅鴨川","京都五条","大阪難波"];
+// Kansai region detection keywords. Broader geography (京都/大阪) + explicit area names for
+// edge cases where the city prefix might be dropped (e.g., "心斎橋", "難波中"). If a new Kansai
+// facility still mis-classifies as Kanto, add the missing area keyword here.
+export const KANSAI_KW=["京都","大阪","難波","心斎橋","河原町"];
 export const DOW_FULL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 export const DOW_SHORT=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 export const TL_REQUIRED_COLS=["date","facility","facility_group","status","channel_code","channel_name","channel_bucket","booking_id","email","checkin","checkout","nights","rooms","guests","adults_male","adults_female","children","plan_name","plan_code","revenue","revenue_other"];
