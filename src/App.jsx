@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="2.08";
+const APP_VERSION="2.09";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="8";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -645,6 +645,23 @@ function shortFac(n){
 // Hoisted from processRow to avoid creating a new closure per row
 function getPlanType(pn){const lw=pn.toLowerCase();if(lw.includes("学生限定")||lw.includes("学割プラン")||lw.includes("student")||lw.includes("gakuwari"))return"学生";if(lw.includes("返金不可")||lw.includes("non-refundable")||lw.includes("non refundable"))return"返金不可";return"その他"}
 
+// Defensive dedup at parse time — protects against duplicate rows in the source CSV
+// (e.g., n8n workflow double-write on 2026-04-03 / 04-05 caused 163 duplicates across ~55k rows).
+// Dedup key: (facility, 予約番号, 予約受付日時). Missing any → row is kept (fail-open).
+// Returns { deduped: row[][], dupCount: number }.
+function dedupYybRows(rows,headers){
+  const fi=headers.indexOf("施設名"),ri=headers.indexOf("予約番号"),bi=headers.indexOf("予約受付日時");
+  if(fi<0||ri<0||bi<0)return{deduped:rows,dupCount:0};
+  const seen=new Set();const deduped=[];let dupCount=0;
+  for(const row of rows){
+    const key=(row[fi]||"")+"|"+(row[ri]||"")+"|"+(row[bi]||"");
+    if(key==="||"){deduped.push(row);continue}
+    if(seen.has(key)){dupCount++;continue}
+    seen.add(key);deduped.push(row);
+  }
+  return{deduped,dupCount};
+}
+
 function processRow(row,headers){
   const hIdx=processRow._cache&&processRow._cache.h===headers?processRow._cache.idx:(()=>{const m={};headers.forEach((h,i)=>{m[h]=i});processRow._cache={h:headers,idx:m};return m})();
   const g=c=>{const i=hIdx[c];return i==null?"":(row[i]??"")};
@@ -1023,10 +1040,12 @@ const[drSingle,setDrSingle]=useState("");
       const h=res.data[0];
       const miss=REQUIRED_COLS.filter(c=>!h.includes(c));
       if(miss.length){setSheetStatus("error");return false}
-      const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
+      const rawRows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
+      const{deduped:rows,dupCount}=dedupYybRows(rawRows,h);
+      if(dupCount>0)console.info(`[YYB] Skipped ${dupCount} duplicate rows (source data had duplicates — see n8n pipeline)`);
       const processed=applyEmailIntlOverride(rows.map(r=>processRow(r,h)));
       setAllH(h);setAllData(processed);
-      setFL([{name:"Google Sheets (live)"+(fromCache?" (cached)":""),rows:rows.length,encoding:"UTF-8"}]);
+      setFL([{name:"Google Sheets (live)"+(fromCache?" (cached)":"")+(dupCount>0?` — ${dupCount} duplicates skipped`:""),rows:rows.length,encoding:"UTF-8"}]);
       setSheetStatus("done");setLastFetchTs(Date.now());
       return true;
     };
@@ -1162,7 +1181,7 @@ const[drSingle,setDrSingle]=useState("");
   // Reset the enrichment guard when a fresh fetch replaces tlData (refresh button or new year)
   useEffect(()=>{tlCountryEnrichedRef.current=false},[tlStatus]);
 
-  const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name,rows:rows.length,encoding});done++;if(done===files.length){setAllData(applyEmailIntlOverride(nd));setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
+  const handleFiles=useCallback(e=>{const files=Array.from(e.target?.files||e.dataTransfer?.files||[]);if(!files.length)return;setProc(true);setErrs([]);const errors=[];let nd=[...allData],bH=allH.length?allH:null,done=0;const nFL=[...fL];files.forEach(file=>{const r=new FileReader();r.onload=ev=>{const{text,encoding}=decodeBuffer(ev.target.result);const res=Papa.parse(text,{header:false,skipEmptyLines:true});if(!res.data||res.data.length<2){errors.push(`${file.name}: Empty`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}const h=res.data[0];const miss=REQUIRED_COLS.filter(c=>!h.includes(c));if(miss.length){errors.push(`${file.name}: Missing — ${miss.slice(0,3).join(", ")}${miss.length>3?` (+${miss.length-3})`:""}`);done++;if(done===files.length){setErrs(errors);setProc(false)}return}if(!bH){bH=h;setAllH(h)}const rawRows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);const{deduped:rows,dupCount}=dedupYybRows(rawRows,h);if(dupCount>0)console.info(`[YYB] ${file.name}: skipped ${dupCount} duplicate rows`);nd=[...nd,...rows.map(r=>processRow(r,h))];nFL.push({name:file.name+(dupCount>0?` — ${dupCount} duplicates skipped`:""),rows:rows.length,encoding});done++;if(done===files.length){setAllData(applyEmailIntlOverride(nd));setFL(nFL);setAllH(bH);setErrs(errors);setProc(false)}};r.readAsArrayBuffer(file)});},[allData,allH,fL]);
 
   const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([])};
 

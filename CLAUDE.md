@@ -123,9 +123,18 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.08
+Current: 2.09
 
 Recent changes:
+- v2.09: **Defensive dedup at parse time + cleanup script.**
+  1. New `dedupYybRows(rows, headers)` helper at module scope. Builds a `Set` keyed by `(施設名, 予約番号, 予約受付日時)` and filters out any row whose key has already been seen. Fail-open: if the dedup key columns are missing, all rows pass through unchanged.
+  2. Wired into both YYB data paths — `fetchYYB` (Google Sheet CSV fetch, including cached reads) and `handleFiles` (manual CSV upload). When duplicates are skipped, a `console.info` log fires and the file-list pill shows "— N duplicates skipped" so operators have visibility.
+  3. **Root cause discovered** on 2026-04-15: the source YYB Google Sheet had 163 duplicate rows across 2 dates — 82 on 2026-04-03 and 81 on 2026-04-05. Every reservation on those days was double-written (exactly 2× multiplier), inflating revenue/reservation counts by 2× for those days. Almost certainly caused by the n8n Yoyakuban workflow running twice on both dates. v2.09 protects the tool from silently inflating numbers even if the upstream pipeline hiccups again.
+  4. **One-time cleanup script** added at `scripts/dedup-yyb.py`. Fetches the public YYB CSV, outputs three files:
+     - `yyb_clean.csv` — deduped CSV (import-replace the Google Sheet contents with this)
+     - `yyb_duplicates_report.csv` — rows that would be removed, with original sheet-row numbers for auditing
+     - `yyb_dedup_summary.txt` — duplication stats by date and by facility
+  5. Operator flow: (a) run `python dedup-yyb.py` to generate cleanup files, (b) review the report, (c) import-replace the Google Sheet with the clean CSV, (d) investigate n8n logs for 2026-04-03 and 2026-04-05 to find the root cause.
 - v2.08: **Hotel Opening tab (🆕) — pre-open vs post-open cohort analysis.**
   1. New YYB-side tab (sidebar icon 🆕) placed after Facilities. Dedicated to analyzing new-facility launches — pre-opening booking ramp, days-since-opening cohort curves, pre-open vs post-open split, and post-opening performance trends.
   2. **Facility picker** (top of tab, independent of global `fP` multiselect): All `FACILITY_OPENING_DATES` entries shown as toggle pills; 2024+ openings selected by default. Quick-select buttons: "Select all (2024+)" / "Only new (post-Maihama)" / "Clear". Legacy (pre-2024) facilities greyed out since YYB data only covers 2024-05+ and they'd show empty pre-open history. No cap on how many facilities can be selected (per user).
