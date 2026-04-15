@@ -123,9 +123,18 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.00
+Current: 2.01
 
 Recent changes:
+- v2.01: **Compare daily charts → line, Facilities tab time-series.**
+  1. Compare tab's "Daily Revenue (A vs B)" and "Daily Reservations (A vs B)" switched from grouped bars to overlaid line charts (better for sparse multi-day data). Monthly comparison charts kept as bars.
+  2. **Facilities tab gains 4 new charts** (top 10 facilities by reservation count in current filtered range):
+     - Daily Reservations by Facility — overlaid line chart
+     - Daily Revenue by Facility — overlaid line chart
+     - Monthly Reservations by Facility — stacked bar chart
+     - Monthly Revenue by Facility — stacked bar chart
+  3. New `facTimeRpt` useMemo gated on `tab==="facilities"` builds all 4 series in a single pass over `filtered`. Respects the global date range filter (uses `filtered`, not `allData`). Each series stores facility names as data keys; `shortFac()` is applied to the legend label only so the full facility name remains the canonical lookup key.
+  4. LAYOUT_SCHEMA_VERSION bumped to 7 (new grid keys: `fac-daily-count`, `fac-daily-rev`, `fac-monthly-count`, `fac-monthly-rev`).
 - v2.00: **Compare tab gains daily + monthly time-series charts.** Four new charts added below the existing comparison tables:
   1. **Daily Revenue (A vs B)** — grouped bars, Period A in blue + Period B in gold per day index
   2. **Daily Reservations (A vs B)** — same layout, count instead of revenue
