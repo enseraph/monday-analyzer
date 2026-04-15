@@ -123,9 +123,17 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 1.99
+Current: 2.00
 
 Recent changes:
+- v2.00: **Compare tab gains daily + monthly time-series charts.** Four new charts added below the existing comparison tables:
+  1. **Daily Revenue (A vs B)** — grouped bars, Period A in blue + Period B in gold per day index
+  2. **Daily Reservations (A vs B)** — same layout, count instead of revenue
+  3. **Monthly Revenue (A vs B)** — bars per month index
+  4. **Monthly Reservations (A vs B)** — bars per month index, count
+  - Periods are aligned by day-index ("D1, D2, ...") and month-index ("M1, M2, ...") so unequal-length ranges still overlay cleanly. Days/months with no bookings are filled with zeros so the X-axis represents calendar progression, not booking density.
+  - Custom tooltip (`CmpTip`) shows both calendar dates ("A: Apr 5 / B: Mar 5") so users can verify which actual dates are being compared at each index.
+  - LAYOUT_SCHEMA_VERSION bumped to 6 (new grid keys: `cmp-daily-rev`, `cmp-daily-count`, `cmp-monthly-rev`, `cmp-monthly-count`).
 - v1.99: **Date picker made significantly smaller.** Outer max-height reduced to `min(360px, calc(100vh - 40px))` (was 420px+). Month cells tightened to 10px font with 3px vertical padding. Preset sidebar trimmed to 110px min-width with 10px font. Inputs compacted (dropped the "Start"/"End" labels — inputs are self-explanatory with the button label above). Month list min-height reduced to 140px so it fits on shorter viewports.
 - v1.98: **Date picker viewport-aware sizing.** Picker now caps its total height at `calc(100vh - 120px)` so Apply/Cancel buttons are always visible. The month list scroller is flex-grow inside the picker frame — takes available space but shrinks when the viewport is short. Preset sidebar, input row, and footer all have `flexShrink: 0` to stay fixed; only the month list scroller flexes. Prevents the bottom of the picker from being cut off on smaller screens.
 - v1.97: **Date picker redesigned as vertical scrollable month list.** Matches Google Ads/GA4 pattern more faithfully: 72 months (current year ±3) rendered in a vertically scrollable container. Native browser scroll handles wheel events; `overscroll-behavior: contain` + `overflow-y: auto` on the scroller prevents page-scroll chaining. When the picker opens or a preset is clicked, the target month auto-scrolls into view. ◀/▶ buttons shift the scroll position by ±1 month (calculated from the currently top-most visible month via offset refs). Removed the dual-month side-by-side layout and the custom `onWheel` handler.

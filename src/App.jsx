@@ -8,9 +8,9 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="1.99";
+const APP_VERSION="2.00";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
-const LAYOUT_SCHEMA_VERSION="5";
+const LAYOUT_SCHEMA_VERSION="6";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -89,7 +89,7 @@ function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
 function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
 const DL={
-  compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-facility",0,9,12,4]]),
+  compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-facility",0,9,12,4],["cmp-daily-rev",0,13,12,4],["cmp-daily-count",0,17,12,4],["cmp-monthly-rev",0,21,6,4],["cmp-monthly-count",6,21,6,4]]),
   overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-rev-country",0,9,12,4],["ch-res-day",0,13,6,3],["ch-rev-day",6,13,6,3]]),
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-mrev",0,4,12,4],["ch-ml",0,8,6,4],["ch-mld",6,8,6,4],["ch-msc",0,12,12,4],["ch-rkc",0,16,6,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
@@ -250,6 +250,7 @@ cmpMonthVsMonth:"This Month vs Last Month",cmpWeekVsWeek:"This Week vs Last Week
 cmpDelta:"Delta",cmpChange:"Change %",
 cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
+cmpDailyRev:"Daily Revenue (A vs B)",cmpDailyCount:"Daily Reservations (A vs B)",cmpMonthlyRev:"Monthly Revenue (A vs B)",cmpMonthlyCount:"Monthly Reservations (A vs B)",
 cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
@@ -401,6 +402,7 @@ cmpMonthVsMonth:"今月 vs 先月",cmpWeekVsWeek:"今週 vs 先週",cmpYearVsYea
 cmpDelta:"差分",cmpChange:"変化率",
 cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別",
 cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
+cmpDailyRev:"日別売上 (A vs B)",cmpDailyCount:"日別予約数 (A vs B)",cmpMonthlyRev:"月別売上 (A vs B)",cmpMonthlyCount:"月別予約数 (A vs B)",
 cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
@@ -664,6 +666,20 @@ function applyEmailIntlOverride(rows){
 function expCSV(rows,headers,fn){const csv=[headers.join(","),...rows.map(r=>headers.map(h=>{const v=r[h];if(v==null)return"";const s=String(v);return s.includes(",")||s.includes('"')||s.includes("\n")?'"'+s.replace(/"/g,'""')+'"':s}).join(","))].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download=fn;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
 
 function expXLS(data,title,fn,tr){if(!data||!data.length)return;const keys=Object.keys(data[0]);const tKey=k=>tr?tr(k):k;const tVal=v=>{if(v==null)return"";if(typeof v==="number")return v;return tr?tr(String(v)):String(v)};const rows=data.map(r=>"<tr>"+keys.map(k=>"<td>"+tVal(r[k])+"</td>").join("")+"</tr>").join("");const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:spreadsheet"><head><meta charset="utf-8"/></head><body><table><thead><tr>${keys.map(k=>"<th>"+tKey(k)+"</th>").join("")}</tr></thead><tbody>${rows}</tbody></table></body></html>`;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+html],{type:"application/vnd.ms-excel;charset=utf-8"}));a.download=(fn||title||"export")+".xls";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
+
+// Custom tooltip for Compare-tab time-series charts: shows both A/B dates from the data row
+const CmpTip=({active,payload,label,fmtV,th})=>{
+  if(!active||!payload?.length)return null;
+  const row=payload[0].payload;
+  return<div style={{background:th?.tooltipBg||"#1a3058",border:"1px solid "+(th?.tooltipBorder||"#2a4a78"),borderRadius:6,padding:"8px 12px",fontSize:12,color:th?.tooltipText||"#f0ece4"}}>
+    <div style={{fontWeight:600,marginBottom:4,color:th?.gold||"#c9a84c"}}>{label}</div>
+    {row.dateA&&<div style={{fontSize:10,color:"#4ea8de"}}>A: {row.dateA}</div>}
+    {row.dateB&&<div style={{fontSize:10,color:th?.gold||"#c9a84c"}}>B: {row.dateB}</div>}
+    {row.monthA&&<div style={{fontSize:10,color:"#4ea8de"}}>A: {row.monthA}</div>}
+    {row.monthB&&<div style={{fontSize:10,color:th?.gold||"#c9a84c"}}>B: {row.monthB}</div>}
+    {payload.map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}><span style={{width:8,height:8,borderRadius:2,background:p.color,display:"inline-block"}}/><span>{p.name}: {fmtV?fmtV(p.value):(p.value!=null?p.value.toLocaleString():"—")}</span></div>)}
+  </div>;
+};
 
 // ─── Date Range Picker (Google Ads / GA4 style) ───
 // Props: from (ISO "YYYY-MM-DD"), to (ISO), onApply(from,to), S, theme, t, lang, isMobile
@@ -1378,7 +1394,32 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const countChart=[...countryRows].sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
     const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
     const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
-    return{a,b,countryRows,segRows,facRows,revChart,countChart,labelA,labelB};
+    // ─── Daily + Monthly time-series (A vs B aligned by day/month index) ───
+    const enumDays=(fromStr,toStr)=>{const out=[];const start=new Date(fromStr+"T00:00:00"),end=new Date((toStr||fromStr)+"T00:00:00");for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){const c=new Date(d);out.push(`${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,"0")}-${String(c.getDate()).padStart(2,"0")}`)}return out};
+    const enumMonths=(fromStr,toStr)=>{const out=[];const start=new Date(fromStr+"T00:00:00"),end=new Date((toStr||fromStr)+"T00:00:00");let cur=new Date(start.getFullYear(),start.getMonth(),1);while(cur<=end){out.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,"0")}`);cur=new Date(cur.getFullYear(),cur.getMonth()+1,1)}return out};
+    const buildDailyMap=data=>{const m={};data.forEach(r=>{const d=getDateStr(r);if(!d)return;if(!m[d])m[d]={count:0,rev:0};m[d].count++;m[d].rev+=r.totalRev||0});return m};
+    const buildMonthlyMap=data=>{const m={};data.forEach(r=>{const d=getDateStr(r);if(!d)return;const mk=d.slice(0,7);if(!m[mk])m[mk]={count:0,rev:0};m[mk].count++;m[mk].rev+=r.totalRev||0});return m};
+    const daysA=enumDays(cmpA.from,cmpA.to),daysB=enumDays(cmpB.from,cmpB.to);
+    const dMapA=buildDailyMap(dataA),dMapB=buildDailyMap(dataB);
+    const maxDays=Math.max(daysA.length,daysB.length);
+    const dailySeries=[];
+    for(let i=0;i<maxDays;i++){
+      const dA=daysA[i],dB=daysB[i];
+      const vA=dA?(dMapA[dA]||{count:0,rev:0}):null;
+      const vB=dB?(dMapB[dB]||{count:0,rev:0}):null;
+      dailySeries.push({idx:"D"+(i+1),dateA:dA||null,dateB:dB||null,countA:vA?vA.count:null,countB:vB?vB.count:null,revA:vA?vA.rev:null,revB:vB?vB.rev:null});
+    }
+    const monthsA=enumMonths(cmpA.from,cmpA.to),monthsB=enumMonths(cmpB.from,cmpB.to);
+    const mMapA=buildMonthlyMap(dataA),mMapB=buildMonthlyMap(dataB);
+    const maxMonths=Math.max(monthsA.length,monthsB.length);
+    const monthlySeries=[];
+    for(let i=0;i<maxMonths;i++){
+      const mA=monthsA[i],mB=monthsB[i];
+      const vA=mA?(mMapA[mA]||{count:0,rev:0}):null;
+      const vB=mB?(mMapB[mB]||{count:0,rev:0}):null;
+      monthlySeries.push({idx:"M"+(i+1),monthA:mA||null,monthB:mB||null,countA:vA?vA.count:null,countB:vB?vB.count:null,revA:vA?vA.rev:null,revB:vB?vB.rev:null});
+    }
+    return{a,b,countryRows,segRows,facRows,revChart,countChart,labelA,labelB,dailySeries,monthlySeries};
   },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt]);
 
   // ─── PACE REPORT ───
@@ -3142,6 +3183,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
                 title={t.cmpByFacility}
               /></div>
+              <div key="cmp-daily-rev"><CC grid title={t.cmpDailyRev} id="cmp-daily-rev" nm="cmp_daily_rev" data={compareRpt.dailySeries}><BarChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
+              <div key="cmp-daily-count"><CC grid title={t.cmpDailyCount} id="cmp-daily-count" nm="cmp_daily_count" data={compareRpt.dailySeries}><BarChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
+              <div key="cmp-monthly-rev"><CC grid title={t.cmpMonthlyRev} id="cmp-monthly-rev" nm="cmp_monthly_rev" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
+              <div key="cmp-monthly-count"><CC grid title={t.cmpMonthlyCount} id="cmp-monthly-count" nm="cmp_monthly_count" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
             </DraggableGrid>
           </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
