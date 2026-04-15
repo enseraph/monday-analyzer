@@ -8,9 +8,9 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="2.07";
+const APP_VERSION="2.08";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
-const LAYOUT_SCHEMA_VERSION="7";
+const LAYOUT_SCHEMA_VERSION="8";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -99,6 +99,7 @@ const DL={
   revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3],["ch-rev-country-r",0,10,12,4]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3],["fac-daily-count",0,17,6,4],["fac-daily-rev",6,17,6,4],["fac-monthly-count",0,21,6,4],["fac-monthly-rev",6,21,6,4]]),
+  opening:mkL([["op-ramp",0,0,12,5],["op-cohort",0,5,12,5],["op-split",0,10,6,5],["op-adr",6,10,6,5],["op-channel",0,15,6,5],["op-country",6,15,6,5]]),
   pace:mkL([["pace-chart",0,0,12,5],["pace-summary",0,5,6,4]]),
   cancellations:mkL([["canc-trend",0,0,12,4],["canc-country",0,4,6,4],["canc-seg",6,4,6,3],["canc-fac",0,8,6,9],["canc-detail",6,7,6,7]]),
   revpar:mkL([["rp-trend",0,0,12,4],["rp-daily",0,4,12,4],["rp-fac",0,8,6,7],["rp-detail",6,8,6,7]]),
@@ -255,6 +256,19 @@ facDailyCount:"Daily Reservations by Facility",facDailyRev:"Daily Revenue by Fac
 facViewMode:"View",facViewAll:"All facilities",facViewNewVsOld:"New vs Old",facNewLabel:"New",facOldLabel:"Old",facNewHint:`New = opened on/after ${NEW_HOTEL_CUTOFF} (Maihama View I)`,
 countryView:"Country view",countryViewAgg:"Aggregate",countryViewPer:"Per country",countryViewHint:"Split each selected country into its own chart series",
 facAge:"Facility age",facAgeAll:"All",facAgeNew:"New only",facAgeOld:"Old only",facAgeView:"Age view",facAgeViewAgg:"Aggregate",facAgeViewSplit:"New vs Old",facAgeHint:"Applied to all facilities; selecting specific facilities overrides.",facAgeDisabled:"Specific facilities selected — age toggles disabled",
+openingTab:"Hotel Opening",openingTitle:"Hotel Opening Analysis",openingSub:"Pre-open vs post-open performance per new-facility launch. YYB data starts 2024-05; facilities opened before that have no pre-open data.",
+openingFacilities:"Facilities to analyze",openingSelectAll:"Select all (2024+)",openingSelectNew:"Only new (post-Maihama)",openingClearAll:"Clear",
+openingKpiOpenDate:"Opening date (first)",openingKpiPreOpenBk:"Pre-open bookings",openingKpiPreOpenRev:"Pre-open revenue",openingKpiPreOpenLead:"Avg pre-open lead (days)",openingKpiWeek1Occ:"Week 1 occupancy (avg)",openingKpiMonth1Adr:"Month 1 ADR (avg)",
+openingRamp:"Pre-opening booking ramp (cumulative, -180d → 0)",
+openingCohort:"Days-since-opening revenue curve (0 → 180d)",
+openingSplit:"Pre-open vs Post-open bookings by facility",
+openingAdr:"Post-open weekly ADR (W0 → W26)",
+openingChannel:"Post-open weekly channel mix (aggregated)",
+openingCountry:"Post-open weekly country mix (aggregated)",
+openingTableTitle:"New Facility Summary",
+openingColOpen:"Opening",openingColDaysOpen:"Days open",openingColPreOpen:"Pre-open",openingColPostOpen:"Post-open",openingColPreOpenRev:"Pre-open ¥",openingColLead:"Avg lead",openingColFirstBk:"First booking",openingColWk1:"Wk1 Occ",openingColMo1Occ:"Mo1 Occ",openingColMo1Adr:"Mo1 ADR",openingColYTD:"YTD ¥",openingColPrePct:"Pre-open %",
+openingNoData:"No data for the selected facilities (check filters or facility selection).",
+openingPreLabel:"Pre-open",openingPostLabel:"Post-open",
 cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
@@ -411,6 +425,19 @@ facDailyCount:"施設別日別予約数",facDailyRev:"施設別日別売上",fac
 facViewMode:"表示",facViewAll:"全施設",facViewNewVsOld:"新規vs既存",facNewLabel:"新規",facOldLabel:"既存",facNewHint:`新規 = ${NEW_HOTEL_CUTOFF} 以降開業 (舞浜ビューⅠ以降)`,
 countryView:"国表示",countryViewAgg:"合計",countryViewPer:"国別",countryViewHint:"選択した国を国別に分けて表示",
 facAge:"施設年代",facAgeAll:"全て",facAgeNew:"新規のみ",facAgeOld:"既存のみ",facAgeView:"年代表示",facAgeViewAgg:"合計",facAgeViewSplit:"新規vs既存",facAgeHint:"全施設対象。施設を個別選択した場合はこちらが優先。",facAgeDisabled:"施設を個別選択中 — 年代フィルターは無効",
+openingTab:"開業分析",openingTitle:"開業前後パフォーマンス分析",openingSub:"新規施設の開業前・開業後の実績比較。YYBデータは2024年5月以降のみ — それ以前の開業施設には開業前データがありません。",
+openingFacilities:"分析対象施設",openingSelectAll:"全選択 (2024年以降)",openingSelectNew:"新規のみ (舞浜以降)",openingClearAll:"クリア",
+openingKpiOpenDate:"開業日 (最新)",openingKpiPreOpenBk:"開業前予約数",openingKpiPreOpenRev:"開業前売上",openingKpiPreOpenLead:"開業前平均LT (日)",openingKpiWeek1Occ:"初週稼働率 (平均)",openingKpiMonth1Adr:"初月ADR (平均)",
+openingRamp:"開業前予約ランプ (累積, -180日→0)",
+openingCohort:"開業後日別売上 (0日→180日)",
+openingSplit:"施設別 開業前/開業後予約数",
+openingAdr:"開業後週次ADR (W0→W26)",
+openingChannel:"開業後週次チャネル構成 (合算)",
+openingCountry:"開業後週次国別構成 (合算)",
+openingTableTitle:"新規施設サマリー",
+openingColOpen:"開業日",openingColDaysOpen:"経過日数",openingColPreOpen:"開業前",openingColPostOpen:"開業後",openingColPreOpenRev:"開業前¥",openingColLead:"平均LT",openingColFirstBk:"初予約日",openingColWk1:"初週稼働率",openingColMo1Occ:"初月稼働率",openingColMo1Adr:"初月ADR",openingColYTD:"今年¥",openingColPrePct:"開業前%",
+openingNoData:"選択された施設のデータがありません。",
+openingPreLabel:"開業前",openingPostLabel:"開業後",
 cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
@@ -579,6 +606,12 @@ const FACILITY_OPENING_DATES={
 // Cutoff for "new" facility group — Maihama View I opening date
 const NEW_HOTEL_CUTOFF="2025-12-05";
 const isNewFacility=f=>{const d=FACILITY_OPENING_DATES[f];return d?d>=NEW_HOTEL_CUTOFF:false};
+// Hotel Opening tab helpers
+const PRE_OPEN_RAMP_DAYS=180; // show up to 180 days of pre-opening booking ramp
+const COHORT_DAYS=180; // show first N days post-opening for cohort comparison
+const getDaysBetween=(iso1,iso2)=>{if(!iso1||!iso2)return null;const d1=new Date(iso1+"T00:00:00"),d2=new Date(iso2+"T00:00:00");return Math.round((d2-d1)/864e5)};
+// Facilities with YYB-era opening dates (post-2024-01-01) — meaningful pre-open data available
+const FACILITIES_WITH_PREOPEN_DATA=Object.keys(FACILITY_OPENING_DATES).filter(f=>FACILITY_OPENING_DATES[f]>="2024-01-01").sort((a,b)=>FACILITY_OPENING_DATES[b].localeCompare(FACILITY_OPENING_DATES[a]));
 
 // ─── HELPERS ───
 // getRegion imported from shared.js
@@ -955,6 +988,7 @@ const[facViewMode,setFacViewMode]=useState("all"); // "all" | "newVsOld"
 const[countryViewMode,setCountryViewMode]=useState("aggregate"); // "aggregate" | "perCountry"
 const[facAgeFilter,setFacAgeFilter]=useState("all"); // "all" | "new" | "old" — global data filter; overridden if specific facilities selected
 const[facAgeView,setFacAgeView]=useState("aggregate"); // "aggregate" | "newVsOld" — global visual split on compatible charts
+const[openingFacs,setOpeningFacs]=useState(FACILITIES_WITH_PREOPEN_DATA); // Hotel Opening tab — selected facilities for cohort analysis
 // Colors for New vs Old cohort split (deliberately distinct from Compare tab's A=blue/B=gold)
 const NEW_COHORT_COLOR="#34d399"; // green — "fresh / growth"
 const OLD_COHORT_COLOR="#64748b"; // slate — "established"
@@ -1882,6 +1916,236 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const overallAdr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
     return{overallAdr,totalRev,totalRoomNights,totalCount,facRows,countryRows,segRows,regionRows,monthRows};
   },[tab,filtered,tz,tzFmt]);
+
+  // ─── HOTEL OPENING TAB ───
+  // Cohort analysis of pre-open vs post-open performance per new-facility launch.
+  // Uses allData (not filtered) for pre-open ramp (needs full booking history), but respects
+  // global filters for post-open comparison. The tab has its own facility picker (openingFacs)
+  // independent of the global fP multiselect.
+  const openingRpt=useMemo(()=>{
+    if(tab!=="opening"||!allData.length||!openingFacs.length)return null;
+    const today=new Date();today.setHours(0,0,0,0);
+    const todayIso=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+    // Apply global filters EXCEPT date range and facility selection (opening tab has its own facility picker)
+    const selectedSet=new Set(openingFacs);
+    const applyOpeningFilters=d=>{
+      let out=d;
+      if(fCancel==="confirmed")out=out.filter(r=>!r.isCancelled);
+      else if(fCancel==="cancelled")out=out.filter(r=>r.isCancelled);
+      if(fHType!=="All")out=out.filter(r=>r.hotelType===fHType);
+      if(fBrands.length)out=out.filter(r=>fBrands.includes(r.brand));
+      if(fR!=="All")out=out.filter(r=>r.region===fR);
+      if(fC.length)out=out.filter(r=>fC.includes(r.country));
+      if(fS.length)out=out.filter(r=>fS.includes(r.segment));
+      if(fGeo.length)out=out.filter(r=>fGeo.includes(GEO_REGION(r.country)));
+      if(fDOW.length)out=out.filter(r=>fDOW.includes(r.checkinDow));
+      return out.filter(r=>selectedSet.has(r.facility));
+    };
+    const base=applyOpeningFilters(allData);
+    if(!base.length)return{empty:true};
+
+    // Per-facility aggregation
+    const perFac={};
+    openingFacs.forEach(f=>{
+      const openIso=FACILITY_OPENING_DATES[f];
+      if(!openIso)return;
+      perFac[f]={
+        openingDate:openIso,
+        daysSinceOpen:getDaysBetween(openIso,todayIso),
+        preOpenCount:0,preOpenRev:0,preOpenLeadSum:0,preOpenLeadCount:0,
+        postOpenCount:0,postOpenRev:0,
+        firstBookingDate:null,
+        ytdRev:0,
+        // Week 1 and Month 1 by check-in date
+        week1RoomNights:0,month1RoomNights:0,month1Rev:0,
+      };
+    });
+
+    base.forEach(r=>{
+      const f=r.facility;const fD=perFac[f];if(!fD)return;
+      const openIso=fD.openingDate;
+      const bIso=tzFmt(r.bookingDate);
+      const ciIso=tzFmt(r.checkin);
+      const rev=r.totalRev||0;
+      // Track first booking date
+      if(bIso&&(!fD.firstBookingDate||bIso<fD.firstBookingDate))fD.firstBookingDate=bIso;
+      // Pre/post-open split based on BOOKING date
+      if(bIso){
+        if(bIso<openIso){
+          fD.preOpenCount++;fD.preOpenRev+=rev;
+          const lead=getDaysBetween(bIso,openIso);
+          if(lead!=null){fD.preOpenLeadSum+=lead;fD.preOpenLeadCount++}
+        }else{
+          fD.postOpenCount++;fD.postOpenRev+=rev;
+        }
+      }
+      // YTD revenue (current calendar year)
+      if(bIso&&bIso.startsWith(String(today.getFullYear())))fD.ytdRev+=rev;
+      // Week 1 / Month 1 occupancy calc (by check-in date relative to open)
+      if(ciIso&&r.nights){
+        const daysAfter=getDaysBetween(openIso,ciIso);
+        const roomNights=(r.nights||0)*(r.rooms||1);
+        if(daysAfter!=null&&daysAfter>=0&&daysAfter<7){fD.week1RoomNights+=roomNights}
+        if(daysAfter!=null&&daysAfter>=0&&daysAfter<30){fD.month1RoomNights+=roomNights;fD.month1Rev+=rev}
+      }
+    });
+
+    // Build derived per-facility metrics
+    const summaryRows=Object.entries(perFac).map(([f,fD])=>{
+      const rooms=ROOM_INVENTORY[f]||0;
+      const week1Avail=rooms*7;
+      const month1Avail=rooms*30;
+      const preOpenPct=(fD.preOpenCount+fD.postOpenCount)>0?+((fD.preOpenCount/(fD.preOpenCount+fD.postOpenCount))*100).toFixed(1):0;
+      return{
+        facility:f,name:shortFac(f),fullName:f,
+        openingDate:fD.openingDate,
+        daysSinceOpen:fD.daysSinceOpen,
+        preOpenCount:fD.preOpenCount,preOpenRev:fD.preOpenRev,
+        postOpenCount:fD.postOpenCount,postOpenRev:fD.postOpenRev,
+        preOpenLead:fD.preOpenLeadCount>0?+(fD.preOpenLeadSum/fD.preOpenLeadCount).toFixed(1):0,
+        firstBookingDate:fD.firstBookingDate||"—",
+        week1Occ:week1Avail>0?+((fD.week1RoomNights/week1Avail)*100).toFixed(1):0,
+        month1Occ:month1Avail>0?+((fD.month1RoomNights/month1Avail)*100).toFixed(1):0,
+        month1Adr:fD.month1RoomNights>0?Math.round(fD.month1Rev/fD.month1RoomNights):0,
+        ytdRev:fD.ytdRev,
+        preOpenPct,
+      };
+    }).sort((a,b)=>b.openingDate.localeCompare(a.openingDate));
+
+    // Pre-opening booking ramp: X=days before opening, Y=cumulative bookings per facility
+    const rampMap={}; // day(-N) -> {fac: count}
+    base.forEach(r=>{
+      const bIso=tzFmt(r.bookingDate);if(!bIso)return;
+      const f=r.facility;const fD=perFac[f];if(!fD)return;
+      const daysUntilOpen=getDaysBetween(bIso,fD.openingDate);
+      if(daysUntilOpen==null||daysUntilOpen<=0||daysUntilOpen>PRE_OPEN_RAMP_DAYS)return;
+      const day=-daysUntilOpen; // negative: "X days before open"
+      if(!rampMap[day])rampMap[day]={};
+      rampMap[day][f]=(rampMap[day][f]||0)+1;
+    });
+    // Build cumulative from -N to 0
+    const rampRows=[];
+    const cumByFac={};
+    for(let day=-PRE_OPEN_RAMP_DAYS;day<=0;day++){
+      const row={day};
+      openingFacs.forEach(f=>{
+        cumByFac[f]=(cumByFac[f]||0)+(rampMap[day]?.[f]||0);
+        row[f]=cumByFac[f];
+      });
+      rampRows.push(row);
+    }
+
+    // Days-since-opening cohort curve: X=days after opening, Y=daily revenue per facility
+    const cohortMap={};
+    base.forEach(r=>{
+      const bIso=tzFmt(r.bookingDate);if(!bIso)return;
+      const f=r.facility;const fD=perFac[f];if(!fD)return;
+      const daysAfter=getDaysBetween(fD.openingDate,bIso);
+      if(daysAfter==null||daysAfter<0||daysAfter>COHORT_DAYS)return;
+      if(!cohortMap[daysAfter])cohortMap[daysAfter]={};
+      cohortMap[daysAfter][f]=(cohortMap[daysAfter][f]||0)+(r.totalRev||0);
+    });
+    const cohortRows=[];
+    for(let day=0;day<=COHORT_DAYS;day++){
+      const row={day};
+      openingFacs.forEach(f=>{row[f]=cohortMap[day]?.[f]||0});
+      cohortRows.push(row);
+    }
+
+    // Pre/post split (for stacked bar chart per facility)
+    const splitRows=summaryRows.map(s=>({facility:s.facility,name:s.name,"Pre-open":s.preOpenCount,"Post-open":s.postOpenCount}));
+
+    // Post-open ADR timeline — week by facility (aggregated weekly)
+    const adrWeekly={}; // week -> {fac: {rev, rn}}
+    base.forEach(r=>{
+      const ciIso=tzFmt(r.checkin);if(!ciIso||!r.nights)return;
+      const f=r.facility;const fD=perFac[f];if(!fD)return;
+      const daysAfter=getDaysBetween(fD.openingDate,ciIso);
+      if(daysAfter==null||daysAfter<0||daysAfter>26*7)return;
+      const week=Math.floor(daysAfter/7);
+      const rn=(r.nights||0)*(r.rooms||1);
+      if(!adrWeekly[week])adrWeekly[week]={};
+      if(!adrWeekly[week][f])adrWeekly[week][f]={rev:0,rn:0};
+      adrWeekly[week][f].rev+=r.totalRev||0;adrWeekly[week][f].rn+=rn;
+    });
+    const adrRows=[];
+    for(let w=0;w<=26;w++){
+      const row={week:"W"+w};
+      openingFacs.forEach(f=>{const v=adrWeekly[w]?.[f];row[f]=v&&v.rn>0?Math.round(v.rev/v.rn):null});
+      adrRows.push(row);
+    }
+
+    // Post-open channel mix evolution (aggregated across selected facilities, by week)
+    const channelWeekly={}; // week -> channel -> count
+    const allChannels=new Set();
+    base.forEach(r=>{
+      const bIso=tzFmt(r.bookingDate);if(!bIso)return;
+      const f=r.facility;const fD=perFac[f];if(!fD)return;
+      const daysAfter=getDaysBetween(fD.openingDate,bIso);
+      if(daysAfter==null||daysAfter<0||daysAfter>26*7)return;
+      const week=Math.floor(daysAfter/7);
+      const ch=r.salesChannel||"Other";
+      allChannels.add(ch);
+      if(!channelWeekly[week])channelWeekly[week]={};
+      channelWeekly[week][ch]=(channelWeekly[week][ch]||0)+1;
+    });
+    // Top 6 channels across all data
+    const channelTotals={};
+    base.forEach(r=>{if(r.salesChannel)channelTotals[r.salesChannel]=(channelTotals[r.salesChannel]||0)+1});
+    const topChannels=Object.entries(channelTotals).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([c])=>c);
+    const topChannelSet=new Set(topChannels);
+    const channelRows=[];
+    for(let w=0;w<=26;w++){
+      const row={week:"W"+w};
+      topChannels.forEach(c=>{row[c]=channelWeekly[w]?.[c]||0});
+      // Bucket remaining into "Other"
+      let other=0;
+      Object.entries(channelWeekly[w]||{}).forEach(([c,v])=>{if(!topChannelSet.has(c))other+=v});
+      row.Other=other;
+      channelRows.push(row);
+    }
+
+    // Post-open country mix evolution (aggregated, by week)
+    const countryWeekly={};
+    base.forEach(r=>{
+      const bIso=tzFmt(r.bookingDate);if(!bIso)return;
+      const f=r.facility;const fD=perFac[f];if(!fD)return;
+      const daysAfter=getDaysBetween(fD.openingDate,bIso);
+      if(daysAfter==null||daysAfter<0||daysAfter>26*7)return;
+      const week=Math.floor(daysAfter/7);
+      const c=r.country||"Unknown";
+      if(!countryWeekly[week])countryWeekly[week]={};
+      countryWeekly[week][c]=(countryWeekly[week][c]||0)+1;
+    });
+    // Top 8 countries
+    const countryTotals={};
+    base.forEach(r=>{if(r.country)countryTotals[r.country]=(countryTotals[r.country]||0)+1});
+    const topCountries=Object.entries(countryTotals).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c])=>c);
+    const topCountrySet=new Set(topCountries);
+    const countryRows=[];
+    for(let w=0;w<=26;w++){
+      const row={week:"W"+w};
+      topCountries.forEach(c=>{row[c]=countryWeekly[w]?.[c]||0});
+      let other=0;
+      Object.entries(countryWeekly[w]||{}).forEach(([c,v])=>{if(!topCountrySet.has(c))other+=v});
+      row.Other=other;
+      countryRows.push(row);
+    }
+
+    // KPI aggregates across selected facilities (or single facility if only one selected)
+    const totalPreOpen=summaryRows.reduce((a,s)=>a+s.preOpenCount,0);
+    const totalPostOpen=summaryRows.reduce((a,s)=>a+s.postOpenCount,0);
+    const totalPreOpenRev=summaryRows.reduce((a,s)=>a+s.preOpenRev,0);
+    const avgPreOpenLead=(()=>{const nonZero=summaryRows.filter(s=>s.preOpenLead>0);return nonZero.length?+(nonZero.reduce((a,s)=>a+s.preOpenLead,0)/nonZero.length).toFixed(1):0})();
+    const avgWeek1Occ=(()=>{const nonZero=summaryRows.filter(s=>s.week1Occ>0);return nonZero.length?+(nonZero.reduce((a,s)=>a+s.week1Occ,0)/nonZero.length).toFixed(1):0})();
+    const avgMonth1Adr=(()=>{const nonZero=summaryRows.filter(s=>s.month1Adr>0);return nonZero.length?Math.round(nonZero.reduce((a,s)=>a+s.month1Adr,0)/nonZero.length):0})();
+
+    return{
+      summaryRows,rampRows,cohortRows,splitRows,adrRows,channelRows,countryRows,
+      topChannels:[...topChannels,"Other"],topCountries:[...topCountries,"Other"],
+      kpi:{totalPreOpen,totalPostOpen,totalPreOpenRev,avgPreOpenLead,avgWeek1Occ,avgMonth1Adr,facCount:summaryRows.length},
+    };
+  },[tab,allData,openingFacs,fCancel,fHType,fBrands,fR,fC,fS,fGeo,fDOW,tz,tzFmt]);
 
   // ─── MEMBER & REPEAT ANALYSIS ───
   const memberRpt=useMemo(()=>{
@@ -3083,6 +3347,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     {id:"rooms",l:t.roomTypes,src:"yyb",i:"🛏"},
     {id:"adr",l:t.adrTab,src:"yyb",i:"💴"},
     {id:"facilities",l:t.facilities,src:"yyb",i:"🏨"},
+    {id:"opening",l:t.openingTab,src:"yyb",i:"🆕"},
     {id:"data",l:t.rawData,src:"yyb",i:"📄"},
     {id:"tl-channel",l:t.tlChannelMix,src:"tl",i:"📊"},
     {id:"tl-daily",l:t.tlDailyReport,src:"tl",i:"📋"},
@@ -3683,12 +3948,97 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             <div key="fac-monthly-rev"><CC grid title={t.facMonthlyRev} id="fac-monthly-rev" nm="fac_monthly_rev" data={facTimeRpt?(facViewMode==="newVsOld"?facTimeRpt.monthlyRevNvO:facTimeRpt.monthlyRev):[]}>{facTimeRpt?<BarChart data={facViewMode==="newVsOld"?facTimeRpt.monthlyRevNvO:facTimeRpt.monthlyRev}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facViewMode==="newVsOld"?[<Bar key="Old" dataKey="Old" stackId="a" fill="#4ea8de" name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={TH.gold} name={t.facNewLabel}/>]:facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
           </DraggableGrid>
           <SortTbl
-            data={facD}
-            columns={[{key:"fullName",label:t.thFacility},{key:"region",label:t.thRegion},{key:"n",label:t.reservations},{key:"avgRev",label:t.thAvgRev},{key:"intlPct",label:t.thIntlPct},{key:"avgLOS",label:t.thAvgLOS},{key:"topSeg",label:t.thTopSeg}]}
-            renderRow={f=><tr key={f.fullName}><td style={{...S.td,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={f.fullName}>{f.fullName}</td><td style={S.td}><span style={S.tag(f.region==="Kanto"?"#4ea8de":"#e07b54")}>{tl(f.region)}</span></td><td style={{...S.td,...S.m}}>{fmtN(f.n)}</td><td style={{...S.td,...S.m}}>{fmtY(f.avgRev)}</td><td style={{...S.td,...S.m,color:f.intlPct>50?"#c9a84c":"#c8c3b8"}}>{f.intlPct}%</td><td style={{...S.td,...S.m}}>{f.avgLOS}{t.nu}</td><td style={S.td}><span style={S.tag(SEG_COLORS[f.topSeg]||"#64748b")}>{tl(f.topSeg)}</span></td></tr>}
+            data={facD.map(f=>({...f,openingDate:FACILITY_OPENING_DATES[f.fullName]||"—"}))}
+            columns={[{key:"fullName",label:t.thFacility},{key:"region",label:t.thRegion},{key:"openingDate",label:t.openingColOpen},{key:"n",label:t.reservations},{key:"avgRev",label:t.thAvgRev},{key:"intlPct",label:t.thIntlPct},{key:"avgLOS",label:t.thAvgLOS},{key:"topSeg",label:t.thTopSeg}]}
+            renderRow={f=><tr key={f.fullName}><td style={{...S.td,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={f.fullName}>{f.fullName}</td><td style={S.td}><span style={S.tag(f.region==="Kanto"?"#4ea8de":"#e07b54")}>{tl(f.region)}</span></td><td style={{...S.td,...S.m,fontSize:10,color:TH.textMuted}}>{f.openingDate}</td><td style={{...S.td,...S.m}}>{fmtN(f.n)}</td><td style={{...S.td,...S.m}}>{fmtY(f.avgRev)}</td><td style={{...S.td,...S.m,color:f.intlPct>50?"#c9a84c":"#c8c3b8"}}>{f.intlPct}%</td><td style={{...S.td,...S.m}}>{f.avgLOS}{t.nu}</td><td style={S.td}><span style={S.tag(SEG_COLORS[f.topSeg]||"#64748b")}>{tl(f.topSeg)}</span></td></tr>}
             title={t.facilityPerf}
-            exportFn={<button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.fullName,Region:f.region,Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button>}
+            exportFn={<button style={{...S.bg,fontSize:10}} onClick={()=>{expCSV(facD.map(f=>({Facility:f.fullName,Region:f.region,Opening:FACILITY_OPENING_DATES[f.fullName]||"",Res:f.n,AvgRev:f.avgRev,"Intl%":f.intlPct,AvgLOS:f.avgLOS,TopSeg:f.topSeg})),["Facility","Region","Opening","Res","AvgRev","Intl%","AvgLOS","TopSeg"],"facilities.csv")}}>⬇ {t.exportCSV}</button>}
           /></div>}
+
+        {/* HOTEL OPENING TAB */}
+        {tab==="opening"&&<div>
+          <div style={{marginBottom:14,fontSize:11,color:TH.textMuted,lineHeight:1.5,fontStyle:"italic"}}>{t.openingSub}</div>
+          {/* Facility picker */}
+          <div style={{...S.card,marginBottom:14,padding:12}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+              <div style={{fontSize:11,fontWeight:600,color:TH.textStrong}}>{t.openingFacilities}:</div>
+              <button style={{...S.btn,fontSize:10,padding:"3px 10px"}} onClick={()=>setOpeningFacs([...FACILITIES_WITH_PREOPEN_DATA])}>{t.openingSelectAll}</button>
+              <button style={{...S.btn,fontSize:10,padding:"3px 10px"}} onClick={()=>setOpeningFacs(Object.keys(FACILITY_OPENING_DATES).filter(f=>isNewFacility(f)))}>{t.openingSelectNew}</button>
+              <button style={{...S.btn,fontSize:10,padding:"3px 10px",color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>setOpeningFacs([])}>{t.openingClearAll}</button>
+              <span style={{fontSize:10,color:TH.textMuted,marginLeft:"auto"}}>{openingFacs.length} selected</span>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+              {Object.keys(FACILITY_OPENING_DATES).sort((a,b)=>FACILITY_OPENING_DATES[b].localeCompare(FACILITY_OPENING_DATES[a])).map(f=>{
+                const active=openingFacs.includes(f);
+                const isLegacy=FACILITY_OPENING_DATES[f]<"2024-01-01";
+                return<button key={f} style={{...S.btn,fontSize:10,padding:"3px 8px",...(active?{background:TH.accent,borderColor:TH.accentBorder,color:TH.gold}:isLegacy?{opacity:0.5}:{})}} onClick={()=>setOpeningFacs(p=>active?p.filter(x=>x!==f):[...p,f])} title={isLegacy?`${FACILITY_OPENING_DATES[f]} (before YYB data start — pre-open analysis unavailable)`:FACILITY_OPENING_DATES[f]}>{active?"✓ ":""}{shortFac(f)} <span style={{fontSize:8,color:TH.textMuted}}>{FACILITY_OPENING_DATES[f].slice(0,7)}</span></button>;
+              })}
+            </div>
+          </div>
+          {openingRpt&&!openingRpt.empty?<>
+            {/* KPIs */}
+            <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={S.kpi}><div style={S.kl}>{t.openingKpiPreOpenBk}</div><div style={S.kv}>{fmtN(openingRpt.kpi.totalPreOpen)}</div><div style={{fontSize:10,color:TH.textMuted,marginTop:2}}>across {openingRpt.kpi.facCount} facilit{openingRpt.kpi.facCount===1?"y":"ies"}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.openingKpiPreOpenRev}</div><div style={S.kv}>¥{fmtN(openingRpt.kpi.totalPreOpenRev)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.openingKpiPreOpenLead}</div><div style={S.kv}>{openingRpt.kpi.avgPreOpenLead} d</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.openingKpiWeek1Occ}</div><div style={S.kv}>{openingRpt.kpi.avgWeek1Occ}%</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.openingKpiMonth1Adr}</div><div style={S.kv}>¥{fmtN(openingRpt.kpi.avgMonth1Adr)}</div></div>
+            </div>
+            <DraggableGrid {...dgProps("opening")}>
+              <div key="op-ramp"><CC grid title={t.openingRamp} id="op-ramp" nm="op_ramp" data={openingRpt.rampRows}>
+                <LineChart data={openingRpt.rampRows}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tks} label={{value:"Days before opening",position:"insideBottom",offset:-5,fill:TH.tickFill,fontSize:9}}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{openingFacs.map((f,i)=><Line key={f} type="monotone" dataKey={f} stroke={facColor(i)} strokeWidth={1.5} dot={false} name={shortFac(f)}/>)}</LineChart>
+              </CC></div>
+              <div key="op-cohort"><CC grid title={t.openingCohort} id="op-cohort" nm="op_cohort" data={openingRpt.cohortRows}>
+                <LineChart data={openingRpt.cohortRows}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tks} label={{value:"Days since opening",position:"insideBottom",offset:-5,fill:TH.tickFill,fontSize:9}}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{openingFacs.map((f,i)=><Line key={f} type="monotone" dataKey={f} stroke={facColor(i)} strokeWidth={1.5} dot={false} name={shortFac(f)}/>)}</LineChart>
+              </CC></div>
+              <div key="op-split"><CC grid title={t.openingSplit} id="op-split" nm="op_split" data={openingRpt.splitRows}>
+                <BarChart data={openingRpt.splitRows} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="name" type="category" width={140} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/><Bar dataKey="Pre-open" stackId="a" fill="#c084fc" name={t.openingPreLabel}/><Bar dataKey="Post-open" stackId="a" fill="#34d399" name={t.openingPostLabel}/></BarChart>
+              </CC></div>
+              <div key="op-adr"><CC grid title={t.openingAdr} id="op-adr" nm="op_adr" data={openingRpt.adrRows}>
+                <LineChart data={openingRpt.adrRows}><CartesianGrid {...gl}/><XAxis dataKey="week" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>v!=null?"¥"+v.toLocaleString():"—"}/>}/><Legend wrapperStyle={{fontSize:9}}/>{openingFacs.map((f,i)=><Line key={f} type="monotone" dataKey={f} stroke={facColor(i)} strokeWidth={1.5} dot={{r:2}} name={shortFac(f)} connectNulls={true}/>)}</LineChart>
+              </CC></div>
+              <div key="op-channel"><CC grid title={t.openingChannel} id="op-channel" nm="op_channel" data={openingRpt.channelRows}>
+                <BarChart data={openingRpt.channelRows}><CartesianGrid {...gl}/><XAxis dataKey="week" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{openingRpt.topChannels.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={facColor(i)} name={c}/>)}</BarChart>
+              </CC></div>
+              <div key="op-country"><CC grid title={t.openingCountry} id="op-country" nm="op_country" data={openingRpt.countryRows}>
+                <BarChart data={openingRpt.countryRows}><CartesianGrid {...gl}/><XAxis dataKey="week" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{openingRpt.topCountries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={facColor(i)} name={tl(c)}/>)}</BarChart>
+              </CC></div>
+            </DraggableGrid>
+            <SortTbl
+              data={openingRpt.summaryRows}
+              columns={[
+                {key:"fullName",label:t.thFacility},
+                {key:"openingDate",label:t.openingColOpen},
+                {key:"daysSinceOpen",label:t.openingColDaysOpen},
+                {key:"firstBookingDate",label:t.openingColFirstBk},
+                {key:"preOpenCount",label:t.openingColPreOpen},
+                {key:"preOpenRev",label:t.openingColPreOpenRev},
+                {key:"preOpenLead",label:t.openingColLead},
+                {key:"preOpenPct",label:t.openingColPrePct},
+                {key:"week1Occ",label:t.openingColWk1},
+                {key:"month1Occ",label:t.openingColMo1Occ},
+                {key:"month1Adr",label:t.openingColMo1Adr},
+                {key:"ytdRev",label:t.openingColYTD},
+              ]}
+              renderRow={r=><tr key={r.fullName}>
+                <td style={{...S.td,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.fullName}>{r.fullName}</td>
+                <td style={{...S.td,...S.m,fontSize:10}}>{r.openingDate}</td>
+                <td style={{...S.td,...S.m,color:r.daysSinceOpen<0?"#c084fc":TH.text}}>{r.daysSinceOpen<0?r.daysSinceOpen+"d":r.daysSinceOpen+"d"}</td>
+                <td style={{...S.td,...S.m,fontSize:10}}>{r.firstBookingDate}</td>
+                <td style={{...S.td,...S.m}}>{fmtN(r.preOpenCount)}</td>
+                <td style={{...S.td,...S.m}}>¥{fmtN(r.preOpenRev)}</td>
+                <td style={{...S.td,...S.m}}>{r.preOpenLead}d</td>
+                <td style={{...S.td,...S.m,color:r.preOpenPct>=30?"#34d399":r.preOpenPct>0?TH.gold:TH.textMuted}}>{r.preOpenPct}%</td>
+                <td style={{...S.td,...S.m,color:r.week1Occ>=70?"#34d399":r.week1Occ>=40?TH.gold:r.week1Occ>0?"#ef4444":TH.textMuted}}>{r.week1Occ}%</td>
+                <td style={{...S.td,...S.m}}>{r.month1Occ}%</td>
+                <td style={{...S.td,...S.m}}>¥{fmtN(r.month1Adr)}</td>
+                <td style={{...S.td,...S.m}}>¥{fmtN(r.ytdRev)}</td>
+              </tr>}
+              title={t.openingTableTitle}
+              exportFn={<button style={{...S.bg,fontSize:10}} onClick={()=>expCSV(openingRpt.summaryRows.map(r=>({Facility:r.fullName,Opening:r.openingDate,DaysOpen:r.daysSinceOpen,FirstBooking:r.firstBookingDate,PreOpenBookings:r.preOpenCount,PreOpenRev:r.preOpenRev,AvgLeadDays:r.preOpenLead,PreOpenPct:r.preOpenPct,Week1Occ:r.week1Occ,Month1Occ:r.month1Occ,Month1ADR:r.month1Adr,YTDRev:r.ytdRev})),["Facility","Opening","DaysOpen","FirstBooking","PreOpenBookings","PreOpenRev","AvgLeadDays","PreOpenPct","Week1Occ","Month1Occ","Month1ADR","YTDRev"],"opening_analysis.csv")}>⬇ CSV</button>}
+            />
+          </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.openingNoData}</div>}
+        </div>}
 
         {/* TL CHANNEL MIX */}
         {tab==="tl-channel"&&<div>

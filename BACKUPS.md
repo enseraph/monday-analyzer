@@ -7,6 +7,7 @@
 | `monday-analyzer-backup-v1.94` | 2026-04-14 | v1.94 | Pre–date-range-picker refactor |
 | `monday-analyzer-backup-v2.04` | 2026-04-15 | v2.04 | Pre–per-country toggle refactor |
 | `monday-analyzer-backup-v2.05` | 2026-04-15 | v2.05 | Pre–global facility age filter/view |
+| `monday-analyzer-backup-v2.07` | 2026-04-15 | v2.07 | Pre–Hotel Opening tab |
 
 *Note: v1.91, v1.92, v1.93 changes are incremental and backed by git history (commits on `master`). Use `git checkout <commit-sha>` to restore any version.*
 

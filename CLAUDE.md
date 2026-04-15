@@ -123,9 +123,25 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.07
+Current: 2.08
 
 Recent changes:
+- v2.08: **Hotel Opening tab (🆕) — pre-open vs post-open cohort analysis.**
+  1. New YYB-side tab (sidebar icon 🆕) placed after Facilities. Dedicated to analyzing new-facility launches — pre-opening booking ramp, days-since-opening cohort curves, pre-open vs post-open split, and post-opening performance trends.
+  2. **Facility picker** (top of tab, independent of global `fP` multiselect): All `FACILITY_OPENING_DATES` entries shown as toggle pills; 2024+ openings selected by default. Quick-select buttons: "Select all (2024+)" / "Only new (post-Maihama)" / "Clear". Legacy (pre-2024) facilities greyed out since YYB data only covers 2024-05+ and they'd show empty pre-open history. No cap on how many facilities can be selected (per user).
+  3. **KPIs (5):** Pre-open bookings (count), Pre-open revenue, Avg pre-open lead time (days), Avg Week-1 occupancy, Avg Month-1 ADR — all aggregated across selected facilities.
+  4. **Charts (6):**
+     - *Pre-opening ramp* — cumulative booking curve, X=-180d→0, one line per facility. Shows when pre-launch marketing kicked in.
+     - *Days-since-opening cohort* — headline chart. X=0→180d post-open, Y=daily revenue. Normalizes across opening dates so multiple new hotels compare on identical ramp axes.
+     - *Pre-open vs Post-open split* — horizontal stacked bars per facility. Pre-open=purple, Post-open=green.
+     - *Post-open weekly ADR* — W0→W26. Line per facility. Shows rate stabilization/growth.
+     - *Post-open weekly channel mix* — stacked bars, aggregated across selected facilities. Top 6 channels by volume + "Other".
+     - *Post-open weekly country mix* — stacked bars, aggregated. Top 8 countries + "Other".
+  5. **Summary table** — sortable, one row per selected facility. Columns: Opening date, Days open, First booking, Pre-open count/revenue/lead/%, Week-1 occupancy, Month-1 occupancy/ADR, YTD revenue. CSV export. Color-coded: green if pre-open% ≥ 30%, red if Week-1 occupancy < 40%, gold in between.
+  6. **Helpers added:** `getDaysBetween(iso1, iso2)`, `FACILITIES_WITH_PREOPEN_DATA` (32 → 10 facilities with 2024+ opening). Constants: `PRE_OPEN_RAMP_DAYS=180`, `COHORT_DAYS=180`.
+  7. **`openingRpt` useMemo** — single-pass computation of all 6 chart series + KPIs + summary rows. Applies all global filters EXCEPT the facility multiselect (tab has its own picker) and date range (tab uses days-relative axes). Gated on `tab==="opening"`.
+  8. **Facilities tab performance table** gained an "Opening" column showing each facility's opening date (or "—" for unknown). CSV export includes it.
+  9. LAYOUT_SCHEMA_VERSION bumped to 8. New grid keys: `op-ramp`, `op-cohort`, `op-split`, `op-adr`, `op-channel`, `op-country`.
 - v2.07: **Compact filter bar.** Added `Sc` (compact S) memoized style variant used only inside the global filter bar. Reduces font 12px→10px, button padding 6×14→4×10, border-radius 6→5, label font 10→8, select/input padding 5×8→3×6. All MS multiselects, DateRangePicker, and button groups inside the filter bar now receive `Sc` via the `S` prop. Rest of the app keeps the original `S` sizing untouched. Saves ~25-30% vertical space on the filter bar (down from ~160px to ~120px depending on wrap).
 - v2.06: **Global facility-age filter + age view toggle.**
   1. Two new global controls in the filter bar (visible on all YYB + TL tabs):
