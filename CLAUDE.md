@@ -123,9 +123,19 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.05
+Current: 2.06
 
 Recent changes:
+- v2.06: **Global facility-age filter + age view toggle.**
+  1. Two new global controls in the filter bar (visible on all YYB + TL tabs):
+     - **Facility age** [All | New only | Old only] — restricts data site-wide (Option A). Plugged into every filter chain: `filtered` (YYB), `compareRpt`/`paceRpt`/`cancelRpt` applyFilters, YYB single-day block, `tlFilteredBoth`, `tlCompareRpt`/`tlPaceRpt`/`tlCancelRpt` apply, TL single-day block.
+     - **Age view** [Aggregate | New vs Old] — visual split on compatible charts (Option B). When active, rebuilds charts as New/Old stacked bars.
+  2. Both toggles are **automatically disabled** when specific facilities are selected in the `fP` multiselect — since a facility selection overrides the age cohort concept. Tooltip hint: "Specific facilities selected — age toggles disabled." Hint under the labels when enabled: "Applied to all facilities; selecting specific facilities overrides."
+  3. Colors for New/Old: **green (#34d399) = New**, **slate (#64748b) = Old**. Deliberately distinct from the Compare tab's A=blue/B=gold scheme to avoid confusion.
+  4. Age view affects **~15 charts** — YYB (8): Overview Monthly Res/Rev + Daily Res/Rev, Revenue Monthly/Daily Rev + Rev by DOW, Booking DOW. TL (7): TL Overview Monthly Res/Rev + DOW, TL Revenue Monthly/Daily Rev + DOW, TL Booking DOW.
+  5. Priority order in compatible YYB charts: **Age view > Per-country view > Aggregate default**. So if both toggles are active, age view wins. On TL charts, age view is the only split available.
+  6. The pre-existing Facilities-tab `facViewMode` toggle (v2.04) remains — it's scoped to the Facilities tab's 4 time-series charts only. If both the local Facilities toggle and the global age view are active, the local toggle's setting controls those 4 charts while the global setting controls all others.
+  7. New constants: `NEW_COHORT_COLOR`, `OLD_COHORT_COLOR` at module scope; `facAgeSeries` (YYB) and `tlAgeSeries` (TL) useMemos.
 - v2.05: **Per-country view toggle in global filter bar.**
   1. Added `countryViewMode` state ("aggregate" | "perCountry") and a toggle control in the global filter bar, immediately after the Country multiselect. Labels: "Aggregate" (default) / "Per country". Disabled (greyed out) when fewer than 2 countries are selected.
   2. When active, compatible charts rebuild as per-country stacked series (one color per selected country, sorted by reservation volume). All countries in the selection are shown (not capped) — per user preference, since typical selections stay small. Uses golden-angle HSL color extension past PALETTE length (same as facilities) to keep series visually distinct.
