@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.01
+Current: 2.02
 
 Recent changes:
+- v2.02: **Facilities daily charts → stacked bars.** Daily Reservations by Facility and Daily Revenue by Facility switched from overlaid line charts to stacked bar charts to match the monthly versions and improve visibility (10 overlapping lines were hard to read; stacked bars show per-facility contribution clearly).
 - v2.01: **Compare daily charts → line, Facilities tab time-series.**
   1. Compare tab's "Daily Revenue (A vs B)" and "Daily Reservations (A vs B)" switched from grouped bars to overlaid line charts (better for sparse multi-day data). Monthly comparison charts kept as bars.
   2. **Facilities tab gains 4 new charts** (top 10 facilities by reservation count in current filtered range):
