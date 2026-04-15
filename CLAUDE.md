@@ -123,9 +123,14 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.11
+Current: 2.12
 
 Recent changes:
+- v2.12: **TL-side facility normalization.** Discovered TL data has `"Premium hotel MONday 舞浜ビュー Ⅰ"` (with a literal space between ビュー and Ⅰ) — different from the YYB variant that gets normalized in `processRow`. TL's `parseTLRow` previously didn't apply any name normalization, so the garbled/spaced variants flowed through unchanged and caused the unclassified banner to flag Maihama View I as missing from both maps.
+  1. Extracted the name-normalization logic (`舞浜ビュー` consolidation + `（旧：...）` stripping) into a new `normalizeFacility(f)` helper in `src/shared.js`.
+  2. Applied it in `parseTLRow` (runs in both the worker and main-thread-fallback TL paths) — so TL data now gets the same facility-name consolidation as YYB.
+  3. `FACILITY_ALIASES` is also applied post-worker (main thread) for both TL paths since the worker can't import from `constants.js`.
+  4. App.jsx's `processRow` now calls `normalizeFacility()` instead of having the same regex inline — single source of truth for the normalization rules.
 - v2.11: **Facility name fixes + FACILITY_ALIASES map.**
   1. Fixed `MONday Apart 銀座新富町` → `MONday Apart Premium 銀座新富町` in ROOM_INVENTORY and FACILITY_OPENING_DATES (actual data has "Premium"; my v2.04 entry was wrong).
   2. Added `Premium Apart MONday 浜松町ステーション` opening date: 2026-03-27.

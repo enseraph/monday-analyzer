@@ -34,10 +34,20 @@ export function getSegmentDetailed(male,female,kids){
   return"Unknown";
 }
 
+// Normalize facility name variants that appear in both YYB and TL data sources.
+// Handles: Maihama View I garbled/spaced variants; "（旧：...）" suffix stripping.
+// Kept in sync with the same logic in App.jsx processRow.
+export function normalizeFacility(f){
+  if(!f)return f;
+  if(f.includes("舞浜ビュー")&&!f.includes("舞浜ビューⅠ"))f=f.replace(/舞浜ビュー.*$/,"舞浜ビューⅠ");
+  if(f.includes("（旧："))f=f.replace(/\s*（旧：.*）\s*$/,"");
+  return f;
+}
+
 export function parseTLRow(row,hIdx){
   const d=row[hIdx.date];if(!d)return null;
   const dt=new Date(d+"T00:00:00");if(isNaN(dt))return null;
-  const facility=row[hIdx.facility]||"";
+  const facility=normalizeFacility(row[hIdx.facility]||"");
   const status=row[hIdx.status]||"";
   const checkinStr=row[hIdx.checkin]||"";
   const checkoutStr=row[hIdx.checkout]||"";

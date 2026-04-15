@@ -6,11 +6,11 @@ import { toPng } from "html-to-image";
 // Web worker for TL parse — offloads Papa.parse + parseTLRow + applyTLSameDayCancel from main thread
 import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
-import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
+import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg, normalizeFacility } from "./shared.js";
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.11";
+const APP_VERSION="2.12";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="8";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -611,8 +611,7 @@ function processRow(row,headers){
   const g=c=>{const i=hIdx[c];return i==null?"":(row[i]??"")};
   let facility=g("施設名");
   // Normalize facility name variants
-  if(facility.includes("舞浜ビュー")&&!facility.includes("舞浜ビューⅠ"))facility=facility.replace(/舞浜ビュー.*$/,"舞浜ビューⅠ");
-  if(facility.includes("（旧："))facility=facility.replace(/\s*（旧：.*）\s*$/,"");
+  facility=normalizeFacility(facility);
   // Apply alias map (merges renamed facilities — e.g. MONday Apart Premium 浅草 → GRAND MONday 浅草)
   if(FACILITY_ALIASES[facility])facility=FACILITY_ALIASES[facility];
   const a1=parseInt(g("大人1(人数)"))||0,a2=parseInt(g("大人2(人数)"))||0,adults=a1+a2;
@@ -1058,6 +1057,8 @@ const[drSingle,setDrSingle]=useState("");
             if(errors&&errors.length)console.warn("[TL] worker parse warnings:",errors);
             if(fetchErrors.length)console.warn("[TL] partial load (some fetches failed):",fetchErrors);
             if(!rows.length){setTlStatus("error");return}
+            // Apply facility alias map (worker doesn't have access to constants.js; apply in main thread)
+            for(let i=0;i<rows.length;i++){const a=FACILITY_ALIASES[rows[i].facility];if(a)rows[i].facility=a}
             console.log(`[TL] loaded ${rows.length} rows across ${Object.keys(perYear).length} years (worker)`);
             setTlData(rows);setTlStatus("done");setLastFetchTs(Date.now());
           };
@@ -1088,6 +1089,8 @@ const[drSingle,setDrSingle]=useState("");
           }
           if(!all.length){setTlStatus("error");return}
           applyTLSameDayCancel(all);
+          // Apply facility alias map (same as worker path)
+          for(let i=0;i<all.length;i++){const a=FACILITY_ALIASES[all[i].facility];if(a)all[i].facility=a}
           console.log(`[TL] loaded ${all.length} rows (main-thread fallback)`);
           setTlData(all);setTlStatus("done");setLastFetchTs(Date.now());
         }
