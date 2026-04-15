@@ -8,7 +8,7 @@ import TlWorker from "./tlWorker.js?worker";
 // Shared helpers (single source of truth for App + Worker)
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg } from "./shared.js";
 
-const APP_VERSION="2.03";
+const APP_VERSION="2.04";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="7";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -252,6 +252,7 @@ cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpDailyRev:"Daily Revenue (A vs B)",cmpDailyCount:"Daily Reservations (A vs B)",cmpMonthlyRev:"Monthly Revenue (A vs B)",cmpMonthlyCount:"Monthly Reservations (A vs B)",
 facDailyCount:"Daily Reservations by Facility",facDailyRev:"Daily Revenue by Facility",facMonthlyCount:"Monthly Reservations by Facility",facMonthlyRev:"Monthly Revenue by Facility",
+facViewMode:"View",facViewAll:"All facilities",facViewNewVsOld:"New vs Old",facNewLabel:"New",facOldLabel:"Old",facNewHint:`New = opened on/after ${NEW_HOTEL_CUTOFF} (Maihama View I)`,
 cmpNoData:"Select date ranges for both periods to compare.",
 pace:"Pace",paceTitle:"Booking Pace",paceToggleRes:"Reservations",paceToggleRev:"Revenue",paceSummary:"Month-End Totals",paceSoFar:"So far",paceProjected:"Projected",paceNoData:"No data available for pace analysis.",
     cancellations:"Cancellations",cancelRate:"Cancellation Rate",cancelTrend:"Monthly Cancellation Trend",cancelByCountry:"Cancel Rate by Country",cancelBySeg:"Cancel Rate by Segment",cancelByFac:"Cancel Rate by Facility",cancelDetail:"Cancellation Detail",cancelTotal:"Total",cancelCancelled:"Cancelled",cancelRatePct:"Rate",cancelRevLost:"Rev Lost",cancelFeePct:"Fee Collected",
@@ -405,6 +406,7 @@ cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別",
 cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
 cmpDailyRev:"日別売上 (A vs B)",cmpDailyCount:"日別予約数 (A vs B)",cmpMonthlyRev:"月別売上 (A vs B)",cmpMonthlyCount:"月別予約数 (A vs B)",
 facDailyCount:"施設別日別予約数",facDailyRev:"施設別日別売上",facMonthlyCount:"施設別月別予約数",facMonthlyRev:"施設別月別売上",
+facViewMode:"表示",facViewAll:"全施設",facViewNewVsOld:"新規vs既存",facNewLabel:"新規",facOldLabel:"既存",facNewHint:`新規 = ${NEW_HOTEL_CUTOFF} 以降開業 (舞浜ビューⅠ以降)`,
 cmpNoData:"比較する2つの期間を選択してください。",
 pace:"ペース",paceTitle:"予約ペース",paceToggleRes:"予約数",paceToggleRev:"売上",paceSummary:"月末合計",paceSoFar:"現時点",paceProjected:"予測",paceNoData:"ペース分析データがありません。",
     cancellations:"キャンセル",cancelRate:"キャンセル率",cancelTrend:"月別キャンセル推移",cancelByCountry:"国別キャンセル率",cancelBySeg:"タイプ別キャンセル率",cancelByFac:"施設別キャンセル率",cancelDetail:"キャンセル詳細",cancelTotal:"全体",cancelCancelled:"キャンセル数",cancelRatePct:"率",cancelRevLost:"失注売上",cancelFeePct:"徴収料",
@@ -532,6 +534,47 @@ const ROOM_INVENTORY={
   "GRAND MONday 上野御徒町":50,
 };
 const TOTAL_ROOMS=Object.values(ROOM_INVENTORY).reduce((a,b)=>a+b,0);
+
+// Facility opening dates (ISO "YYYY-MM-DD") — sourced from 250430JHAT Property List.xlsx 施設一覧 sheet.
+// Keys match the canonical facility names used throughout the tool (i.e. ROOM_INVENTORY keys).
+// Missing entries → treated as "unknown" (default to "old" in new-vs-old grouping).
+const FACILITY_OPENING_DATES={
+  "hotel MONday Premium 豊洲":"2018-10-27",
+  "hotel MONday 東京西葛西":"2019-02-05",
+  "hotel MONday 羽田空港":"2020-04-01",
+  "イチホテル上野新御徒町":"2020-04-01",
+  "イチホテル浅草橋":"2020-04-01",
+  "hotel MONday 浅草":"2020-07-04",
+  "イチホテル東京八丁堀":"2020-07-18",
+  "hotel MONday 秋葉原浅草橋":"2020-07-20",
+  "hotel MONday Premium 上野御徒町":"2020-07-21",
+  "hotel MONday 京都烏丸二条":"2020-07-23",
+  "hotel MONday 京都丸太町":"2021-10-17",
+  "MONday Apart 上野新御徒町":"2020-08-04",
+  "MONday Apart 浜松町大門":"2020-08-05",
+  "MONday Apart Premium 浜松町":"2020-08-19",
+  "MONday Apart 日本橋人形町":"2020-09-01",
+  "MONday Apart Premium 秋葉原":"2020-11-14",
+  "MONday Apart Premium 秋葉原浅草橋ステーション":"2020-11-13",
+  "MONday Apart Premium 日本橋":"2021-04-16",
+  "MONday Apart 銀座新富町":"2021-04-23",
+  "MONday Apart Premium 上野":"2021-08-05",
+  "MONday Apart Premium 上野御徒町":"2021-10-12",
+  "MONday Apart 浅草橋秋葉原":"2021-12-10",
+  "MONday Apart Premium 京都駅":"2021-12-18",
+  "MONday Apart Premium 浅草":"2024-06-28",
+  "MONday Apart Premium 京都駅鴨川":"2024-11-28",
+  "MONday Apart Premium 大阪難波WEST":"2024-12-20",
+  "Premium Apart MONday 銀座EAST":"2025-04-25",
+  "GRAND MONday 銀座":"2025-04-28",
+  "Premium Apart MONday 京都五条":"2025-05-20",
+  "Premium hotel MONday 舞浜ビューⅠ":"2025-12-05",
+  "TABI上野":"2026-04-10",
+  "GRAND MONday 上野御徒町":"2026-05-01",
+};
+// Cutoff for "new" facility group — Maihama View I opening date
+const NEW_HOTEL_CUTOFF="2025-12-05";
+const isNewFacility=f=>{const d=FACILITY_OPENING_DATES[f];return d?d>=NEW_HOTEL_CUTOFF:false};
 
 // ─── HELPERS ───
 // getRegion imported from shared.js
@@ -904,6 +947,7 @@ const deletePreset=name=>{
   const[drFrom,setDrFrom]=useState("");const[drTo,setDrTo]=useState("");
 const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
 const[paceMetric,setPaceMetric]=useState("count");
+const[facViewMode,setFacViewMode]=useState("all"); // "all" | "newVsOld"
 const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState(INITIAL_URL_STATE.monthMode||"booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
@@ -1256,8 +1300,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const rmD=useMemo(()=>!agg?[]:Object.entries(agg.byRm).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([r,c])=>({room:r,count:c})),[agg]);
   const facD=useMemo(()=>!agg?[]:Object.entries(agg.byF).sort((a,b)=>b[1].n-a[1].n).map(([nm,f])=>({name:shortFac(nm),fullName:nm,region:f.region,n:f.n,avgRev:f.n>0?Math.round(f.rev/f.n):0,intlPct:f.n>0?+((f.intl/f.n)*100).toFixed(1):0,avgLOS:f.nights.length?+(avg(f.nights)).toFixed(1):0,topSeg:Object.entries(f.segs).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"})),[agg]);
 
-  // Facility time-series — daily/monthly count + revenue per facility (ALL facilities, sorted by total volume desc)
-  // Uses filtered data so respects the global date range filter.
+  // Facility time-series — daily/monthly count + revenue per facility + new-vs-old grouping
+  // Uses filtered data so respects the global date range filter. Computes both "all" and "newVsOld" series in one pass.
   const facTimeRpt=useMemo(()=>{
     if(tab!=="facilities"||!filtered.length)return null;
     const totals={};
@@ -1278,12 +1322,22 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     });
     const dKeys=Object.keys(dMap).sort(),mKeys=Object.keys(mMap).sort();
     const buildRow=(map,key,xField,xVal,metric)=>{const row={[xField]:xVal};facs.forEach(f=>{row[f]=map[key]?.[f]?.[metric]||0});return row};
+    // New-vs-Old aggregation: collapse facilities into two buckets
+    const buildNvORow=(map,key,xField,xVal,metric)=>{
+      const row={[xField]:xVal,New:0,Old:0};
+      facs.forEach(f=>{const v=map[key]?.[f]?.[metric]||0;if(isNewFacility(f))row.New+=v;else row.Old+=v});
+      return row;
+    };
     return{
       facs,
       dailyCount:dKeys.map(d=>buildRow(dMap,d,"date",d,"count")),
       dailyRev:dKeys.map(d=>buildRow(dMap,d,"date",d,"rev")),
       monthlyCount:mKeys.map(m=>buildRow(mMap,m,"month",m,"count")),
       monthlyRev:mKeys.map(m=>buildRow(mMap,m,"month",m,"rev")),
+      dailyCountNvO:dKeys.map(d=>buildNvORow(dMap,d,"date",d,"count")),
+      dailyRevNvO:dKeys.map(d=>buildNvORow(dMap,d,"date",d,"rev")),
+      monthlyCountNvO:mKeys.map(m=>buildNvORow(mMap,m,"month",m,"count")),
+      monthlyRevNvO:mKeys.map(m=>buildNvORow(mMap,m,"month",m,"rev")),
     };
   },[tab,filtered,fDT,tz,tzFmt]);
   // Color helper for many facilities: PALETTE first, then golden-angle HSL for the rest
@@ -3484,17 +3538,26 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </>}
 
         {/* FACILITIES */}
-        {tab==="facilities"&&<div>          <DraggableGrid {...dgProps("facilities")}>
+        {tab==="facilities"&&<div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+            <div style={{fontSize:10,color:TH.textMuted,fontFamily:"'JetBrains Mono',monospace"}}>{t.facViewMode}:</div>
+            <div style={{display:"flex",gap:3}}>
+              <button style={{...S.btn,fontSize:10,...(facViewMode==="all"?S.ba:{})}} onClick={()=>setFacViewMode("all")}>{t.facViewAll}</button>
+              <button style={{...S.btn,fontSize:10,...(facViewMode==="newVsOld"?S.ba:{})}} onClick={()=>setFacViewMode("newVsOld")}>{t.facViewNewVsOld}</button>
+            </div>
+            {facViewMode==="newVsOld"&&<div style={{fontSize:10,color:TH.textMuted,fontStyle:"italic"}}>{t.facNewHint}</div>}
+          </div>
+          <DraggableGrid {...dgProps("facilities")}>
             <div key="fac-res"><CC grid title={t.facResByFacility} id="fac-res" nm="fac_res" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="n" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
             <div key="fac-rev"><CC grid title={t.facAvgRevByFacility} id="fac-rev" nm="fac_rev" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
             <div key="fac-intl"><CC grid title={t.facIntlByFacility} id="fac-intl" nm="fac_intl" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Bar dataKey="intlPct" fill="#e07b54" radius={[0,4,4,0]} name={t.intlPct}/></BarChart></CC></div>
             <div key="fac-los"><CC grid title={t.facLOSByFacility} id="fac-los" nm="fac_los" h={Math.max(300,facD.length*22)} data={facD}><BarChart data={facD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="name" type="category" width={160} tick={tk} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
             <div key="fac-kvk"><CC grid title={t.facKvKCompare} id="fac-kvk" nm="fac_kvk" data={kvkFac}><BarChart data={kvkFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Kanto" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Kanto")}/><Bar dataKey="Kansai" fill="#e07b54" radius={[4,4,0,0]} name={tl("Kansai")}/></BarChart></CC></div>
             <div key="fac-hva"><CC grid title={t.facHvACompare} id="fac-hva" nm="fac_hva" data={hvaFac}><BarChart data={hvaFac}><CartesianGrid {...gl}/><XAxis dataKey="metric" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="Hotel" fill="#4ea8de" radius={[4,4,0,0]} name={tl("Hotel")}/><Bar dataKey="Apart" fill="#c9a84c" radius={[4,4,0,0]} name={tl("Apart")}/></BarChart></CC></div>
-            <div key="fac-daily-count"><CC grid title={t.facDailyCount} id="fac-daily-count" nm="fac_daily_count" data={facTimeRpt?.dailyCount||[]}>{facTimeRpt?<BarChart data={facTimeRpt.dailyCount}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
-            <div key="fac-daily-rev"><CC grid title={t.facDailyRev} id="fac-daily-rev" nm="fac_daily_rev" data={facTimeRpt?.dailyRev||[]}>{facTimeRpt?<BarChart data={facTimeRpt.dailyRev}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
-            <div key="fac-monthly-count"><CC grid title={t.facMonthlyCount} id="fac-monthly-count" nm="fac_monthly_count" data={facTimeRpt?.monthlyCount||[]}>{facTimeRpt?<BarChart data={facTimeRpt.monthlyCount}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
-            <div key="fac-monthly-rev"><CC grid title={t.facMonthlyRev} id="fac-monthly-rev" nm="fac_monthly_rev" data={facTimeRpt?.monthlyRev||[]}>{facTimeRpt?<BarChart data={facTimeRpt.monthlyRev}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-daily-count"><CC grid title={t.facDailyCount} id="fac-daily-count" nm="fac_daily_count" data={facTimeRpt?(facViewMode==="newVsOld"?facTimeRpt.dailyCountNvO:facTimeRpt.dailyCount):[]}>{facTimeRpt?<BarChart data={facViewMode==="newVsOld"?facTimeRpt.dailyCountNvO:facTimeRpt.dailyCount}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facViewMode==="newVsOld"?[<Bar key="Old" dataKey="Old" stackId="a" fill="#4ea8de" name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={TH.gold} name={t.facNewLabel}/>]:facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-daily-rev"><CC grid title={t.facDailyRev} id="fac-daily-rev" nm="fac_daily_rev" data={facTimeRpt?(facViewMode==="newVsOld"?facTimeRpt.dailyRevNvO:facTimeRpt.dailyRev):[]}>{facTimeRpt?<BarChart data={facViewMode==="newVsOld"?facTimeRpt.dailyRevNvO:facTimeRpt.dailyRev}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facViewMode==="newVsOld"?[<Bar key="Old" dataKey="Old" stackId="a" fill="#4ea8de" name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={TH.gold} name={t.facNewLabel}/>]:facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-monthly-count"><CC grid title={t.facMonthlyCount} id="fac-monthly-count" nm="fac_monthly_count" data={facTimeRpt?(facViewMode==="newVsOld"?facTimeRpt.monthlyCountNvO:facTimeRpt.monthlyCount):[]}>{facTimeRpt?<BarChart data={facViewMode==="newVsOld"?facTimeRpt.monthlyCountNvO:facTimeRpt.monthlyCount}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facViewMode==="newVsOld"?[<Bar key="Old" dataKey="Old" stackId="a" fill="#4ea8de" name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={TH.gold} name={t.facNewLabel}/>]:facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
+            <div key="fac-monthly-rev"><CC grid title={t.facMonthlyRev} id="fac-monthly-rev" nm="fac_monthly_rev" data={facTimeRpt?(facViewMode==="newVsOld"?facTimeRpt.monthlyRevNvO:facTimeRpt.monthlyRev):[]}>{facTimeRpt?<BarChart data={facViewMode==="newVsOld"?facTimeRpt.monthlyRevNvO:facTimeRpt.monthlyRev}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{facViewMode==="newVsOld"?[<Bar key="Old" dataKey="Old" stackId="a" fill="#4ea8de" name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={TH.gold} name={t.facNewLabel}/>]:facTimeRpt.facs.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={facColor(i)} name={shortFac(f)}/>)}</BarChart>:<BarChart data={[]}/>}</CC></div>
           </DraggableGrid>
           <SortTbl
             data={facD}

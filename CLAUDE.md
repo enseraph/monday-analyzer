@@ -123,9 +123,15 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.03
+Current: 2.04
 
 Recent changes:
+- v2.04: **Facility opening dates + New-vs-Old grouping toggle.**
+  1. Added `FACILITY_OPENING_DATES` constant (32 entries) sourced from `250430JHAT Property List.xlsx` 施設一覧 sheet. Keys match canonical names from `ROOM_INVENTORY`. Mapped renamed facilities (e.g., Apart 日本橋水天宮前 → MONday Apart 日本橋人形町; 京橋VPO → GRAND MONday 銀座).
+  2. Added `NEW_HOTEL_CUTOFF = "2025-12-05"` (Premium hotel MONday 舞浜ビューⅠ opening) and `isNewFacility(f)` helper. Facilities with missing opening dates default to "Old".
+  3. Added **view mode toggle** on the Facilities tab: "All facilities" (default, shows every facility stacked with unique colors) vs "New vs Old" (collapses into 2 colored segments — gold = New, blue = Old). Toggle button row appears above the DraggableGrid with a hint showing the cutoff date.
+  4. `facTimeRpt` now computes both `*Count`/`*Rev` (full per-facility) and `*CountNvO`/`*RevNvO` (aggregated into New/Old buckets) in a single pass. Rendered chart switches based on `facViewMode` state.
+  5. **`jhat-overview.md` updated** (at project-root level) with a full Facility Opening Dates section (in-operation + pipeline tables) and documentation of the New-vs-Old cutoff rationale.
 - v2.03: **Facilities time-series charts include ALL facilities.** Removed the top-10 cap on the Facilities tab daily/monthly charts — now all facilities present in the filtered range are stacked. Added `facColor(i)` helper that uses `PALETTE` for the first 15 facilities then golden-angle HSL (`hue = i * 137.508 mod 360`) for the rest, giving every facility a visually distinct color even with 30+ in the stack. Stack order is by total reservations descending so the highest-volume facility is at the bottom of the bar.
 - v2.02: **Facilities daily charts → stacked bars.** Daily Reservations by Facility and Daily Revenue by Facility switched from overlaid line charts to stacked bar charts to match the monthly versions and improve visibility (10 overlapping lines were hard to read; stacked bars show per-facility contribution clearly).
 - v2.01: **Compare daily charts → line, Facilities tab time-series.**
