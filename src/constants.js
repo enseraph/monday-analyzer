@@ -18,6 +18,8 @@ export const FACILITY_ALIASES={
   // Premium MONday 浅草 Ⅰ (opened 2026-05-01) was previously named "ONE" in brand-strategy deck;
   // canonical in data is the Roman numeral Ⅰ. Alias handles either variant.
   "Premium MONday 浅草 ONE":"Premium MONday 浅草 Ⅰ",
+  "MONday Premium 浅草 ONE":"Premium MONday 浅草 Ⅰ",
+  "MONday Premium 浅草 Ⅰ":"Premium MONday 浅草 Ⅰ",
 };
 
 // ─── Room inventory per facility (used for RevPAR / occupancy calcs) ───
