@@ -10,9 +10,9 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.15";
+const APP_VERSION="2.16";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
-const LAYOUT_SCHEMA_VERSION="9";
+const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
@@ -93,7 +93,7 @@ function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,min
 const DL={
   compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-facility",0,9,12,4],["cmp-daily-rev",0,13,12,4],["cmp-daily-count",0,17,12,4],["cmp-monthly-rev",0,21,6,4],["cmp-monthly-count",6,21,6,4]]),
   overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-rev-country",0,9,12,4],["ch-res-day",0,13,6,3],["ch-rev-day",6,13,6,3]]),
-  markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-mrev",0,4,12,4],["ch-ml",0,8,6,4],["ch-mld",6,8,6,4],["ch-msc",0,12,12,4],["ch-rkc",0,16,6,4]]),
+  markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-mrev",0,4,12,4],["ch-mrev-time",0,8,12,5],["ch-mcnt-time",0,13,12,5],["ch-ml",0,18,6,4],["ch-mld",6,18,6,4],["ch-msc",0,22,12,4],["ch-rkc",0,26,12,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
   member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-cntry-stack",0,3,12,5],["mb-cntry-counts",0,8,12,5],["mb-rank",0,13,6,4],["mb-seg",6,13,6,3],["mb-fac",0,17,6,7],["mb-fac-tbl",6,17,6,7],["mb-tight-chart",0,24,6,5],["mb-tight-tbl",6,24,6,5],["mb-fs-chart",0,29,6,5],["mb-fs-tbl",6,29,6,5],["mb-detail",0,34,12,14]]),
@@ -205,6 +205,7 @@ const T = {
     ciCoDOW:"Check-in / Check-out by Day of Week",monthlyTrend:"Monthly Trend — Volume & Avg Rev",
     bookingDevice:"Booking Device",
     revByMarket:"Revenue by Market (Top 15)",revByCountry:"Total Revenue by Country",monthlyRev:"Monthly Revenue",
+    mktRevByCountryTime:"Total Revenue by Country (stacked)",mktCountByCountryTime:"Total Reservations by Country (stacked)",
     roomTypeDist:"Room Type Distribution",roomTypeTable:"Room Type Table",
     facilityPerf:"Facility Performance",
     rowsFiltered:n=>`${n} rows (filtered)`,
@@ -378,6 +379,7 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     ciCoDOW:"曜日分布",monthlyTrend:"月次トレンド",
     bookingDevice:"予約デバイス",
     revByMarket:"市場別売上（上位15）",revByCountry:"国別売上合計",monthlyRev:"月別売上",
+    mktRevByCountryTime:"国別売上推移（積上）",mktCountByCountryTime:"国別予約数推移（積上）",
     roomTypeDist:"部屋タイプ分布",roomTypeTable:"部屋タイプ一覧",
     facilityPerf:"施設別パフォーマンス",
     rowsFiltered:n=>`${n}件（フィルター後）`,
@@ -973,6 +975,8 @@ const[drSingle,setDrSingle]=useState("");
   const[fTlBrand,setFTlBrand]=useState(INITIAL_URL_STATE.fTlBrand||[]);
   const[fTlHotelType,setFTlHotelType]=useState(INITIAL_URL_STATE.fTlHotelType||"All"); // "All"|"Hotel"|"Apart"
   const[tlGroupBy,setTlGroupBy]=useState("day"); // "day"|"month"
+  const[mktRevGrp,setMktRevGrp]=useState("month"); // "day"|"month" — Country Overview rev-by-country chart
+  const[mktCntGrp,setMktCntGrp]=useState("month"); // "day"|"month" — Country Overview count-by-country chart
   const[tlMetric,setTlMetric]=useState("revenue"); // "revenue"|"bookings"
   const[tlCoverage,setTlCoverage]=useState(null); // {coverage,rowsWithCountry,totalRows}
   const[lastFetchTs,setLastFetchTs]=useState(null);
@@ -1510,6 +1514,47 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const data=months.map(m=>{const row={month:m};(byMonthMap.get(m)||[]).forEach(r=>{const c=topN.includes(r.country)?r.country:"Other";row[c]=(row[c]||0)+(r.totalRev||0)});return row});
     return{data,countries:[...topN,"Other"]};
   },[filtered,agg]);
+
+  // ─── COUNTRY OVERVIEW: monthly + daily stacked series for total rev + total reservations ───
+  const mktTimeRpt=useMemo(()=>{
+    if(tab!=="markets"||!filtered.length||!agg)return null;
+    const topN=Object.entries(agg.byC).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8).map(([c])=>c);
+    const topSet=new Set(topN);
+    const bucket=c=>topSet.has(c)?c:"Other";
+    // Monthly
+    const monthMap=new Map();
+    const dayMap=new Map();
+    filtered.forEach(r=>{
+      const m=getM(r);
+      const d=tzFmt(getDateField(r));
+      const c=bucket(r.country);
+      const rev=r.totalRev||0;
+      if(m){
+        if(!monthMap.has(m))monthMap.set(m,{period:m});
+        const row=monthMap.get(m);
+        row[c+"__rev"]=(row[c+"__rev"]||0)+rev;
+        row[c+"__cnt"]=(row[c+"__cnt"]||0)+1;
+      }
+      if(d){
+        if(!dayMap.has(d))dayMap.set(d,{period:d});
+        const row=dayMap.get(d);
+        row[c+"__rev"]=(row[c+"__rev"]||0)+rev;
+        row[c+"__cnt"]=(row[c+"__cnt"]||0)+1;
+      }
+    });
+    const buildSeries=(m,suffix)=>[...m.values()].sort((a,b)=>a.period.localeCompare(b.period)).map(r=>{
+      const out={period:r.period};
+      [...topN,"Other"].forEach(c=>{out[c]=r[c+suffix]||0});
+      return out;
+    });
+    return{
+      monthlyRev:buildSeries(monthMap,"__rev"),
+      dailyRev:buildSeries(dayMap,"__rev"),
+      monthlyCount:buildSeries(monthMap,"__cnt"),
+      dailyCount:buildSeries(dayMap,"__cnt"),
+      countries:[...topN,"Other"],
+    };
+  },[tab,filtered,agg,monthMode,fDT,tz,tzFmt]);
 
   // Facility comparisons: Kanto vs Kansai, Hotel vs Apart
   const kvkFac=useMemo(()=>{
@@ -3195,7 +3240,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const LT=()=><div style={S.lt}><button style={S.lb(lang==="en")} onClick={()=>setLang("en")}>EN</button><button style={S.lb(lang==="ja")} onClick={()=>setLang("ja")}>日本語</button></div>;
   const trFn=v=>(lang==="ja"&&HEADER_JP[v])?HEADER_JP[v]:tl(v);
   const EB=({id,nm,data,title})=><div style={{display:"flex",gap:4}}><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlChart(id,nm,title)}>{t.exportImg}</button>{data&&data.length>0&&<><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>dlTable(data,title||nm,nm,trFn)}>📋</button><button style={{...S.btn,fontSize:9,padding:"3px 8px"}} onClick={()=>expXLS(data,title||nm,nm,trFn)}>📊</button></>}</div>;
-  const CC=({title,id,nm,children,h,data,grid})=>{if(grid)return(<div style={{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:"6px 10px",height:"calc(100% - 4px)",display:"flex",flexDirection:"column",overflow:"hidden",boxSizing:"border-box"}}><div className="rgl-drag" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"grab",flexShrink:0,marginBottom:4}}><div style={{fontSize:12,fontWeight:600,color:TH.textStrong,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title}</div><EB id={id} nm={nm} data={data} title={title}/></div><div id={id} style={{flex:1,minHeight:0}}><ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer></div></div>);return(<div style={S.card}><div style={S.ct}>{title}</div><div id={id}><ResponsiveContainer width="100%" height={h||280}>{children}</ResponsiveContainer></div><div style={{marginTop:4}}><EB id={id} nm={nm} data={data} title={title}/></div></div>)};
+  const CC=({title,id,nm,children,h,data,grid,extra})=>{if(grid)return(<div style={{background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:"6px 10px",height:"calc(100% - 4px)",display:"flex",flexDirection:"column",overflow:"hidden",boxSizing:"border-box"}}><div className="rgl-drag" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"grab",flexShrink:0,marginBottom:4,gap:8}}><div style={{fontSize:12,fontWeight:600,color:TH.textStrong,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title}</div><div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}} onMouseDown={e=>e.stopPropagation()}>{extra}<EB id={id} nm={nm} data={data} title={title}/></div></div><div id={id} style={{flex:1,minHeight:0}}><ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer></div></div>);return(<div style={S.card}><div style={S.ct}>{title}</div><div id={id}><ResponsiveContainer width="100%" height={h||280}>{children}</ResponsiveContainer></div><div style={{marginTop:4}}><EB id={id} nm={nm} data={data} title={title}/></div></div>)};
   const SortTbl=({data,columns,renderRow,grandTotalRow,title,exportFn})=>{
     const[sortCol,setSortCol]=useState(null);
     const[sortAsc,setSortAsc]=useState(false);
@@ -3763,6 +3808,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-mf"><CC grid title={t.allMarketsCount} id="ch-mf" nm="markets" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#4ea8de" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-mr"><CC grid title={t.avgRevByMarket} id="ch-mr" nm="markets_rev" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
           <div key="ch-mrev"><CC grid title={t.revByCountry} id="ch-mrev" nm="mkt_rev_total" h={Math.max(300,mktD.length*28)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-mrev-time">{mktTimeRpt&&<CC grid title={t.mktRevByCountryTime} id="ch-mrev-time" nm="mkt_rev_country_time" data={mktRevGrp==="month"?mktTimeRpt.monthlyRev:mktTimeRpt.dailyRev} extra={<div style={{display:"flex",gap:2}}><button style={{...S.btn,fontSize:9,padding:"2px 7px",...(mktRevGrp==="day"?S.ba:{})}} onClick={()=>setMktRevGrp("day")}>{t.tlGroupByDay}</button><button style={{...S.btn,fontSize:9,padding:"2px 7px",...(mktRevGrp==="month"?S.ba:{})}} onClick={()=>setMktRevGrp("month")}>{t.tlGroupByMonth}</button></div>}><BarChart data={mktRevGrp==="month"?mktTimeRpt.monthlyRev:mktTimeRpt.dailyRev}><CartesianGrid {...gl}/><XAxis dataKey="period" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{mktTimeRpt.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={c==="Other"?"#78716c":PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC>}</div>
+          <div key="ch-mcnt-time">{mktTimeRpt&&<CC grid title={t.mktCountByCountryTime} id="ch-mcnt-time" nm="mkt_count_country_time" data={mktCntGrp==="month"?mktTimeRpt.monthlyCount:mktTimeRpt.dailyCount} extra={<div style={{display:"flex",gap:2}}><button style={{...S.btn,fontSize:9,padding:"2px 7px",...(mktCntGrp==="day"?S.ba:{})}} onClick={()=>setMktCntGrp("day")}>{t.tlGroupByDay}</button><button style={{...S.btn,fontSize:9,padding:"2px 7px",...(mktCntGrp==="month"?S.ba:{})}} onClick={()=>setMktCntGrp("month")}>{t.tlGroupByMonth}</button></div>}><BarChart data={mktCntGrp==="month"?mktTimeRpt.monthlyCount:mktTimeRpt.dailyCount}><CartesianGrid {...gl}/><XAxis dataKey="period" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{mktTimeRpt.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={c==="Other"?"#78716c":PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC>}</div>
           <div key="ch-ml"><CC grid title={t.avgLOSByCountry} id="ch-ml" nm="mkt_los" h={Math.max(300,mktLOS.length*28)} data={mktLOS}><BarChart data={mktLOS} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ns}/>}/><Bar dataKey="avgLOS" fill="#c084fc" radius={[0,4,4,0]} name={t.avgLOS}/></BarChart></CC></div>
           <div key="ch-mld"><CC grid title={t.avgLeadByCountry} id="ch-mld" nm="mkt_lead" h={Math.max(300,mktLead.length*28)} data={mktLead}><BarChart data={mktLead} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+" "+t.ds}/>}/><Bar dataKey="avgLead" fill="#e07b54" radius={[0,4,4,0]} name={t.avgLeadTime}/></BarChart></CC></div>
           <div key="ch-msc">{kvk&&<CC grid title={t.segMixByCountry} id="ch-msc" nm="seg_mix_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>

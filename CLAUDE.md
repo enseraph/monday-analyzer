@@ -123,9 +123,16 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.15
+Current: 2.16
 
 Recent changes:
+- v2.16: **Country Overview tab — layout gap fix + two new time-series stacked-bar charts.**
+  1. Fixed big gap below the Country Summary Table: `ch-rkc` (Membership Rank by Country) was placed at `[0,16,6,4]` — only 6 cols wide — leaving the right half of its row empty. Changed to full-width `[0,26,12,4]` and reflowed the layout to accommodate the two new charts.
+  2. **New chart `ch-mrev-time`** — Total Revenue by Country, stacked bar, monthly/daily toggle. Top 8 countries by revenue + "Other" bucket. Uses PALETTE colors + warm taupe (#78716c) for Other (same convention as "+ Other" view mode).
+  3. **New chart `ch-mcnt-time`** — Total Reservations by Country, same structure but count instead of revenue.
+  4. **New `mktTimeRpt` useMemo** — single-pass computation gated on `tab==="markets"` that builds all four series (monthly rev, daily rev, monthly count, daily count) broken down by country. Respects all global filters. Uses `getM()` for month grouping (respects `monthMode`) and `getDateField()` for daily grouping (respects `fDT`).
+  5. **`CC` component gained an optional `extra` prop** — renders in the title bar between title and EB export buttons. Used for the day/month toggles. Wrapped in `onMouseDown={e=>e.stopPropagation()}` so clicking the toggle doesn't start a grid-drag.
+  6. New state: `mktRevGrp`, `mktCntGrp` (each "day"|"month", default "month"). New i18n keys: `t.mktRevByCountryTime`, `t.mktCountByCountryTime`. LAYOUT_SCHEMA_VERSION bumped to 10 (clears cached markets layouts).
 - v2.15: **Hotel Opening tab — ramp window tightened, revenue ramp added, cohort to stacked bar, channel mix removed.**
   1. `PRE_OPEN_RAMP_DAYS` reduced from 180 → 100. Pre-opening booking ramp X-axis now spans -100d → 0 (the -180→-100 window had near-zero data for most facilities and stretched the chart).
   2. **New chart `op-ramp-rev`** — pre-opening cumulative revenue per facility, mirrors the existing count ramp. New `rampRevRows` series in `openingRpt`. New i18n key `t.openingRampRev`.
