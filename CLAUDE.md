@@ -127,7 +127,7 @@ Current: 2.16
 
 Recent changes:
 - v2.16: **Country Overview tab — layout gap fix + two new time-series stacked-bar charts.**
-  1. Fixed big gap below the Country Summary Table: `ch-rkc` (Membership Rank by Country) was placed at `[0,16,6,4]` — only 6 cols wide — leaving the right half of its row empty. Changed to full-width `[0,26,12,4]` and reflowed the layout to accommodate the two new charts.
+  1. **Root cause of the big gap below Country Summary Table**: `ch-msc` (Segment Mix by Country) and `ch-rkc` (Membership Rank by Country) both read from the `kvk` useMemo, which was gated on `tab==="kvk"` only — so on the markets tab `kvk` was `null` and the two bottom cards rendered as empty space, reserving ~700px of height but showing nothing. Fixed by expanding the gate to `tab==="kvk"||tab==="markets"`. Also changed `ch-rkc` from half-width `[0,16,6,4]` → full-width `[0,26,12,4]` as part of the reflow.
   2. **New chart `ch-mrev-time`** — Total Revenue by Country, stacked bar, monthly/daily toggle. Top 8 countries by revenue + "Other" bucket. Uses PALETTE colors + warm taupe (#78716c) for Other (same convention as "+ Other" view mode).
   3. **New chart `ch-mcnt-time`** — Total Reservations by Country, same structure but count instead of revenue.
   4. **New `mktTimeRpt` useMemo** — single-pass computation gated on `tab==="markets"` that builds all four series (monthly rev, daily rev, monthly count, daily count) broken down by country. Respects all global filters. Uses `getM()` for month grouping (respects `monthMode`) and `getDateField()` for daily grouping (respects `fDT`).
