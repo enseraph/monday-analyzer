@@ -1573,7 +1573,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   // ─── KVK CHART DATA ───
   const kvk=useMemo(()=>{
-    if(tab!=="kvk"||!agg)return null;
+    if((tab!=="kvk"&&tab!=="markets")||!agg)return null;
     // Market bars per region (excl Japan)
     const mkR=reg=>Object.entries(agg.rC[reg]||{}).filter(([c])=>c!=="Japan").sort((a,b)=>b[1]-a[1]).slice(0,10).map(([c,n])=>({country:c,count:n}));
     // Monthly stacked by top countries
