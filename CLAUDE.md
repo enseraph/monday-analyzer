@@ -123,9 +123,15 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.20
+Current: 2.20.1
 
 Recent changes:
+- v2.20.1: **Fix "Other" row doubling up in charts.** Root cause: `COUNTRY_MAP` had legacy entries mapping the literal strings `"Other"` and `"その他"` → `"Other"` — meaning the data could contain a country *literally named* "Other" that then collided with the v2.20 aggregate bucket also labeled "Other". A chart would show a real "Other" row AND an aggregate "Other" row with different numbers. Fixes:
+  1. Renamed `OTHER_KEY_NAME` from `"Other"` → `"__MA_OTHER__"` (internal sentinel, won't collide with any real country name).
+  2. Added `"__MA_OTHER__"` → `t.otherLabel` mapping in `tlBase` so `tl()` renders it as "Other"/"その他" on axes and legends.
+  3. Remapped `COUNTRY_MAP["Other"]` and `COUNTRY_MAP["その他"]` from "Other" → "Unknown" — those entries were effectively "user literally wrote 'その他' in their prefecture field," which semantically belongs in the Unknown bucket anyway. Prevents natural "Other" countries from showing up going forward.
+  4. Extended `tlBase` with fallback mappings for the two other legacy internal keys (`"__other__"` from perCountrySeries, `"Other"` from revMktMo/kvk.mktMo/openingRpt) so all Other-bucket labels translate consistently.
+  5. Updated the stacked Country-Overview time-series charts' color detection from `c==="Other"` to `c===OTHER_KEY || c===OTHER_KEY_NAME` so the warm-taupe "Other" fill still applies after the key rename.
 - v2.20: **Top-N silent truncation replaced with "Top-N + Other" across the board.** User directive: every capped chart (except the Top Repeater detail tables, which stay at top 50) should show selected + aggregated "Other" bucket so totals reconcile.
   1. **Revenue tab "Total Revenue by Country" now uncapped** — new `mktRevAll` memo holds ALL countries sorted by revenue, no truncation. The chart auto-scales its height via `Math.max(300,mktRevAll.length*22)`.
   2. **New module-level helpers** `topNPlusOtherMkt(rows,n,labelKey)` and `topNPlusOtherGeneric(rows,n,labelKey,numericFields,computedFields)` in App.jsx. First one handles the common `{country,count,rev,avgRev}` shape with correct avg recomputation.
