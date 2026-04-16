@@ -123,9 +123,18 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.18
+Current: 2.19
 
 Recent changes:
+- v2.19: **More memory cleanup — drop unused TL fields, release raw CSV strings, clear booking_id after use.** Follow-up to v2.18 after user reported ~3 GB tab memory.
+  1. **Dropped 5 unused TL fields from `parseTLRow` output** (`shared.js`): `facilityGroup`, `notification_id`, `guestNameKana`, `planCode`, `channel_code`. All were only consumed by the Raw Data tab (removed in v2.18) or stored but never read. Per-row memory cut ~15–20%. At 180k TL rows this saves ~25–35 MB.
+  2. **Clear `booking_id` after `applyTLSameDayCancel`** — the ID is only needed for one-pass same-day-cancel detection, then becomes dead weight. Now nulled at the end of the pass. Another ~5–10 MB.
+  3. **Release raw CSV text after parsing** — both `fetchYYB` (parseAndSet) and the TL worker + main-thread fallback paths now null out the `text` closure refs and the `res`/`rawRows` intermediates after processing. The raw CSV strings can be 30–50 MB each.
+  4. **Null `jobs[i].text` after `postMessage`** — the worker gets a structured-clone copy, so the main thread's references can be released immediately.
+  5. **`tzCache` cap lowered again** from 50k → 20k entries.
+  6. **`dailyD` useMemo tab-gated** to overview/revenue/booking (was missed in v2.18).
+  7. **App.jsx line 2676** updated to use `r.hotelType` instead of removed `r.facilityGroup` field.
+  Note: `TL_REQUIRED_COLS` in `shared.js` is unchanged (worker still validates the CSV contains those columns; the output shape is what's slimmer). Dropped fields continue to exist in the source CSV.
 - v2.18: **Memory cleanup — removed Raw Data tabs + tab-gated heavy memos.** Browser tab memory was hitting ~2 GB; this round of fixes targets the worst offenders without large refactors.
   1. **Removed both Raw Data tabs (`data` and `tl-data`)**. Removed: TABS entries, content blocks (~30 lines of JSX each), states (`tSort/tlSort/tPage/tlPage`), memos (`tRows/tlTRows/paged/tlPaged/tH/tlTH/tC/tlTC`), constants (`YYB_RAW_COLS/TL_RAW_COLS/TL_RAW_HEADERS`), and the `expFilt` helper. The i18n keys (`t.rawData`, `t.tlDataTab`) are kept in the dictionary but unused — harmless. **YYB side now 16 tabs, TL side now 15 tabs (was 17 + 16).**
   2. **Tab-gated heavy memos**: every `useMemo` that previously ran on every tab regardless of consumer tab now early-returns `null`/`[]` when not on a consuming tab. Affected memos:

@@ -38,8 +38,10 @@ self.onmessage=(ev)=>{
     const allRows=[];
     const perYear={};
     const errors=[];
-    for(const{yr,text}of jobs){
-      const{rows,error}=parseYearText(text,yr);
+    for(let j=0;j<jobs.length;j++){
+      const yr=jobs[j].yr;
+      const{rows,error}=parseYearText(jobs[j].text,yr);
+      jobs[j].text=null; // release raw CSV string after parsing
       if(error)errors.push(error);
       perYear[yr]=rows.length;
       for(let i=0;i<rows.length;i++)allRows.push(rows[i]);

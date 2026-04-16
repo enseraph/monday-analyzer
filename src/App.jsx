@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.18";
+const APP_VERSION="2.19";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -897,7 +897,7 @@ export default function App(){
       const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");
       result=fmt==="month"?`${y2}-${m2}`:`${y2}-${m2}-${d2}`;
     }
-    if(tzCache.current.map.size>50000)tzCache.current.map.clear();
+    if(tzCache.current.map.size>20000)tzCache.current.map.clear();
     tzCache.current.map.set(key,result);
     return result;
   },[tz]);
@@ -992,18 +992,21 @@ const[drSingle,setDrSingle]=useState("");
     setSheetStatus("loading");
     const CACHE_KEY="monday_csv_cache",CACHE_TTL=5*60*1000;
     const parseAndSet=(text,fromCache)=>{
-      const res=Papa.parse(text,{header:false,skipEmptyLines:true});
+      let res=Papa.parse(text,{header:false,skipEmptyLines:true});
       if(!res.data||res.data.length<2){setSheetStatus("error");return false}
       const h=res.data[0];
       const miss=REQUIRED_COLS.filter(c=>!h.includes(c));
       if(miss.length){setSheetStatus("error");return false}
-      const rawRows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
+      let rawRows=res.data.slice(1).filter(r=>r.length>=10&&r[0]);
       const{deduped:rows,dupCount}=dedupYybRows(rawRows,h);
       if(dupCount>0)console.info(`[YYB] Skipped ${dupCount} duplicate rows (source data had duplicates — see n8n pipeline)`);
       const processed=applyEmailIntlOverride(rows.map(r=>processRow(r,h)));
       setAllH(h);setAllData(processed);
       setFL([{name:"Google Sheets (live)"+(fromCache?" (cached)":"")+(dupCount>0?` — ${dupCount} duplicates skipped`:""),rows:rows.length,encoding:"UTF-8"}]);
       setSheetStatus("done");setLastFetchTs(Date.now());
+      // Release references so V8 can reclaim the raw CSV text and the intermediate row arrays.
+      // allData (processed rows) is retained; everything else goes.
+      res=null;rawRows=null;
       return true;
     };
     if(useCache){try{const c=localStorage.getItem(CACHE_KEY);if(c){const{ts,text}=JSON.parse(c);if(Date.now()-ts<CACHE_TTL&&parseAndSet(text,true))return}}catch{}}
@@ -1049,6 +1052,8 @@ const[drSingle,setDrSingle]=useState("");
       .then(batch=>{
         const jobs=batch.filter(b=>b.text).map(({yr,text})=>({yr,text}));
         const fetchErrors=batch.filter(b=>b.error).map(b=>`${b.yr}: ${b.error}`);
+        // Release originals in batch now that jobs has its own refs
+        for(let i=0;i<batch.length;i++)batch[i].text=null;
         if(!jobs.length){
           console.error("[TL] all year fetches failed:",fetchErrors);
           setTlStatus("error");return;
@@ -1083,20 +1088,26 @@ const[drSingle,setDrSingle]=useState("");
           w.addEventListener("message",onMessage,{once:true});
           w.addEventListener("error",onError,{once:true});
           w.postMessage({type:"parse",jobs});
+          // Worker receives a structured-clone copy of jobs; release the main-thread reference
+          // to the raw CSV text so V8 can reclaim it immediately.
+          for(let j=0;j<jobs.length;j++)jobs[j].text=null;
         }else{
           // Fallback: main-thread parse (legacy path, only used if worker failed to init)
           const all=[];
-          for(const{yr,text}of jobs){
+          for(let jIdx=0;jIdx<jobs.length;jIdx++){
+            const{yr}=jobs[jIdx];
             try{
-              const res=Papa.parse(text,{header:false,skipEmptyLines:true});
-              if(!res.data||res.data.length<2)continue;
+              let res=Papa.parse(jobs[jIdx].text,{header:false,skipEmptyLines:true});
+              jobs[jIdx].text=null; // release the raw CSV string once parsed
+              if(!res.data||res.data.length<2){res=null;continue}
               const h=res.data[0];
               const miss=TL_REQUIRED_COLS.filter(c=>!h.includes(c));
-              if(miss.length){console.warn(`[TL ${yr}] missing cols:`,miss);continue}
+              if(miss.length){console.warn(`[TL ${yr}] missing cols:`,miss);res=null;continue}
               const hIdx={};h.forEach((c,i)=>{hIdx[c]=i});
               for(let i=1;i<res.data.length;i++){
                 try{const row=parseTLRow(res.data[i],hIdx);if(row)all.push(row)}catch{}
               }
+              res=null;
             }catch(e){console.error(`[TL ${yr}] parse failed:`,e)}
           }
           if(!all.length){setTlStatus("error");return}
@@ -1390,11 +1401,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   // Daily aggregation
   const dailyD=useMemo(()=>{
+    // Only consumed on overview / revenue / booking tabs
+    if(tab!=="overview"&&tab!=="revenue"&&tab!=="booking")return[];
     if(!filtered.length)return[];
     const byDate={};
     filtered.forEach(r=>{const dt=tzFmt(getDateField(r));if(!dt)return;if(!byDate[dt])byDate[dt]={date:dt,rev:0,count:0};byDate[dt].rev+=r.totalRev||0;byDate[dt].count++});
     return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
-  },[filtered,tz,fDT]);
+  },[tab,filtered,tz,fDT]);
 
   // ─── Per-country time-series — active when perCountry mode OR countryWithOther toggle is on ───
   // Four cases:
@@ -2673,7 +2686,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const mKey=tlGetM(r);
       if(!byMonth[mKey])byMonth[mKey]={date:mKey,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0};
       byMonth[mKey][b]+=rev;byMonth[mKey][b+"B"]+=1;
-      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,facilityGroup:r.facilityGroup,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0,total:0,totalB:0};
+      if(!byFac[r.facility])byFac[r.facility]={facility:r.facility,hotelType:r.hotelType,ota:0,rta:0,direct:0,otaB:0,rtaB:0,directB:0,total:0,totalB:0};
       byFac[r.facility][b]+=rev;byFac[r.facility][b+"B"]+=1;byFac[r.facility].total+=rev;byFac[r.facility].totalB+=1;
       // Channel name drilldown (per bucket)
       if(!byChannelName[r.channel_name])byChannelName[r.channel_name]={channel:r.channel_name,bucket:b,rev:0,bookings:0};

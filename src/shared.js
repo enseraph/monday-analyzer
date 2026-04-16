@@ -65,18 +65,18 @@ export function parseTLRow(row,hIdx){
   const adults=adults_male+adults_female;
   let leadTime=null;
   if(checkin){const c2=new Date(checkin);c2.setHours(0,0,0,0);const b=new Date(dt);b.setHours(0,0,0,0);leadTime=Math.max(0,Math.round((c2-b)/864e5))}
+  // Note: channel_code, notification_id, guestNameKana, planCode, facilityGroup
+  // were previously emitted here but are never consumed by the UI after the
+  // Raw Data tab was removed in v2.18. Dropped in v2.19 to reduce per-row
+  // memory footprint.
   return{
     date:dt,dateStr:d,
     facility,
-    facilityGroup:row[hIdx.facility_group]||"",
     status,
-    channel_code:row[hIdx.channel_code]||"",
     channel_name:row[hIdx.channel_name]||"",
     channelBucket:(row[hIdx.channel_bucket]||"").toLowerCase(),
-    booking_id:row[hIdx.booking_id]||"",
-    notification_id:row[hIdx.notification_id]||"",
+    booking_id:row[hIdx.booking_id]||"", // cleared after applyTLSameDayCancel
     guestName:row[hIdx.guest_name]||"",
-    guestNameKana:row[hIdx.guest_name_kana]||"",
     email:(row[hIdx.email]||"").trim().toLowerCase(),
     checkin,checkout,
     checkinStr,checkoutStr,
@@ -85,7 +85,6 @@ export function parseTLRow(row,hIdx){
     guests:parseInt(row[hIdx.guests])||0,
     adults_male,adults_female,children,
     planName:row[hIdx.plan_name]||"",
-    planCode:row[hIdx.plan_code]||"",
     revenue,revenue_other,
     region:getRegion(facility),
     hotelType:(row[hIdx.facility_group]||"")==="hotel"?"Hotel":"Apart",
@@ -119,6 +118,8 @@ export function applyTLSameDayCancel(rows){
     const r=rows[i];
     if(r.status==="予約"&&r.booking_id&&cancelKeys.has(r.dateStr+"|"+r.facility+"|"+r.booking_id)){r.sameDayCancelled=true}
   }
+  // Reclaim memory: booking_id is only needed for same-day detection; no downstream consumer after this pass
+  for(let i=0;i<rows.length;i++){rows[i].booking_id=""}
   return rows;
 }
 
