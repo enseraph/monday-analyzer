@@ -123,9 +123,16 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.22
+Current: 2.23
 
 Recent changes:
+- v2.23: **Compare tabs gain Room-Nights as a comparison metric.** Both YYB Compare and TL Compare now track `totalNights` = Σ (nights × rooms) per period alongside count and revenue.
+  1. **Aggregation update (both tabs)**: `aggregate()` accumulates `nights` into `byCountry`/`bySegment`/`byFacility` dicts, plus a new `totalNights` top-level field on the period summary.
+  2. **New KPI card** for A / B / Change Room-Nights (A = blue, B = gold, Δ color-coded green/red).
+  3. **Tables expand from 6 → 9 columns**: A Count / A ¥ / A Room-Nights / B Count / B ¥ / B Room-Nights / Δ ¥ / Δ Room-Nights. Padding tightened to `3px 6px` so the wider tables stay readable.
+  4. **New Room-Nights Comparison bar chart** on both sides: top 10 countries by Period A room-nights + aggregated "Other" bucket. YYB side adds `cmp-nights` grid key (full-width, placed between segment and facility sections); layout schema bumped 10 → 11 so existing saved layouts are cleared. TL side renders the chart inline below the tables (no DraggableGrid on TL Compare).
+  5. **i18n**: `t.roomNights` updated to `"Room-Nights"` / `"宿泊数"` (was `"室泊数"`). New key `t.cmpNightsChart` = `"Room-Nights Comparison"` / `"宿泊数比較"`.
+  6. **`tlCompareRpt` return object** gains `nightsChart`, `labelA`, `labelB` (the labels were previously computed inline in the JSX for the YYB version).
 - v2.22: **New "Stay Night" date type option.** Added as a 4th choice in the global Date Type dropdown (YYB and TL both expose it). Unlike the existing point-in-time options (check-in / check-out / booking date), Stay Night uses an **overlap filter**: a reservation is included if ANY of its stay nights falls within the date range — i.e. `checkin ≤ to AND checkout > from` (checkout night isn't counted as occupied). Applied to the main `filtered` memo, `compareRpt`/`cancelRpt`/`paceRpt` `getDateStr`/`inRange` helpers, the `losRpt` inline date filter, and the TL-side filter (`tlFiltered` / `tlAllStatusFiltered`) and `tlCancelRpt.apply`. For aggregation (daily/DOW charts), `getDateField()` uses `r.checkin` as the anchor date in stay mode — night-level distribution would require exploding each reservation into N rows, out of scope for this change. New i18n key `t.stayNight` ("Stay Night" / "宿泊日").
 
   **Discussion deferred: true per-night attribution.** In v2.22 a reservation spanning Feb 28 → Mar 2 is shown *whole* when filtering on "March" — all revenue, 2 nights, DOW-at-checkin etc. attributed to March totals. The user pointed out this is wrong: only the Mar 1 night (and its proportional revenue) should show up. Implementing true per-night attribution means exploding each reservation into one row per stay night. This collides with several per-booking metrics (Reservations count, LOS/Lead averages, Cancellations, DOW of check-in, Repeater analysis) which would double-count if naively computed on exploded rows. Tabled for now. Three approaches under consideration when we come back to it:

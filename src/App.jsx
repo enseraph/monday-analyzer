@@ -10,9 +10,9 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.22";
+const APP_VERSION="2.23";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
-const LAYOUT_SCHEMA_VERSION="10";
+const LAYOUT_SCHEMA_VERSION="11";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Default global date range: 1st of current month → yesterday (avoids loading the full multi-year
@@ -117,7 +117,7 @@ function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
 function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
 const DL={
-  compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-facility",0,9,12,4],["cmp-daily-rev",0,13,12,4],["cmp-daily-count",0,17,12,4],["cmp-monthly-rev",0,21,6,4],["cmp-monthly-count",6,21,6,4]]),
+  compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-nights",0,8,12,4],["cmp-facility",0,12,12,4],["cmp-daily-rev",0,16,12,4],["cmp-daily-count",0,20,12,4],["cmp-monthly-rev",0,24,6,4],["cmp-monthly-count",6,24,6,4]]),
   overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-rev-country",0,9,12,4],["ch-res-day",0,13,6,3],["ch-rev-day",6,13,6,3]]),
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-mrev",0,4,12,4],["ch-mrev-time",0,8,12,5],["ch-mcnt-time",0,13,12,5],["ch-ml",0,18,6,4],["ch-mld",6,18,6,4],["ch-msc",0,22,12,4],["ch-rkc",0,26,12,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
@@ -281,6 +281,7 @@ cmpDelta:"Delta",cmpChange:"Change %",
 cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpDailyRev:"Daily Revenue (A vs B)",cmpDailyCount:"Daily Reservations (A vs B)",cmpMonthlyRev:"Monthly Revenue (A vs B)",cmpMonthlyCount:"Monthly Reservations (A vs B)",
+cmpNightsChart:"Room-Nights Comparison",
 facDailyCount:"Daily Reservations by Facility",facDailyRev:"Daily Revenue by Facility",facMonthlyCount:"Monthly Reservations by Facility",facMonthlyRev:"Monthly Revenue by Facility",
 facViewMode:"View",facViewAll:"All facilities",facViewNewVsOld:"New vs Old",facNewLabel:"New",facOldLabel:"Old",facNewHint:`New = opened on/after ${NEW_HOTEL_CUTOFF} (Maihama View I)`,
 countryView:"Country view",countryViewAgg:"Aggregate",countryViewPer:"Per country",countryViewWithOther:"+ Other",countryViewHint:"Split each selected country into its own chart series",countryViewWithOtherHint:"Selected countries + 'Other' bucket for non-selected. Country filter treated as grouping.",
@@ -551,7 +552,7 @@ segBreakdownMode:"内訳",segSimple:"シンプル",segDetailedLabel:"詳細",
     tlLeadDist:"リードタイム分布",tlLeadDow:"曜日別リードタイム",tlLeadMdow:"月別曜日リードタイム",
     tlCancelTrend:"月別キャンセル推移",tlCancelCountry:"国別キャンセル",tlCancelSeg:"タイプ別キャンセル",tlCancelFac:"施設別キャンセル",tlCancelDetail:"キャンセル詳細",
     tlMonthlyRes:"月別予約数",tlTopMarkets:"上位マーケット",tlSegPie:"タイプ構成",tlDowChart:"曜日分布",tlMonthlyRevChart:"月別売上",
-    roomNights:"室泊数",
+    roomNights:"宿泊数",cmpNightsChart:"宿泊数比較",
   }
 };
 
@@ -1859,21 +1860,29 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       let totalRev=0,totalRoomNights=0;
       const byCountry={},bySegment={},byFacility={};
       data.forEach(r=>{
-        const rev=r.totalRev||0;totalRev+=rev;totalRoomNights+=(r.nights||0)*(r.rooms||1);
-        if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0};byCountry[r.country].count++;byCountry[r.country].rev+=rev;
-        if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=rev;
-        if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=rev;
+        const rev=r.totalRev||0;const rn=(r.nights||0)*(r.rooms||1);
+        totalRev+=rev;totalRoomNights+=rn;
+        if(!byCountry[r.country])byCountry[r.country]={count:0,rev:0,nights:0};byCountry[r.country].count++;byCountry[r.country].rev+=rev;byCountry[r.country].nights+=rn;
+        if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0,nights:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=rev;bySegment[r.segment].nights+=rn;
+        if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0,nights:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=rev;byFacility[r.facility].nights+=rn;
       });
       const adr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
       return{totalCount:data.length,totalRev,totalNights:totalRoomNights,adr,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
+    const mkRow=(key,keyVal,aMap,bMap)=>{
+      const av=aMap[keyVal]||{},bv=bMap[keyVal]||{};
+      const countA=av.count||0,revA=av.rev||0,nightsA=av.nights||0;
+      const countB=bv.count||0,revB=bv.rev||0,nightsB=bv.nights||0;
+      return{[key]:keyVal,countA,revA,nightsA,countB,revB,nightsB,
+        countDelta:countA-countB,revDelta:revA-revB,nightsDelta:nightsA-nightsB};
+    };
     const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
-    const countryRows=allCountries.map(c=>({country:c,countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const countryRows=allCountries.map(c=>mkRow("country",c,a.byCountry,b.byCountry)).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
-    const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const segRows=allSegs.map(s=>mkRow("segment",s,a.bySegment,b.bySegment)).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
-    const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const facRows=allFacs.map(f=>({...mkRow("facility",f,a.byFacility,b.byFacility),name:shortFac(f)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     // Top 10 by Period A revenue + Other (aggregated from the rest)
     const byRevA=[...countryRows].sort((x,y)=>y.revA-x.revA);
     const revChart=byRevA.slice(0,10).map(c=>({country:c.country,A:c.revA,B:c.revB}));
@@ -1881,6 +1890,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const byCountA=[...countryRows].sort((x,y)=>y.countA-x.countA);
     const countChart=byCountA.slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
     if(byCountA.length>10){const r=byCountA.slice(10);countChart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c.countA,0),B:r.reduce((a,c)=>a+c.countB,0)})}
+    // Top 10 by Period A room-nights + Other
+    const byNightsA=[...countryRows].sort((x,y)=>y.nightsA-x.nightsA);
+    const nightsChart=byNightsA.slice(0,10).map(c=>({country:c.country,A:c.nightsA,B:c.nightsB}));
+    if(byNightsA.length>10){const r=byNightsA.slice(10);nightsChart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c.nightsA,0),B:r.reduce((a,c)=>a+c.nightsB,0)})}
     const topC=revChart;
     const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
     const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
@@ -1909,7 +1922,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const vB=mB?(mMapB[mB]||{count:0,rev:0}):null;
       monthlySeries.push({idx:"M"+(i+1),monthA:mA||null,monthB:mB||null,countA:vA?vA.count:null,countB:vB?vB.count:null,revA:vA?vA.rev:null,revB:vB?vB.rev:null});
     }
-    return{a,b,countryRows,segRows,facRows,revChart,countChart,labelA,labelB,dailySeries,monthlySeries};
+    return{a,b,countryRows,segRows,facRows,revChart,countChart,nightsChart,labelA,labelB,dailySeries,monthlySeries};
   },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,facAgeFilter]);
 
   // ─── PACE REPORT ───
@@ -3211,35 +3224,49 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
     if(!dataA.length&&!dataB.length)return{empty:true};
     const aggregate=data=>{
-      let totalRev=0,totalCount=0;
+      let totalRev=0,totalCount=0,totalNights=0;
       const byCountry={},bySegment={},byFacility={};
       data.forEach(r=>{
         if(r.status==="取消")return;
-        totalCount++;totalRev+=r.totalRev;
+        const rn=(r.nights||0)*(r.rooms||1);
+        totalCount++;totalRev+=r.totalRev;totalNights+=rn;
         const c=r.country||"Unknown";
-        if(!byCountry[c])byCountry[c]={count:0,rev:0};byCountry[c].count++;byCountry[c].rev+=r.totalRev;
-        if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev;
-        if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev;
+        if(!byCountry[c])byCountry[c]={count:0,rev:0,nights:0};byCountry[c].count++;byCountry[c].rev+=r.totalRev;byCountry[c].nights+=rn;
+        if(!bySegment[r.segment])bySegment[r.segment]={count:0,rev:0,nights:0};bySegment[r.segment].count++;bySegment[r.segment].rev+=r.totalRev;bySegment[r.segment].nights+=rn;
+        if(!byFacility[r.facility])byFacility[r.facility]={count:0,rev:0,nights:0};byFacility[r.facility].count++;byFacility[r.facility].rev+=r.totalRev;byFacility[r.facility].nights+=rn;
       });
-      return{totalCount,totalRev,byCountry,bySegment,byFacility};
+      return{totalCount,totalRev,totalNights,byCountry,bySegment,byFacility};
     };
     const a=aggregate(dataA),b=aggregate(dataB);
+    const mkRow=(key,keyVal,aMap,bMap)=>{
+      const av=aMap[keyVal]||{},bv=bMap[keyVal]||{};
+      const countA=av.count||0,revA=av.rev||0,nightsA=av.nights||0;
+      const countB=bv.count||0,revB=bv.rev||0,nightsB=bv.nights||0;
+      return{[key]:keyVal,countA,revA,nightsA,countB,revB,nightsB,
+        countDelta:countA-countB,revDelta:revA-revB,nightsDelta:nightsA-nightsB};
+    };
     const allCountries=[...new Set([...Object.keys(a.byCountry),...Object.keys(b.byCountry)])];
-    const countryRows=allCountries.map(c=>({country:c,countA:a.byCountry[c]?.count||0,revA:a.byCountry[c]?.rev||0,countB:b.byCountry[c]?.count||0,revB:b.byCountry[c]?.rev||0,countDelta:(a.byCountry[c]?.count||0)-(b.byCountry[c]?.count||0),revDelta:(a.byCountry[c]?.rev||0)-(b.byCountry[c]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const countryRows=allCountries.map(c=>mkRow("country",c,a.byCountry,b.byCountry)).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allSegs=[...new Set([...Object.keys(a.bySegment),...Object.keys(b.bySegment)])];
-    const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    const segRows=allSegs.map(s=>mkRow("segment",s,a.bySegment,b.bySegment)).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
-    const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
-    // Top N + Other view (keeps "Δ by absolute" sort but aggregates tail rows into Other)
+    const facRows=allFacs.map(f=>({...mkRow("facility",f,a.byFacility,b.byFacility),name:shortFac(f)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
+    // Top N + Other (keeps Δ-by-absolute sort but aggregates the tail into Other)
     const sumRows=(rows,labelKey,labelVal)=>{
-      const o={[labelKey]:labelVal,countA:0,revA:0,countB:0,revB:0};
-      rows.forEach(r=>{o.countA+=r.countA;o.revA+=r.revA;o.countB+=r.countB;o.revB+=r.revB});
-      o.countDelta=o.countA-o.countB;o.revDelta=o.revA-o.revB;
+      const o={[labelKey]:labelVal,countA:0,revA:0,nightsA:0,countB:0,revB:0,nightsB:0};
+      rows.forEach(r=>{o.countA+=r.countA;o.revA+=r.revA;o.nightsA+=r.nightsA;o.countB+=r.countB;o.revB+=r.revB;o.nightsB+=r.nightsB});
+      o.countDelta=o.countA-o.countB;o.revDelta=o.revA-o.revB;o.nightsDelta=o.nightsA-o.nightsB;
       return o;
     };
     const countryRowsWO=countryRows.length<=15?countryRows:[...countryRows.slice(0,15),sumRows(countryRows.slice(15),"country",OTHER_KEY_NAME)];
     const facRowsWO=facRows.length<=20?facRows:[...facRows.slice(0,20),{...sumRows(facRows.slice(20),"facility",OTHER_KEY_NAME),name:OTHER_KEY_NAME}];
-    return{a,b,countryRows,segRows,facRows,countryRowsWO,facRowsWO};
+    // Room-Nights comparison chart: top 10 countries by Period A room-nights + Other
+    const byNightsA=[...countryRows].sort((x,y)=>y.nightsA-x.nightsA);
+    const nightsChart=byNightsA.slice(0,10).map(c=>({country:c.country,A:c.nightsA,B:c.nightsB}));
+    if(byNightsA.length>10){const r=byNightsA.slice(10);nightsChart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c.nightsA,0),B:r.reduce((a,c)=>a+c.nightsB,0)})}
+    const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
+    const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
+    return{a,b,countryRows,segRows,facRows,countryRowsWO,facRowsWO,nightsChart,labelA,labelB};
   },[tab,tlData,cmpA,cmpB,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus,facAgeFilter]);
 
   // ─── TL Pace ───
@@ -4017,34 +4044,36 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               {[
                 [t.reservations,compareRpt.a.totalCount,compareRpt.b.totalCount],
                 [t.totalRevenue,compareRpt.a.totalRev,compareRpt.b.totalRev],
+                [t.roomNights,compareRpt.a.totalNights,compareRpt.b.totalNights],
                 [t.drADR,compareRpt.a.adr,compareRpt.b.adr],
               ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue||label===t.drADR;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,color:"#4ea8de"}}>A</div><div style={{...S.kv,fontSize:18}}>{fmt(va)}</div></div><div><div style={{fontSize:10,color:TH.gold}}>B</div><div style={{...S.kv,fontSize:18}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({pctChg(va,vb)})</div></div>})}
             </div>
             <DraggableGrid {...dgProps("compare")}>
               <div key="cmp-country"><SortTbl
                 data={compareRpt.countryRows}
-                columns={[{key:"country",label:t.drCountry},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
-                renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
+                columns={[{key:"country",label:t.drCountry},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"nightsA",label:"A "+t.roomNights},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ "+t.drRevenue},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
+                renderRow={r=><tr key={r.country}><td style={{...S.td,padding:"3px 6px"}}>{tl(r.country)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countA}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countB}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.nightsDelta>0?"#34d399":r.nightsDelta<0?"#ef4444":TH.text}}>{r.nightsDelta>0?"+":""}{fmtN(r.nightsDelta)}</td></tr>}
                 title={t.cmpByCountry}
               /></div>
               <div key="cmp-rev"><CC grid title={t.cmpRevChart} id="cmp-rev" nm="cmp_rev" data={compareRpt.revChart}><BarChart data={compareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
               <div key="cmp-segment"><SortTbl
                 data={compareRpt.segRows}
-                columns={[{key:"segment",label:t.thSegment},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
-                renderRow={r=><tr key={r.segment}><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
+                columns={[{key:"segment",label:t.thSegment},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"nightsA",label:"A "+t.roomNights},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ "+t.drRevenue},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
+                renderRow={r=><tr key={r.segment}><td style={{...S.td,padding:"3px 6px"}}>{tl(r.segment)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countA}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countB}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.nightsDelta>0?"#34d399":r.nightsDelta<0?"#ef4444":TH.text}}>{r.nightsDelta>0?"+":""}{fmtN(r.nightsDelta)}</td></tr>}
                 title={t.cmpBySegment}
               /></div>
               <div key="cmp-count"><CC grid title={t.cmpCountChart} id="cmp-count" nm="cmp_count" data={compareRpt.countChart}><BarChart data={compareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
               <div key="cmp-facility"><SortTbl
                 data={compareRpt.facRows}
-                columns={[{key:"name",label:t.thFacility},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"revDelta",label:t.cmpDelta}]}
-                renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m}}>{r.countA}</td><td style={{...S.td,...S.m}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m}}>{r.countB}</td><td style={{...S.td,...S.m}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td></tr>}
+                columns={[{key:"name",label:t.thFacility},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"nightsA",label:"A "+t.roomNights},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ "+t.drRevenue},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
+                renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap",padding:"3px 6px"}}>{r.name}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countA}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countB}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.nightsDelta>0?"#34d399":r.nightsDelta<0?"#ef4444":TH.text}}>{r.nightsDelta>0?"+":""}{fmtN(r.nightsDelta)}</td></tr>}
                 title={t.cmpByFacility}
               /></div>
               <div key="cmp-daily-rev"><CC grid title={t.cmpDailyRev} id="cmp-daily-rev" nm="cmp_daily_rev" data={compareRpt.dailySeries}><LineChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Line type="monotone" dataKey="revB" stroke={TH.gold} strokeWidth={2} dot={{r:2}} name={compareRpt.labelB} connectNulls={false}/><Line type="monotone" dataKey="revA" stroke="#4ea8de" strokeWidth={2} dot={{r:2}} name={compareRpt.labelA} connectNulls={false}/></LineChart></CC></div>
               <div key="cmp-daily-count"><CC grid title={t.cmpDailyCount} id="cmp-daily-count" nm="cmp_daily_count" data={compareRpt.dailySeries}><LineChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Line type="monotone" dataKey="countB" stroke={TH.gold} strokeWidth={2} dot={{r:2}} name={compareRpt.labelB} connectNulls={false}/><Line type="monotone" dataKey="countA" stroke="#4ea8de" strokeWidth={2} dot={{r:2}} name={compareRpt.labelA} connectNulls={false}/></LineChart></CC></div>
               <div key="cmp-monthly-rev"><CC grid title={t.cmpMonthlyRev} id="cmp-monthly-rev" nm="cmp_monthly_rev" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
               <div key="cmp-monthly-count"><CC grid title={t.cmpMonthlyCount} id="cmp-monthly-count" nm="cmp_monthly_count" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
+              <div key="cmp-nights"><CC grid title={t.cmpNightsChart} id="cmp-nights" nm="cmp_nights" data={compareRpt.nightsChart}><BarChart data={compareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
             </DraggableGrid>
           </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
@@ -4771,26 +4800,38 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div style={S.kpi}><div style={S.kl}>A Res</div><div style={S.kv}>{fmtN(tlCompareRpt.a.totalCount)}</div></div>
               <div style={S.kpi}><div style={S.kl}>B Res</div><div style={S.kv}>{fmtN(tlCompareRpt.b.totalCount)}</div></div>
               <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Res</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalCount,tlCompareRpt.b.totalCount)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>A {t.roomNights}</div><div style={S.kv}>{fmtN(tlCompareRpt.a.totalNights)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>B {t.roomNights}</div><div style={S.kv}>{fmtN(tlCompareRpt.b.totalNights)}</div></div>
+              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} {t.roomNights}</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalNights,tlCompareRpt.b.totalNights)}</div></div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
               <SortTbl
                 data={tlCompareRpt.countryRowsWO}
-                columns={[{key:"country",label:"Country"},{key:"revA",label:"A"},{key:"revB",label:"B"},{key:"revDelta",label:"Δ"}]}
-                renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
+                columns={[{key:"country",label:"Country"},{key:"revA",label:"A ¥"},{key:"nightsA",label:"A "+t.roomNights},{key:"revB",label:"B ¥"},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ ¥"},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
+                renderRow={r=><tr key={r.country}><td style={{...S.td,padding:"3px 6px"}}>{tl(r.country)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px",color:r.nightsDelta>=0?"#34d399":"#ef4444"}}>{r.nightsDelta>=0?"+":""}{fmtN(Math.abs(r.nightsDelta))}</td></tr>}
                 title={t.cmpByCountry}
               />
               <SortTbl
                 data={tlCompareRpt.segRows}
-                columns={[{key:"segment",label:"Segment"},{key:"revA",label:"A"},{key:"revB",label:"B"},{key:"revDelta",label:"Δ"}]}
-                renderRow={r=><tr key={r.segment}><td style={S.td}>{tl(r.segment)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
+                columns={[{key:"segment",label:"Segment"},{key:"revA",label:"A ¥"},{key:"nightsA",label:"A "+t.roomNights},{key:"revB",label:"B ¥"},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ ¥"},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
+                renderRow={r=><tr key={r.segment}><td style={{...S.td,padding:"3px 6px"}}>{tl(r.segment)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px",color:r.nightsDelta>=0?"#34d399":"#ef4444"}}>{r.nightsDelta>=0?"+":""}{fmtN(Math.abs(r.nightsDelta))}</td></tr>}
                 title={t.cmpBySegment}
               />
               <div style={{gridColumn:isMobile?"auto":"span 2"}}><SortTbl
                 data={tlCompareRpt.facRowsWO}
-                columns={[{key:"name",label:"Facility"},{key:"revA",label:"A Rev"},{key:"revB",label:"B Rev"},{key:"revDelta",label:"Δ"}]}
-                renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
+                columns={[{key:"name",label:"Facility"},{key:"revA",label:"A ¥"},{key:"nightsA",label:"A "+t.roomNights},{key:"revB",label:"B ¥"},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ ¥"},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
+                renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap",padding:"3px 6px"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td><td style={{...S.td,...S.m,textAlign:"right",padding:"3px 6px",color:r.nightsDelta>=0?"#34d399":"#ef4444"}}>{r.nightsDelta>=0?"+":""}{fmtN(Math.abs(r.nightsDelta))}</td></tr>}
                 title={t.cmpByFacility}
               /></div>
+            </div>
+            <div style={{...S.card,marginTop:14}}>
+              <div style={S.ct}>{t.cmpNightsChart}</div>
+              <div id="tl-cmp-nights">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={tlCompareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={tlCompareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={tlCompareRpt.labelA} radius={[4,4,0,0]}/></BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{marginTop:4}}><EB id="tl-cmp-nights" nm="tl_cmp_nights" data={tlCompareRpt.nightsChart} title={t.cmpNightsChart}/></div>
             </div>
           </div>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
