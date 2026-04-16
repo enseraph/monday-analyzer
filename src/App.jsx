@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.13";
+const APP_VERSION="2.14";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="8";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -256,7 +256,9 @@ cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
 cmpDailyRev:"Daily Revenue (A vs B)",cmpDailyCount:"Daily Reservations (A vs B)",cmpMonthlyRev:"Monthly Revenue (A vs B)",cmpMonthlyCount:"Monthly Reservations (A vs B)",
 facDailyCount:"Daily Reservations by Facility",facDailyRev:"Daily Revenue by Facility",facMonthlyCount:"Monthly Reservations by Facility",facMonthlyRev:"Monthly Revenue by Facility",
 facViewMode:"View",facViewAll:"All facilities",facViewNewVsOld:"New vs Old",facNewLabel:"New",facOldLabel:"Old",facNewHint:`New = opened on/after ${NEW_HOTEL_CUTOFF} (Maihama View I)`,
-countryView:"Country view",countryViewAgg:"Aggregate",countryViewPer:"Per country",countryViewHint:"Split each selected country into its own chart series",
+countryView:"Country view",countryViewAgg:"Aggregate",countryViewPer:"Per country",countryViewWithOther:"+ Other",countryViewHint:"Split each selected country into its own chart series",countryViewWithOtherHint:"Selected countries + 'Other' bucket for non-selected. Country filter treated as grouping.",
+propertyView:"Property view",propertyViewAgg:"Aggregate",propertyViewPer:"Per property",propertyViewWithOther:"+ Other",propertyViewHint:"Split each selected property into its own chart series",propertyViewWithOtherHint:"Selected properties + 'Other' bucket for non-selected. Property filter treated as grouping.",
+otherLabel:"Other",
 facAge:"Facility age",facAgeAll:"All",facAgeNew:"New only",facAgeOld:"Old only",facAgeView:"Age view",facAgeViewAgg:"Aggregate",facAgeViewSplit:"New vs Old",facAgeHint:"Applied to all facilities; selecting specific facilities overrides.",facAgeDisabled:"Specific facilities selected — age toggles disabled",
 openingTab:"Hotel Opening",openingTitle:"Hotel Opening Analysis",openingSub:"Pre-open vs post-open performance per new-facility launch. YYB data starts 2024-05; facilities opened before that have no pre-open data.",
 openingFacilities:"Facilities to analyze",openingSelectAll:"Select all (2024+)",openingSelectNew:"Only new (post-Maihama)",openingClearAll:"Clear",
@@ -426,7 +428,9 @@ cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
 cmpDailyRev:"日別売上 (A vs B)",cmpDailyCount:"日別予約数 (A vs B)",cmpMonthlyRev:"月別売上 (A vs B)",cmpMonthlyCount:"月別予約数 (A vs B)",
 facDailyCount:"施設別日別予約数",facDailyRev:"施設別日別売上",facMonthlyCount:"施設別月別予約数",facMonthlyRev:"施設別月別売上",
 facViewMode:"表示",facViewAll:"全施設",facViewNewVsOld:"新規vs既存",facNewLabel:"新規",facOldLabel:"既存",facNewHint:`新規 = ${NEW_HOTEL_CUTOFF} 以降開業 (舞浜ビューⅠ以降)`,
-countryView:"国表示",countryViewAgg:"合計",countryViewPer:"国別",countryViewHint:"選択した国を国別に分けて表示",
+countryView:"国表示",countryViewAgg:"合計",countryViewPer:"国別",countryViewWithOther:"+ その他",countryViewHint:"選択した国を国別に分けて表示",countryViewWithOtherHint:"選択した国 + その他の国をまとめて表示。国フィルターはグループ化として動作。",
+propertyView:"施設表示",propertyViewAgg:"合計",propertyViewPer:"施設別",propertyViewWithOther:"+ その他",propertyViewHint:"選択した施設を個別に表示",propertyViewWithOtherHint:"選択した施設 + その他の施設をまとめて表示。施設フィルターはグループ化として動作。",
+otherLabel:"その他",
 facAge:"施設年代",facAgeAll:"全て",facAgeNew:"新規のみ",facAgeOld:"既存のみ",facAgeView:"年代表示",facAgeViewAgg:"合計",facAgeViewSplit:"新規vs既存",facAgeHint:"全施設対象。施設を個別選択した場合はこちらが優先。",facAgeDisabled:"施設を個別選択中 — 年代フィルターは無効",
 openingTab:"開業分析",openingTitle:"開業前後パフォーマンス分析",openingSub:"新規施設の開業前・開業後の実績比較。YYBデータは2024年5月以降のみ — それ以前の開業施設には開業前データがありません。",
 openingFacilities:"分析対象施設",openingSelectAll:"全選択 (2024年以降)",openingSelectNew:"新規のみ (舞浜以降)",openingClearAll:"クリア",
@@ -947,13 +951,16 @@ const deletePreset=name=>{
 const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
 const[paceMetric,setPaceMetric]=useState("count");
 const[facViewMode,setFacViewMode]=useState("all"); // "all" | "newVsOld"
-const[countryViewMode,setCountryViewMode]=useState("aggregate"); // "aggregate" | "perCountry"
+const[countryViewMode,setCountryViewMode]=useState("aggregate"); // "aggregate" | "perCountry" | "perCountryWithOther"
+const[propertyViewMode,setPropertyViewMode]=useState("aggregate"); // "aggregate" | "perProperty" | "perPropertyWithOther"
 const[facAgeFilter,setFacAgeFilter]=useState("all"); // "all" | "new" | "old" — global data filter; overridden if specific facilities selected
 const[facAgeView,setFacAgeView]=useState("aggregate"); // "aggregate" | "newVsOld" — global visual split on compatible charts
 const[openingFacs,setOpeningFacs]=useState(FACILITIES_WITH_PREOPEN_DATA); // Hotel Opening tab — selected facilities for cohort analysis
 // Colors for New vs Old cohort split (deliberately distinct from Compare tab's A=blue/B=gold)
 const NEW_COHORT_COLOR="#34d399"; // green — "fresh / growth"
 const OLD_COHORT_COLOR="#64748b"; // slate — "established"
+// Color for the aggregated "Other" bucket in + Other view modes — warm taupe, distinct from gold/slate/palette
+const OTHER_BUCKET_COLOR="#78716c";
 const[drSingle,setDrSingle]=useState("");
   const[monthMode,setMonthMode]=useState(INITIAL_URL_STATE.monthMode||"booking"); // "stay" or "booking"
   const getM=r=>monthMode==="stay"?tzFmt(r.checkin,"month"):tzFmt(r.bookingDate,"month");
@@ -1135,7 +1142,11 @@ const[drSingle,setDrSingle]=useState("");
   const clearAll=()=>{setAllData([]);setAllH([]);setFL([]);setErrs([]);setFR("All");setFC([]);setFDF("");setFDTo("");setFS([]);setFP([]);setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([])};
 
   const filtered=useMemo(()=>{
-    const fCSet=fC.length?new Set(fC):null,fSSet=fS.length?new Set(fS):null,fPSet=fP.length?new Set(fP):null,fBSet=fBrands.length?new Set(fBrands):null,fGSet=fGeo.length?new Set(fGeo):null,fDSet=fDOW.length?new Set(fDOW):null;
+    // In "+ Other" modes, the country/property filter becomes a grouping rather than a filter —
+    // all rows included, non-selected bucketed into "Other" downstream. Skip the filter here.
+    const skipCountryFilter=countryViewMode==="perCountryWithOther"&&fC.length>=2;
+    const skipPropertyFilter=propertyViewMode==="perPropertyWithOther"&&fP.length>=1;
+    const fCSet=!skipCountryFilter&&fC.length?new Set(fC):null,fSSet=fS.length?new Set(fS):null,fPSet=!skipPropertyFilter&&fP.length?new Set(fP):null,fBSet=fBrands.length?new Set(fBrands):null,fGSet=fGeo.length?new Set(fGeo):null,fDSet=fDOW.length?new Set(fDOW):null;
     // Use T00:00:00 to force local-midnight parsing (new Date("YYYY-MM-DD") is UTC midnight, which breaks timezone-aware comparisons)
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const dateField=fDT==="checkin"?"checkin":fDT==="checkout"?"checkout":"bookingDate";
@@ -1157,7 +1168,7 @@ const[drSingle,setDrSingle]=useState("");
       out.push(r);
     }
     return out;
-  },[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW,facAgeFilter]);
+  },[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW,facAgeFilter,countryViewMode,propertyViewMode]);
 
   const uTlFac=useMemo(()=>[...new Set(tlData.map(r=>r.facility))].sort(),[tlData]);
   const uTlChannelName=useMemo(()=>[...new Set(tlData.map(r=>r.channel_name).filter(Boolean))].sort(),[tlData]);
@@ -1380,30 +1391,36 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
   },[filtered,tz,fDT]);
 
-  // ─── Per-country time-series — active only when countryViewMode==="perCountry" AND >=2 countries are selected ───
-  // When active, replaces single-metric bars/lines with multi-country stacks/overlays on compatible charts.
+  // ─── Per-country time-series — active when countryViewMode is "perCountry" or "perCountryWithOther" ───
+  // "perCountry": each selected country as its own series, non-selected rows excluded (filtered upstream)
+  // "perCountryWithOther": each selected country individually + "Other" bucket for all non-selected countries
+  const OTHER_KEY="__other__"; // internal key to avoid collision with any real country name
   const perCountrySeries=useMemo(()=>{
-    if(countryViewMode!=="perCountry"||fC.length<2||!filtered.length)return null;
+    if(!(countryViewMode==="perCountry"||countryViewMode==="perCountryWithOther")||fC.length<2||!filtered.length)return null;
+    const withOther=countryViewMode==="perCountryWithOther";
     const selected=new Set(fC);
-    const totals={};
-    filtered.forEach(r=>{if(selected.has(r.country))totals[r.country]=(totals[r.country]||0)+1});
+    const totals={};let otherTotal=0;
+    filtered.forEach(r=>{if(selected.has(r.country))totals[r.country]=(totals[r.country]||0)+1;else if(withOther)otherTotal++});
     const countries=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c])=>c);
     if(countries.length<2)return null;
+    // Append "Other" bucket at end of list (renders as the last stack segment)
+    if(withOther&&otherTotal>0)countries.push(OTHER_KEY);
     const byMonth={},byDate={},byDow={};
     filtered.forEach(r=>{
-      if(!selected.has(r.country))return;
+      const bucket=selected.has(r.country)?r.country:(withOther?OTHER_KEY:null);
+      if(!bucket)return;
       const m=getM(r);
       const d=tzFmt(getDateField(r));
       const dow=getDowField(r);
-      const c=r.country,rev=r.totalRev||0;
-      if(m){if(!byMonth[m])byMonth[m]={};if(!byMonth[m][c])byMonth[m][c]={count:0,rev:0};byMonth[m][c].count++;byMonth[m][c].rev+=rev}
-      if(d){if(!byDate[d])byDate[d]={};if(!byDate[d][c])byDate[d][c]={count:0,rev:0};byDate[d][c].count++;byDate[d][c].rev+=rev}
-      if(dow){if(!byDow[dow])byDow[dow]={};if(!byDow[dow][c])byDow[dow][c]={count:0,rev:0};byDow[dow][c].count++;byDow[dow][c].rev+=rev}
+      const rev=r.totalRev||0;
+      if(m){if(!byMonth[m])byMonth[m]={};if(!byMonth[m][bucket])byMonth[m][bucket]={count:0,rev:0};byMonth[m][bucket].count++;byMonth[m][bucket].rev+=rev}
+      if(d){if(!byDate[d])byDate[d]={};if(!byDate[d][bucket])byDate[d][bucket]={count:0,rev:0};byDate[d][bucket].count++;byDate[d][bucket].rev+=rev}
+      if(dow){if(!byDow[dow])byDow[dow]={};if(!byDow[dow][bucket])byDow[dow][bucket]={count:0,rev:0};byDow[dow][bucket].count++;byDow[dow][bucket].rev+=rev}
     });
     const buildRow=(map,key,xField,xVal,metric)=>{const row={[xField]:xVal};countries.forEach(c=>{row[c]=map[key]?.[c]?.[metric]||0});return row};
     const mKeys=Object.keys(byMonth).sort(),dKeys=Object.keys(byDate).sort();
     return{
-      countries,
+      countries,withOther,
       monthlyCount:mKeys.map(m=>buildRow(byMonth,m,"month",m,"count")),
       monthlyRev:mKeys.map(m=>buildRow(byMonth,m,"month",m,"rev")),
       dailyCount:dKeys.map(d=>buildRow(byDate,d,"date",d,"count")),
@@ -1412,8 +1429,47 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowRev:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"rev")),
     };
   },[countryViewMode,fC,filtered,monthMode,tz,fDT,tzFmt,dL]);
+  // ─── Per-property time-series — active when propertyViewMode is "perProperty" or "perPropertyWithOther" ───
+  // Mirrors the country logic but splits by facility. Needs >=1 property selected.
+  const perPropertySeries=useMemo(()=>{
+    if(!(propertyViewMode==="perProperty"||propertyViewMode==="perPropertyWithOther")||fP.length<1||!filtered.length)return null;
+    const withOther=propertyViewMode==="perPropertyWithOther";
+    const selected=new Set(fP);
+    const totals={};let otherTotal=0;
+    filtered.forEach(r=>{if(selected.has(r.facility))totals[r.facility]=(totals[r.facility]||0)+1;else if(withOther)otherTotal++});
+    const properties=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([f])=>f);
+    if(!properties.length)return null;
+    if(withOther&&otherTotal>0)properties.push(OTHER_KEY);
+    const byMonth={},byDate={},byDow={};
+    filtered.forEach(r=>{
+      const bucket=selected.has(r.facility)?r.facility:(withOther?OTHER_KEY:null);
+      if(!bucket)return;
+      const m=getM(r);
+      const d=tzFmt(getDateField(r));
+      const dow=getDowField(r);
+      const rev=r.totalRev||0;
+      if(m){if(!byMonth[m])byMonth[m]={};if(!byMonth[m][bucket])byMonth[m][bucket]={count:0,rev:0};byMonth[m][bucket].count++;byMonth[m][bucket].rev+=rev}
+      if(d){if(!byDate[d])byDate[d]={};if(!byDate[d][bucket])byDate[d][bucket]={count:0,rev:0};byDate[d][bucket].count++;byDate[d][bucket].rev+=rev}
+      if(dow){if(!byDow[dow])byDow[dow]={};if(!byDow[dow][bucket])byDow[dow][bucket]={count:0,rev:0};byDow[dow][bucket].count++;byDow[dow][bucket].rev+=rev}
+    });
+    const buildRow=(map,key,xField,xVal,metric)=>{const row={[xField]:xVal};properties.forEach(f=>{row[f]=map[key]?.[f]?.[metric]||0});return row};
+    const mKeys=Object.keys(byMonth).sort(),dKeys=Object.keys(byDate).sort();
+    return{
+      properties,withOther,
+      monthlyCount:mKeys.map(m=>buildRow(byMonth,m,"month",m,"count")),
+      monthlyRev:mKeys.map(m=>buildRow(byMonth,m,"month",m,"rev")),
+      dailyCount:dKeys.map(d=>buildRow(byDate,d,"date",d,"count")),
+      dailyRev:dKeys.map(d=>buildRow(byDate,d,"date",d,"rev")),
+      dowCount:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"count")),
+      dowRev:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"rev")),
+    };
+  },[propertyViewMode,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
   // Color helper for countries — same pattern as facColor
   const countryColor=(i)=>i<PALETTE.length?PALETTE[i]:`hsl(${(i*137.508)%360}, 65%, 55%)`;
+  // Display label for a country/property series key — translates via tl() except for internal "Other" key
+  const seriesLabel=k=>k===OTHER_KEY?t.otherLabel:tl(k);
+  const seriesFacLabel=k=>k===OTHER_KEY?t.otherLabel:shortFac(k);
+  const seriesColor=(k,i)=>k===OTHER_KEY?OTHER_BUCKET_COLOR:countryColor(i);
 
   // ─── YYB Age-split time-series (New vs Old) — active only when facAgeView==="newVsOld" AND no specific facilities selected ───
   const facAgeSeries=useMemo(()=>{
@@ -3433,9 +3489,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {!isTlTab&&<div><div style={Sc.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={Sc} cl={t.clear} theme={TH}/></div>}
         <div><div style={Sc.fl}>{t.region}</div><div style={{display:"flex",gap:2}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...Sc.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>
         {!isTlTab&&<div><div style={Sc.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>}
-        {!isTlTab&&<div><div style={Sc.fl} title={t.countryViewHint}>{t.countryView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(countryViewMode==="aggregate"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("aggregate")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":""}>{t.countryViewAgg}</button><button style={{...Sc.btn,...(countryViewMode==="perCountry"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("perCountry")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":t.countryViewHint}>{t.countryViewPer}</button></div></div>}
+        {!isTlTab&&<div><div style={Sc.fl} title={t.countryViewHint}>{t.countryView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(countryViewMode==="aggregate"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("aggregate")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":""}>{t.countryViewAgg}</button><button style={{...Sc.btn,...(countryViewMode==="perCountry"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("perCountry")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":t.countryViewHint}>{t.countryViewPer}</button><button style={{...Sc.btn,...(countryViewMode==="perCountryWithOther"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("perCountryWithOther")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":t.countryViewWithOtherHint}>{t.countryViewWithOther}</button></div></div>}
         <div><div style={Sc.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>
         {!isTlTab&&<div><div style={Sc.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={Sc} cl={t.clear} theme={TH}/></div>}
+        {!isTlTab&&<div><div style={Sc.fl} title={t.propertyViewHint}>{t.propertyView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(propertyViewMode==="aggregate"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("aggregate")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":""}>{t.propertyViewAgg}</button><button style={{...Sc.btn,...(propertyViewMode==="perProperty"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("perProperty")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":t.propertyViewHint}>{t.propertyViewPer}</button><button style={{...Sc.btn,...(propertyViewMode==="perPropertyWithOther"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("perPropertyWithOther")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":t.propertyViewWithOtherHint}>{t.propertyViewWithOther}</button></div></div>}
         {isTlTab&&<div><div style={Sc.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={Sc} cl={t.clear} theme={TH}/></div>}
         {/* Facility age filter + view — global across YYB & TL. Overridden when specific facilities selected. */}
         <div><div style={Sc.fl} title={fP.length?t.facAgeDisabled:t.facAgeHint}>{t.facAge}</div><div style={{display:"flex",gap:2}}>{[["all",t.facAgeAll],["new",t.facAgeNew],["old",t.facAgeOld]].map(([v,l])=><button key={v} style={{...Sc.btn,...(facAgeFilter===v?S.ba:{}),...(fP.length?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>!fP.length&&setFacAgeFilter(v)} disabled={fP.length>0} title={fP.length?t.facAgeDisabled:""}>{l}</button>)}</div></div>
@@ -3690,14 +3747,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* OVERVIEW */}
         {tab==="overview"&&<><DraggableGrid {...dgProps("overview")}>
-          <div key="ch-mo"><CC grid title={t.resByMonth} id="ch-mo" nm="monthly" data={facAgeSeries?facAgeSeries.monthlyCount:(perCountrySeries?perCountrySeries.monthlyCount:moD)}><BarChart data={facAgeSeries?facAgeSeries.monthlyCount:(perCountrySeries?perCountrySeries.monthlyCount:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/>}</BarChart></CC></div>
+          <div key="ch-mo"><CC grid title={t.resByMonth} id="ch-mo" nm="monthly" data={perPropertySeries?perPropertySeries.monthlyCount:facAgeSeries?facAgeSeries.monthlyCount:(perCountrySeries?perCountrySeries.monthlyCount:moD)}><BarChart data={perPropertySeries?perPropertySeries.monthlyCount:facAgeSeries?facAgeSeries.monthlyCount:(perCountrySeries?perCountrySeries.monthlyCount:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/>}</BarChart></CC></div>
           <div key="ch-sp"><CC grid title={t.resBySeg} id="ch-sp" nm="seg_pie" data={segD}><PieChart><Pie data={segD} dataKey="count" nameKey="segment" cx="50%" cy="50%" outerRadius="65%" label={({segment,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${tl(segment)} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
           <div key="ch-mk"><CC grid title={t.topMarkets} id="ch-mk" nm="top_markets" h={320} data={mktD.slice(0,10)}><BarChart data={mktD.slice(0,10)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c9a84c" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-dw"><CC grid title={t.checkinDOW} id="ch-dw" nm="dow" h={320} data={dowD}><BarChart data={dowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></BarChart></CC></div>
-          <div key="ch-mo-rev"><CC grid title={t.monthlyRev} id="ch-mo-rev" nm="monthly_rev_ov" data={facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><BarChart data={facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
+          <div key="ch-mo-rev"><CC grid title={t.monthlyRev} id="ch-mo-rev" nm="monthly_rev_ov" data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><BarChart data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rev-country"><CC grid title={t.revByCountry} id="ch-rev-country" nm="rev_country_ov" h={Math.max(300,mktD.length*24)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
-          <div key="ch-res-day"><CC grid title={t.resByDay} id="ch-res-day" nm="res_day" data={facAgeSeries?facAgeSeries.dailyCount:(perCountrySeries?perCountrySeries.dailyCount:dailyD)}><BarChart data={facAgeSeries?facAgeSeries.dailyCount:(perCountrySeries?perCountrySeries.dailyCount:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/>}</BarChart></CC></div>
-          <div key="ch-rev-day"><CC grid title={t.revByDay} id="ch-rev-day" nm="rev_day" data={facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><BarChart data={facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
+          <div key="ch-res-day"><CC grid title={t.resByDay} id="ch-res-day" nm="res_day" data={perPropertySeries?perPropertySeries.dailyCount:facAgeSeries?facAgeSeries.dailyCount:(perCountrySeries?perCountrySeries.dailyCount:dailyD)}><BarChart data={perPropertySeries?perPropertySeries.dailyCount:facAgeSeries?facAgeSeries.dailyCount:(perCountrySeries?perCountrySeries.dailyCount:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk}/><Tooltip content={<CT/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/>}</BarChart></CC></div>
+          <div key="ch-rev-day"><CC grid title={t.revByDay} id="ch-rev-day" nm="rev_day" data={perPropertySeries?perPropertySeries.dailyRev:facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><BarChart data={perPropertySeries?perPropertySeries.dailyRev:facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
         </DraggableGrid></>}
 
         {/* ═══════════════════ KANTO VS KANSAI ═══════════════════ */}
@@ -3759,7 +3816,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* BOOKING */}
         {tab==="booking"&&<><DraggableGrid {...dgProps("booking")}>
-          <div key="ch-bd"><CC grid title={t.ciCoDOW} id="ch-bd" nm="dow" h={300} data={facAgeSeries?facAgeSeries.dowCount:(perCountrySeries?perCountrySeries.dowCount:dowD)}><BarChart data={facAgeSeries?facAgeSeries.dowCount:(perCountrySeries?perCountrySeries.dowCount:dowD)}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></>}</BarChart></CC></div>
+          <div key="ch-bd"><CC grid title={t.ciCoDOW} id="ch-bd" nm="dow" h={300} data={perPropertySeries?perPropertySeries.dowCount:facAgeSeries?facAgeSeries.dowCount:(perCountrySeries?perCountrySeries.dowCount:dowD)}><BarChart data={perPropertySeries?perPropertySeries.dowCount:facAgeSeries?facAgeSeries.dowCount:(perCountrySeries?perCountrySeries.dowCount:dowD)}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:9}}/>{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></>}</BarChart></CC></div>
           <div key="ch-mdow"><CC grid title={t.monthlyDOW+" ("+t.checkInLabel+")"} id="ch-mdow" nm="monthly_dow_ci" data={monthDowD.ciData}><LineChart data={monthDowD.ciData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{monthDowD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
           <div key="ch-mdow2"><CC grid title={t.monthlyDOW+" ("+t.checkOutLabel+")"} id="ch-mdow2" nm="monthly_dow_co" data={monthDowD.coData}><LineChart data={monthDowD.coData}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend wrapperStyle={{fontSize:10}}/>{monthDowD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
           <div key="ch-bt"><CC grid title={t.monthlyTrend} id="ch-bt" nm="trend" h={300} data={moD}><LineChart data={moD}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><YAxis yAxisId="r" orientation="right" tick={tks} tickFormatter={fmtY}/><Tooltip content={<CT/>}/><Legend/><Line type="monotone" dataKey="count" stroke="#c9a84c" strokeWidth={2} dot={{fill:"#c9a84c",r:4}} name={t.reservations}/><Line type="monotone" dataKey="avgRev" stroke="#4ea8de" strokeWidth={2} dot={{fill:"#4ea8de",r:4}} name={t.avgRevRes} yAxisId="r"/></LineChart></CC></div>
@@ -3831,10 +3888,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {/* REVENUE */}
         {tab==="revenue"&&<><DraggableGrid {...dgProps("revenue")}>
           <div key="ch-rm"><CC grid title={t.revByMarket} id="ch-rm" nm="rev_mkt" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
-          <div key="ch-rv"><CC grid title={t.monthlyRev} id="ch-rv" nm="monthly_rev" h={300} data={facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><BarChart data={facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
+          <div key="ch-rv"><CC grid title={t.monthlyRev} id="ch-rv" nm="monthly_rev" h={300} data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><BarChart data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rmm"><CC grid title={t.revByMarketMonth} id="ch-rmm" nm="rev_mkt_month" h={300} data={revMktMo.data}><BarChart data={revMktMo.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revMktMo.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC></div>
-          <div key="ch-drev"><CC grid title={t.dailyRev} id="ch-drev" nm="daily_rev" data={facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><BarChart data={facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
-          <div key="ch-rdow"><CC grid title={t.revByDOW} id="ch-rdow" nm="rev_dow" data={facAgeSeries?facAgeSeries.dowRev:(perCountrySeries?perCountrySeries.dowRev:revDowD)}><BarChart data={facAgeSeries?facAgeSeries.dowRev:(perCountrySeries?perCountrySeries.dowRev:revDowD)}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={countryColor(i)} name={tl(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
+          <div key="ch-drev"><CC grid title={t.dailyRev} id="ch-drev" nm="daily_rev" data={perPropertySeries?perPropertySeries.dailyRev:facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><BarChart data={perPropertySeries?perPropertySeries.dailyRev:facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
+          <div key="ch-rdow"><CC grid title={t.revByDOW} id="ch-rdow" nm="rev_dow" data={perPropertySeries?perPropertySeries.dowRev:facAgeSeries?facAgeSeries.dowRev:(perCountrySeries?perCountrySeries.dowRev:revDowD)}><BarChart data={perPropertySeries?perPropertySeries.dowRev:facAgeSeries?facAgeSeries.dowRev:(perCountrySeries?perCountrySeries.dowRev:revDowD)}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rdowm"><CC grid title={t.revByDOWMonth} id="ch-rdowm" nm="rev_dow_month" data={revDowMonthD.data}><LineChart data={revDowMonthD.data}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revDowMonthD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
           <div key="ch-rev-country-r"><CC grid title={t.revByCountry} id="ch-rev-country-r" nm="rev_country" h={Math.max(300,mktD.length*24)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
         </DraggableGrid></>}

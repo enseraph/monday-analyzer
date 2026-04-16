@@ -123,9 +123,16 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.13
+Current: 2.14
 
 Recent changes:
+- v2.14: **"+ Other" view modes for country and property.**
+  1. `countryViewMode` now supports a third value `"perCountryWithOther"`. Button label: `+ Other`. When active, selected countries render as individual stacks + an aggregated "Other" bucket for every non-selected country. The country filter's semantics shift from "restrict data" to "group by" — `filtered` memo no longer excludes non-selected countries when this mode is on.
+  2. New `propertyViewMode` state (`aggregate` | `perProperty` | `perPropertyWithOther`) with its own 3-button toggle in the filter bar (next to the Property multiselect). Mirrors the country toggle behavior. When a mode is active with specific properties selected, compatible charts split by property. In "+ Other" mode, non-selected properties aggregate into "Other".
+  3. New `perPropertySeries` useMemo mirrors `perCountrySeries` — single-pass computation of monthly/daily/DOW count+rev series broken down by facility. Returns null unless property view mode is active and ≥1 property selected.
+  4. **Priority order** in chart rendering: **property > age > country > default**. If multiple view modes are active simultaneously, the most specific (property) wins on each chart. All 8 YYB charts that support country view now also support property view.
+  5. **"Other" bucket color:** `#78716c` (warm taupe). Deliberately distinct from existing palette, Compare A/B (blue/gold), Age (green/slate). The "Other" key is internally `__other__` to avoid any collision with real facility or country names; rendered as translated label "Other" / "その他" via new `t.otherLabel`.
+  6. Helper functions: `seriesLabel(k)`, `seriesFacLabel(k)`, `seriesColor(k, i)` centralize the "Other"-aware label and color resolution.
 - v2.13: **Added Premium MONday 浅草 Ⅰ.** New facility appeared in YYB data (2 advance bookings). Rooms: 26. Opening: 2026-05-01. Source: Excel 250430JHAT Property List, row 50 (codename 西浅草ノース). Added alias `"Premium MONday 浅草 ONE" → "Premium MONday 浅草 Ⅰ"` since brand-strategy deck previously used "ONE" while data uses the Roman numeral Ⅰ.
 - v2.12: **TL-side facility normalization.** Discovered TL data has `"Premium hotel MONday 舞浜ビュー Ⅰ"` (with a literal space between ビュー and Ⅰ) — different from the YYB variant that gets normalized in `processRow`. TL's `parseTLRow` previously didn't apply any name normalization, so the garbled/spaced variants flowed through unchanged and caused the unclassified banner to flag Maihama View I as missing from both maps.
   1. Extracted the name-normalization logic (`舞浜ビュー` consolidation + `（旧：...）` stripping) into a new `normalizeFacility(f)` helper in `src/shared.js`.
