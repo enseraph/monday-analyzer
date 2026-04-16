@@ -41,7 +41,7 @@ The ads/marketing analytics dashboard is a **separate repo and tool** (`monday-a
 - **TL filter bar additions**: channel_bucket (existing), **channel_name** (full OTA granularity — Booking.com, Klook, Rakuten, etc.), **status toggle**, **plan_code**.
 - ⚠ **Date parsing gotcha (v1.61 fix, extended v1.90)**: `new Date("YYYY-MM-DD")` is UTC midnight in JS, but `new Date("YYYY-MM-DDT00:00:00")` is local midnight. Mixing these breaks date-equality filters in non-UTC timezones. **ALL date filter `from`/`to` parsing MUST use `new Date(str+"T00:00:00")`** — this applies to the main `filtered` memo, `cancelRpt`, TL filter memos, and any future filter code. v1.90 fixed the YYB `filtered` and `cancelRpt` memos which were using bare `new Date(fDF)` (UTC midnight), causing bookings on April 12 at 23:00+ JST to appear as April 13 data.
 - **TL data is ex-tax** (n8n divides by 1.1 at parse). YYB also ex-tax. UI labels TL revenue as "売上 (税抜)" / "Revenue (ex-tax)" explicitly.
-- **Sectioned tab strip**: Tabs split into YYB and TL sections via `src` field on each TAB entry. Section chips (`YYB` / `TL`) + vertical divider + per-section accent color (gold / teal) on active tab underline. `SOURCE_COLORS` constant. **YYB side: 15 tabs. TL side: 15 tabs** — `tl-channel`, `tl-daily`, `tl-revenue`, `tl-segments`, `tl-member`, `tl-overview`, `tl-los`, `tl-booking`, `tl-compare`, `tl-pace`, `tl-facilities`, `tl-kvk`, `tl-markets`, `tl-cancellations`, `tl-data`.
+- **Sectioned tab strip**: Tabs split into YYB and TL sections via `src` field on each TAB entry. Section chips (`YYB` / `TL`) + vertical divider + per-section accent color (gold / teal) on active tab underline. `SOURCE_COLORS` constant. **YYB side: 16 tabs. TL side: 15 tabs** (Raw Data tabs removed in v2.18 to reduce memory footprint).
 - **YYB capabilities NOT ported to TL** (missing source fields): Rooms tab (no room_type string in TL), Device chart (no device field), Membership Rank (no rank field), Cancel Fee (no fee field). RevPAR tab not ported because it depends on facility room inventory which works identically for both sources but wasn't prioritized.
 - **Source banner**: always-on bar above filter row, dot + label, color matches active section. Reads `isTlTab = activeTabSrc === "tl"`.
 - **Morphing filter bar**: When `isTlTab`, hides YYB-only filters (status, hotel type, brand, region, country, segment, geo, DOW, date type, month mode) and shows TL-only filter (channel bucket multiselect). Property filter is shown in both modes but `uTlFac` is sourced from `tlData` on TL tabs. Date From/To carries over.
@@ -123,9 +123,20 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.17
+Current: 2.18
 
 Recent changes:
+- v2.18: **Memory cleanup — removed Raw Data tabs + tab-gated heavy memos.** Browser tab memory was hitting ~2 GB; this round of fixes targets the worst offenders without large refactors.
+  1. **Removed both Raw Data tabs (`data` and `tl-data`)**. Removed: TABS entries, content blocks (~30 lines of JSX each), states (`tSort/tlSort/tPage/tlPage`), memos (`tRows/tlTRows/paged/tlPaged/tH/tlTH/tC/tlTC`), constants (`YYB_RAW_COLS/TL_RAW_COLS/TL_RAW_HEADERS`), and the `expFilt` helper. The i18n keys (`t.rawData`, `t.tlDataTab`) are kept in the dictionary but unused — harmless. **YYB side now 16 tabs, TL side now 15 tabs (was 17 + 16).**
+  2. **Tab-gated heavy memos**: every `useMemo` that previously ran on every tab regardless of consumer tab now early-returns `null`/`[]` when not on a consuming tab. Affected memos:
+     - `perCountrySeries` → only on overview/revenue/booking
+     - `perPropertySeries` → only on overview/revenue/booking
+     - `facAgeSeries` → only on overview/revenue/booking
+     - `revMktMo` → only on revenue
+     - `mktLOS`, `mktLead` → only on markets
+     - `kvkFac`, `hvaFac` → only on facilities
+     `tab` added to each memo's deps array. Each memo holds large dicts (`byMonth`/`byDate`/`byDow` keyed by date strings); not running them on irrelevant tabs lets V8 GC the prior tab's derived data. Estimated ~100–200 MB savings per tab switch.
+  3. **`tzCache` cap reduced from 200k → 50k entries**. Was sitting at near-cap for 180k-row TL datasets. The cache rebuilds quickly from cold so the smaller cap doesn't hurt latency much but caps memory at ~5 MB instead of ~20 MB.
 - v2.17: **Country / Property "+ Other" is now an independent toggle + fixes bucketing on new Country Overview charts.**
   1. **Root cause of the "stuck + Other" bug**: the three country-view buttons (Aggregate / Per country / + Other) were a single mutually-exclusive radio group. With 1 country selected, Aggregate and Per country were both greyed out (their threshold was `fC.length<2`), so there was no button the user could click to switch away from "+ Other" — it looked stuck.
   2. **Root cause of the "per-country-instead-of-aggregated" bug on ch-mrev-time / ch-mcnt-time**: those two charts (added in v2.16) used their own `mktTimeRpt` memo which always computed top-8-by-revenue + "Other" regardless of the country filter or view mode. Pressing "+ Other" had no effect on them.

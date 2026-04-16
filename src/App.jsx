@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.17";
+const APP_VERSION="2.18";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -79,10 +79,6 @@ function writeUrlState(state){
 }
 const INITIAL_URL_STATE=typeof window!=="undefined"?readUrlState():{};
 
-// Raw Data table column definitions — hoisted to avoid recreation on every render
-const YYB_RAW_COLS=["facility","brand","hotelType","region","country","segment","isCancelled","checkin","checkout","nights","leadTime","totalRev","roomSimple","device","rank","partySize"];
-const TL_RAW_COLS=["dateStr","facility","channel_name","channelBucket","status","guestName","country","segment","checkinStr","checkoutStr","nights","rooms","adults_male","adults_female","children","totalRev","planName","booking_id"];
-const TL_RAW_HEADERS=["Date","Facility","Channel","Bucket","Status","Guest","Country","Segment","Check-in","Check-out","Nights","Rooms","M","F","Kids","¥ (ex-tax)","Plan","Booking ID"];
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_schema");if(v!==LAYOUT_SCHEMA_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_schema",LAYOUT_SCHEMA_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -901,7 +897,7 @@ export default function App(){
       const y2=dt.getFullYear(),m2=String(dt.getMonth()+1).padStart(2,"0"),d2=String(dt.getDate()).padStart(2,"0");
       result=fmt==="month"?`${y2}-${m2}`:`${y2}-${m2}-${d2}`;
     }
-    if(tzCache.current.map.size>200000)tzCache.current.map.clear();
+    if(tzCache.current.map.size>50000)tzCache.current.map.clear();
     tzCache.current.map.set(key,result);
     return result;
   },[tz]);
@@ -921,7 +917,7 @@ export default function App(){
 const[fGeo,setFGeo]=useState(INITIAL_URL_STATE.fGeo||[]);
 const[segDetailed,setSegDetailed]=useState(false);
 const[fDOW,setFDOW]=useState(INITIAL_URL_STATE.fDOW||[]);
-  const[tab,setTab]=useState(INITIAL_URL_STATE.tab||"overview");const[tSort,setTSort]=useState({col:null,asc:true});const[tlSort,setTlSort]=useState({col:null,asc:true});const[tPage,setTPage]=useState(0);const[tlPage,setTlPage]=useState(0);const PG=50;
+  const[tab,setTab]=useState(INITIAL_URL_STATE.tab||"overview");
   const[filtersOpen,setFiltersOpen]=useState(true);
   const[sidebarCollapsed,setSidebarCollapsed]=useState(()=>{try{return localStorage.getItem("rgl_sidebar_collapsed")==="1"}catch{return false}});
   useEffect(()=>{try{localStorage.setItem("rgl_sidebar_collapsed",sidebarCollapsed?"1":"0")}catch{}},[sidebarCollapsed]);
@@ -1409,7 +1405,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const OTHER_KEY="__other__"; // internal key to avoid collision with any real country name
   const SELECTED_KEY="__selected__"; // used for aggregate+withOther combined bucket
   const perCountrySeries=useMemo(()=>{
-    // Gate
+    // Tab gate — only consumed on overview / revenue / booking tabs
+    if(tab!=="overview"&&tab!=="revenue"&&tab!=="booking")return null;
+    // Mode gate
     const perCountryActive=countryViewMode==="perCountry"&&fC.length>=2;
     const aggregateOther=countryViewMode==="aggregate"&&countryWithOther&&fC.length>=1;
     const perCountryOther=countryViewMode==="perCountry"&&countryWithOther&&fC.length>=1;
@@ -1461,9 +1459,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowCount:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"count")),
       dowRev:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"rev")),
     };
-  },[countryViewMode,countryWithOther,fC,filtered,monthMode,tz,fDT,tzFmt,dL]);
+  },[tab,countryViewMode,countryWithOther,fC,filtered,monthMode,tz,fDT,tzFmt,dL]);
   // ─── Per-property time-series — mirrors country logic (see perCountrySeries above) ───
   const perPropertySeries=useMemo(()=>{
+    if(tab!=="overview"&&tab!=="revenue"&&tab!=="booking")return null;
     const perPropActive=propertyViewMode==="perProperty"&&fP.length>=1;
     const aggregateOther=propertyViewMode==="aggregate"&&propertyWithOther&&fP.length>=1;
     const perPropOther=propertyViewMode==="perProperty"&&propertyWithOther&&fP.length>=1;
@@ -1512,7 +1511,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowCount:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"count")),
       dowRev:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"rev")),
     };
-  },[propertyViewMode,propertyWithOther,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
+  },[tab,propertyViewMode,propertyWithOther,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
   // Color helper for countries — same pattern as facColor
   const countryColor=(i)=>i<PALETTE.length?PALETTE[i]:`hsl(${(i*137.508)%360}, 65%, 55%)`;
   // Display label for a country/property series key — translates via tl() except for internal "Other" key
@@ -1522,6 +1521,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   // ─── YYB Age-split time-series (New vs Old) — active only when facAgeView==="newVsOld" AND no specific facilities selected ───
   const facAgeSeries=useMemo(()=>{
+    // Only used by overview / revenue / booking charts
+    if(tab!=="overview"&&tab!=="revenue"&&tab!=="booking")return null;
     if(facAgeView!=="newVsOld"||fP.length>0||!filtered.length)return null;
     const byMonth={},byDate={},byDow={};
     filtered.forEach(r=>{
@@ -1544,21 +1545,21 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowCount:DOW_FULL.map((d,i)=>row(byDow,d,"day",dL[i],"count")),
       dowRev:DOW_FULL.map((d,i)=>row(byDow,d,"day",dL[i],"rev")),
     };
-  },[facAgeView,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
+  },[tab,facAgeView,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
 
   // Country LOS and Lead for Country Overview tab
-  const mktLOS=useMemo(()=>!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.nights.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)})),[agg]);
-  const mktLead=useMemo(()=>!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.lead.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLead:+avg(v.lead).toFixed(1)})),[agg]);
+  const mktLOS=useMemo(()=>tab!=="markets"||!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.nights.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)})),[tab,agg]);
+  const mktLead=useMemo(()=>tab!=="markets"||!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.lead.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLead:+avg(v.lead).toFixed(1)})),[tab,agg]);
 
   // Revenue by market by month (stacked)
   const revMktMo=useMemo(()=>{
-    if(!filtered.length||!agg)return{data:[],countries:[]};
+    if(tab!=="revenue"||!filtered.length||!agg)return{data:[],countries:[]};
     const months=[...new Set(filtered.map(r=>getM(r)).filter(Boolean))].sort();
     const topN=Object.entries(agg.byC).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8).map(([c])=>c);
     const byMonthMap=new Map();filtered.forEach(r=>{const m=getM(r);if(m){if(!byMonthMap.has(m))byMonthMap.set(m,[]);byMonthMap.get(m).push(r)}});
     const data=months.map(m=>{const row={month:m};(byMonthMap.get(m)||[]).forEach(r=>{const c=topN.includes(r.country)?r.country:"Other";row[c]=(row[c]||0)+(r.totalRev||0)});return row});
     return{data,countries:[...topN,"Other"]};
-  },[filtered,agg]);
+  },[tab,filtered,agg]);
 
   // ─── COUNTRY OVERVIEW: monthly + daily stacked series for total rev + total reservations ───
   // Respects the country selection + "+ Other" modifier:
@@ -1627,18 +1628,18 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
   // Facility comparisons: Kanto vs Kansai, Hotel vs Apart
   const kvkFac=useMemo(()=>{
-    if(!filtered.length)return[];
+    if(tab!=="facilities"||!filtered.length)return[];
     const calc=fn=>{const d=filtered.filter(fn);return{n:d.length,avgRev:d.length?Math.round(d.reduce((a,r)=>a+(r.totalRev||0),0)/d.length):0,intlPct:d.length?+((d.filter(r=>r.country!=="Japan").length/d.length)*100).toFixed(1):0,avgLOS:d.length?+(avg(d.filter(r=>r.nights).map(r=>r.nights))).toFixed(2):0}};
     const k=calc(r=>r.region==="Kanto"),s=calc(r=>r.region==="Kansai");
     return[{metric:t.reservations,Kanto:k.n,Kansai:s.n},{metric:t.avgRevRes,Kanto:k.avgRev,Kansai:s.avgRev},{metric:t.intlPct,Kanto:k.intlPct,Kansai:s.intlPct},{metric:t.avgLOS,Kanto:k.avgLOS,Kansai:s.avgLOS}];
-  },[filtered,t]);
+  },[tab,filtered,t]);
 
   const hvaFac=useMemo(()=>{
-    if(!filtered.length)return[];
+    if(tab!=="facilities"||!filtered.length)return[];
     const calc=fn=>{const d=filtered.filter(fn);return{n:d.length,avgRev:d.length?Math.round(d.reduce((a,r)=>a+(r.totalRev||0),0)/d.length):0,intlPct:d.length?+((d.filter(r=>r.country!=="Japan").length/d.length)*100).toFixed(1):0,avgLOS:d.length?+(avg(d.filter(r=>r.nights).map(r=>r.nights))).toFixed(2):0}};
     const h=calc(r=>r.hotelType==="Hotel"),a2=calc(r=>r.hotelType==="Apart");
     return[{metric:t.reservations,Hotel:h.n,Apart:a2.n},{metric:t.avgRevRes,Hotel:h.avgRev,Apart:a2.avgRev},{metric:t.intlPct,Hotel:h.intlPct,Apart:a2.intlPct},{metric:t.avgLOS,Hotel:h.avgLOS,Apart:a2.avgLOS}];
-  },[filtered,t]);
+  },[tab,filtered,t]);
 
   // ─── KVK CHART DATA ───
   const kvk=useMemo(()=>{
@@ -3246,26 +3247,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     return{total,cancelled,rate,lost,monthTrend,facRows,facByRate,segRows,countryRows};
   },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fDT,fDF,fDTo,monthMode,facAgeFilter]);
 
-  // ─── TL Raw Data table ───
-  const tlTC=TL_RAW_COLS;
-  const tlTH=TL_RAW_HEADERS;
-  const tlTRows=useMemo(()=>{
-    if(tab!=="tl-data")return[];
-    let rows=tlFiltered.map(r=>{const o={};TL_RAW_COLS.forEach(c=>{o[c]=r[c]??""});return o});
-    if(tlSort.col)rows.sort((a,b)=>{let va=a[tlSort.col],vb=b[tlSort.col];if(typeof va==="number"&&typeof vb==="number")return tlSort.asc?va-vb:vb-va;return tlSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});
-    return rows;
-  },[tab,tlFiltered,tlSort]);
-  const tlPaged=useMemo(()=>tlTRows.slice(tlPage*PG,(tlPage+1)*PG),[tlTRows,tlPage]);
-  const tlTotPg=Math.ceil(tlTRows.length/PG);
-
-
-  // Table
-  const tC=YYB_RAW_COLS;
-  const tH=useMemo(()=>[t.thFacility,t.brand,t.hotelType,t.thRegion,t.thCountry,t.thSegment,t.statusFilter,t.thCheckin,t.thCheckout,t.thNights,t.thLead,t.thRev,t.thRoom,t.thDevice,t.thRank,t.thParty],[t]);
-  const tRows=useMemo(()=>{if(tab!=="data")return[];let rows=filtered.map(r=>{const o={};YYB_RAW_COLS.forEach(c=>{o[c]=(c==="checkin"||c==="checkout")?(r[c]?tzFmt(r[c]):""):r[c]??""});return o});if(tSort.col)rows.sort((a,b)=>{let va=a[tSort.col],vb=b[tSort.col];if(typeof va==="number"&&typeof vb==="number")return tSort.asc?va-vb:vb-va;return tSort.asc?String(va).localeCompare(String(vb)):String(vb).localeCompare(String(va))});return rows},[tab,filtered,tSort]);
-  const paged=useMemo(()=>tRows.slice(tPage*PG,(tPage+1)*PG),[tRows,tPage]);const totPg=Math.ceil(tRows.length/PG);
-
-  const expFilt=()=>{const h=["Facility","Region","Country","Segment","Check-in","Check-out","Nights","Lead","Rev","Room","Device","Rank","Party"];expCSV(filtered.map(r=>{const o={};tC.forEach((k,i)=>{o[h[i]]=(k==="checkin"||k==="checkout")?(r[k]?tzFmt(r[k]):""):r[k]??""});return o}),h,"filtered.csv")};
   const expSum=()=>{if(!agg)return;const h=["Country","Res","TotalRev","AvgRev","AvgLOS","AvgLead"];expCSV(Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).map(([c,v])=>({Country:c,Res:v.n,TotalRev:v.rev,AvgRev:Math.round(v.rev/v.n),AvgLOS:v.nights.length?avg(v.nights).toFixed(2):0,AvgLead:v.lead.length?avg(v.lead).toFixed(1):0})),h,"summary.csv")};
 
   // Styles
@@ -3480,7 +3461,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     {id:"adr",l:t.adrTab,src:"yyb",i:"💴"},
     {id:"facilities",l:t.facilities,src:"yyb",i:"🏨"},
     {id:"opening",l:t.openingTab,src:"yyb",i:"🆕"},
-    {id:"data",l:t.rawData,src:"yyb",i:"📄"},
     {id:"tl-channel",l:t.tlChannelMix,src:"tl",i:"📊"},
     {id:"tl-daily",l:t.tlDailyReport,src:"tl",i:"📋"},
     {id:"tl-revenue",l:t.tlRevenueTab,src:"tl",i:"¥"},
@@ -3496,7 +3476,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     {id:"tl-kvk",l:t.tlKvkTab,src:"tl",i:"⛩"},
     {id:"tl-markets",l:t.tlMarketsTab,src:"tl",i:"🌏"},
     {id:"tl-cancellations",l:t.tlCancellationsTab,src:"tl"},
-    {id:"tl-data",l:t.tlDataTab,src:"tl"},
   ];
   const activeTabSrc=(TABS.find(tb=>tb.id===tab)||{}).src||"yyb";
   const isTlTab=activeTabSrc==="tl";
@@ -4705,34 +4684,6 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           </DraggableGrid>
         </div>}
 
-        {/* TL RAW DATA */}
-        {tab==="tl-data"&&<div style={S.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{fmtN(tlFiltered.length)} rows filtered</div><button style={S.bg} onClick={()=>expCSV(tlTRows.map(r=>{const o={};TL_RAW_COLS.forEach((c,i)=>{o[TL_RAW_HEADERS[i]]=r[c]??""});return o}),TL_RAW_HEADERS,"tl_filtered.csv")}>⬇ {t.exportFiltered}</button></div>
-          <div style={{overflowX:"auto"}}>
-            <table style={S.tbl}><thead><tr>{tlTH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTlSort(p=>({col:tlTC[i],asc:p.col===tlTC[i]?!p.asc:true}));setTlPage(0)}}>{h} {tlSort.col===tlTC[i]?(tlSort.asc?"↑":"↓"):""}</th>)}</tr></thead>
-            <tbody>{tlPaged.map((r,ri)=><tr key={ri}>{tlTC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","rooms","adults_male","adults_female","children","totalRev"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"||c==="planName"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="channelBucket"?<span style={S.tag(CHANNEL_COLORS[r[c]]||"#888")}>{r[c]}</span>:c==="status"?<span style={S.tag(r[c]==="取消"?"#ef4444":r[c]==="変更"?"#c9a84c":"#34d399")}>{r[c]}</span>:String(r[c]??"")}</td>)}</tr>)}</tbody></table>
-          </div>
-          {tlTotPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,flexWrap:"wrap"}}>
-            <button style={S.btn} onClick={()=>setTlPage(0)} disabled={tlPage===0}>« First</button>
-            <button style={S.btn} onClick={()=>setTlPage(p=>Math.max(0,p-1))} disabled={tlPage===0}>{t.prev}</button>
-            <span style={{fontSize:12,color:"#a0977f",display:"flex",alignItems:"center",gap:6}}>Page <input type="number" min="1" max={tlTotPg} value={tlPage+1} onChange={e=>{const v=parseInt(e.target.value)-1;if(!isNaN(v))setTlPage(Math.max(0,Math.min(tlTotPg-1,v)))}} style={{...S.inp,width:60,padding:"3px 6px",textAlign:"center"}}/> of {tlTotPg}</span>
-            <button style={S.btn} onClick={()=>setTlPage(p=>Math.min(tlTotPg-1,p+1))} disabled={tlPage>=tlTotPg-1}>{t.next}</button>
-            <button style={S.btn} onClick={()=>setTlPage(tlTotPg-1)} disabled={tlPage>=tlTotPg-1}>Last »</button>
-          </div>}
-        </div>}
-
-        {/* RAW DATA */}
-        {tab==="data"&&<div style={S.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={S.ct}>{t.rowsFiltered(fmtN(filtered.length))}</div><button style={S.bg} onClick={expFilt}>⬇ {t.exportFiltered}</button></div>
-          <div style={{overflowX:"auto"}}><table style={S.tbl}><thead><tr>{tH.map((h,i)=><th key={h} style={S.th} onClick={()=>{setTSort(p=>({col:tC[i],asc:p.col===tC[i]?!p.asc:true}));setTPage(0)}}>{h} {tSort.col===tC[i]?(tSort.asc?"↑":"↓"):""}</th>)}</tr></thead><tbody>{paged.map((r,ri)=><tr key={ri}>{tC.map((c,ci)=><td key={ci} style={{...S.td,...(["nights","leadTime","totalRev","partySize"].includes(c)?{...S.m,textAlign:"right"}:{}),maxWidth:c==="facility"?180:undefined,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c==="totalRev"&&r[c]?"¥"+Number(r[c]).toLocaleString():c==="region"?<span style={S.tag(r[c]==="Kanto"?"#4ea8de":"#e07b54")}>{tl(r[c])}</span>:c==="isCancelled"?<span style={S.tag(r[c]?"#ef4444":"#34d399")}>{r[c]?t.statusCancelled:t.statusConfirmed}</span>:["segment","hotelType"].includes(c)?tl(String(r[c]??"")):String(r[c]??"")}</td>)}</tr>)}</tbody></table></div>
-          {totPg>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,flexWrap:"wrap"}}>
-            <button style={S.btn} onClick={()=>setTPage(0)} disabled={tPage===0}>« First</button>
-            <button style={S.btn} onClick={()=>setTPage(p=>Math.max(0,p-1))} disabled={tPage===0}>{t.prev}</button>
-            <span style={{fontSize:12,color:"#a0977f",display:"flex",alignItems:"center",gap:6}}>Page <input type="number" min="1" max={totPg} value={tPage+1} onChange={e=>{const v=parseInt(e.target.value)-1;if(!isNaN(v))setTPage(Math.max(0,Math.min(totPg-1,v)))}} style={{...S.inp,width:60,padding:"3px 6px",textAlign:"center"}}/> of {totPg}</span>
-            <button style={S.btn} onClick={()=>setTPage(p=>Math.min(totPg-1,p+1))} disabled={tPage>=totPg-1}>{t.next}</button>
-            <button style={S.btn} onClick={()=>setTPage(totPg-1)} disabled={tPage>=totPg-1}>Last »</button>
-          </div>}
-        </div>}
       </>}
     </div></div></div></div>
   );

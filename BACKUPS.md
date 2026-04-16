@@ -12,6 +12,7 @@
 | `monday-analyzer-backup-v2.13` | 2026-04-16 | v2.13 | Pre–"+ Other" modes for country + property views |
 | `monday-analyzer-backup-v2.14` | 2026-04-16 | v2.14 | Pre–Hotel Opening tab restructure (ramp window, rev ramp, stacked cohort, channel removed) |
 | `monday-analyzer-backup-v2.16` | 2026-04-16 | v2.16 | Pre–"+ Other" independent toggle restructure |
+| `monday-analyzer-backup-v2.17` | 2026-04-16 | v2.17 | Pre–Raw Data tab removal + memo gating |
 
 *Note: v1.91, v1.92, v1.93 changes are incremental and backed by git history (commits on `master`). Use `git checkout <commit-sha>` to restore any version.*
 
