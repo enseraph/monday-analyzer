@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.21";
+const APP_VERSION="2.22";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -216,7 +216,7 @@ const T = {
     region:"Region",country:"Country",segment:"Segment",property:"Property",
     dateType:"Date Type",from:"From",to:"To",
     all:"All",allCountries:"All countries",allSegments:"All segments",allProperties:"All properties",
-    checkin:"Check-in",checkout:"Check-out",bookingDate:"Booking Date",
+    checkin:"Check-in",checkout:"Check-out",bookingDate:"Booking Date",stayNight:"Stay Night",
     reservations:"Reservations",totalRevenue:"Total Revenue",avgRevRes:"Avg Rev/Res",
     avgLOS:"Avg LOS",avgLeadTime:"Avg Lead Time",intlPct:"International %",
     overview:"Overview",sourceMarkets:"Country Overview",segments:"Segments",
@@ -390,7 +390,7 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     region:"エリア",country:"国・地域",segment:"旅行者タイプ",property:"施設",
     dateType:"日付種別",from:"開始日",to:"終了日",
     all:"全て",allCountries:"全ての国",allSegments:"全タイプ",allProperties:"全施設",
-    checkin:"チェックイン",checkout:"チェックアウト",bookingDate:"予約日",
+    checkin:"チェックイン",checkout:"チェックアウト",bookingDate:"予約日",stayNight:"宿泊日",
     reservations:"予約件数",totalRevenue:"売上合計",avgRevRes:"平均単価/件",
     avgLOS:"平均泊数",avgLeadTime:"平均リードタイム",intlPct:"海外比率",
     overview:"概要",sourceMarkets:"国・地域概要",segments:"旅行者タイプ",
@@ -1196,6 +1196,7 @@ const[drSingle,setDrSingle]=useState("");
     // Use T00:00:00 to force local-midnight parsing (new Date("YYYY-MM-DD") is UTC midnight, which breaks timezone-aware comparisons)
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
     const dateField=fDT==="checkin"?"checkin":fDT==="checkout"?"checkout":"bookingDate";
+    const isStay=fDT==="stay";
     const out=[];
     for(let i=0;i<allData.length;i++){const r=allData[i];
       if(fCancel==="confirmed"&&r.isCancelled)continue;
@@ -1210,7 +1211,19 @@ const[drSingle,setDrSingle]=useState("");
       if(fDSet&&!fDSet.has(r.checkinDow))continue;
       // Age filter only applies when no specific facility selection overrides it
       if(!fPSet&&facAgeFilter!=="all"){const isNew=isNewFacility(r.facility);if(facAgeFilter==="new"&&!isNew)continue;if(facAgeFilter==="old"&&isNew)continue}
-      if(from||to){const dt=r[dateField];if(!dt)continue;if(from&&dt<from)continue;if(to&&dt>to)continue}
+      if(from||to){
+        if(isStay){
+          // Stay Night: include reservation if ANY stay night falls within [from, to].
+          // Nights occupied = [checkin, checkout-1] inclusive; overlap ⇔ checkin <= to AND checkout > from.
+          if(!r.checkin||!r.checkout)continue;
+          if(to&&r.checkin>to)continue;
+          if(from&&r.checkout<=from)continue;
+        }else{
+          const dt=r[dateField];if(!dt)continue;
+          if(from&&dt<from)continue;
+          if(to&&dt>to)continue;
+        }
+      }
       out.push(r);
     }
     return out;
@@ -1357,7 +1370,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const moD=useMemo(()=>!agg?[]:Object.entries(agg.byM).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
   const dowD=useMemo(()=>!agg?[]:DOW_FULL.map((d,i)=>({day:dL[i],checkin:agg.byD[d]?.ci||0,checkout:agg.byD[d]?.co||0})),[agg,dL]);
   // Helper: get the selected date field for a reservation
-  const getDateField=r=>fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;
+  // For aggregation (daily/DOW charts), Stay Night mode uses r.checkin as the anchor date.
+  // Per-night distribution would require exploding each reservation into N rows; out of scope.
+  const getDateField=r=>fDT==="checkin"||fDT==="stay"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;
   const getDowField=r=>{const dt=getDateField(r);if(!dt)return null;return DOW_FULL[(dt.getDay()+6)%7]};
   // Revenue by DOW
   const revDowD=useMemo(()=>{
@@ -1411,7 +1426,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     if(!facs.length)return null;
     const dMap={},mMap={};
     filtered.forEach(r=>{
-      const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;
+      const dt=getDateField(r);
       const dStr=tzFmt(dt);if(!dStr)return;
       const mStr=dStr.slice(0,7);
       if(!dMap[dStr])dMap[dStr]={};
@@ -1825,8 +1840,18 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       return d;
     };
     const base=applyFilters([...allData]);
-    const getDateStr=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
-    const inRange=(r,from,to)=>{const d=getDateStr(r);if(!d)return false;return d>=from&&d<=(to||from)};
+    const getDateStr=r=>{const dt=fDT==="checkin"||fDT==="stay"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
+    // Stay Night mode: include reservation if any stay night overlaps the range (checkin ≤ to AND checkout > from)
+    const inRange=(r,from,to)=>{
+      if(fDT==="stay"){
+        if(!r.checkin||!r.checkout)return false;
+        const ci=tzFmt(r.checkin),co=tzFmt(r.checkout);
+        if(!ci||!co)return false;
+        const hi=to||from;
+        return ci<=hi&&co>from;
+      }
+      const d=getDateStr(r);if(!d)return false;return d>=from&&d<=(to||from);
+    };
     const dataA=base.filter(r=>inRange(r,cmpA.from,cmpA.to||cmpA.from));
     const dataB=base.filter(r=>inRange(r,cmpB.from,cmpB.to||cmpB.from));
     if(!dataA.length&&!dataB.length)return{empty:true};
@@ -1907,7 +1932,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       return d;
     };
     const base=applyFilters([...allData]);
-    const getDateStr=r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
+    const getDateStr=r=>{const dt=fDT==="checkin"||fDT==="stay"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;return tzFmt(dt)};
 
     // Current month + past 5 months
     const now=new Date();
@@ -1989,7 +2014,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     // Age filter (skipped when specific facilities are selected — they override)
     if(!fP.length&&facAgeFilter!=="all")base=base.filter(r=>{const isNew=isNewFacility(r.facility);return facAgeFilter==="new"?isNew:!isNew});
     // Apply date range
-    if(fDF||fDTo){const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;base=base.filter(r=>{const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true})}
+    if(fDF||fDTo){const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;base=base.filter(r=>{
+      if(fDT==="stay"){if(!r.checkin||!r.checkout)return false;if(to&&r.checkin>to)return false;if(from&&r.checkout<=from)return false;return true}
+      const dt=fDT==="checkin"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;if(!dt)return false;if(from&&dt<from)return false;if(to&&dt>to)return false;return true
+    })}
     if(!base.length)return{empty:true};
 
     const totalN=base.length;
@@ -2730,8 +2758,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const fSSet=fS.length?new Set(fS):null;
     const fDSet=fDOW.length?new Set(fDOW):null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
-    // TL supports only booking (reception date) and checkin as date-type filters.
-    const dateField=fDT==="checkin"?"checkin":"date";
+    // TL supports booking (reception date), checkin, and stay (overlap) as date-type filters.
+    // In stay mode: include reservation if checkin ≤ to AND checkout > from.
+    const dateField=fDT==="checkin"||fDT==="stay"?"checkin":"date";
+    const isStay=fDT==="stay";
     const filtered=[],allStatus=[];
     for(let i=0;i<tlData.length;i++){const r=tlData[i];
       if(fPSet&&!fPSet.has(r.facility))continue;
@@ -2743,9 +2773,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fSSet&&!fSSet.has(r.segment))continue;
       if(fDSet&&!fDSet.has(r.checkinDow))continue;
       if(!fPSet&&facAgeFilter!=="all"){const isNew=isNewFacility(r.facility);if(facAgeFilter==="new"&&!isNew)continue;if(facAgeFilter==="old"&&isNew)continue}
-      const dt=r[dateField];
-      if(from&&(!dt||dt<from))continue;
-      if(to&&(!dt||dt>to))continue;
+      if(isStay){
+        if(!r.checkin||!r.checkout)continue;
+        if(to&&r.checkin>to)continue;
+        if(from&&r.checkout<=from)continue;
+      }else{
+        const dt=r[dateField];
+        if(from&&(!dt||dt<from))continue;
+        if(to&&(!dt||dt>to))continue;
+      }
       allStatus.push(r);
       // Status filter for the Net/Cancelled/Modified view
       if(fTlStatus==="net"){
@@ -2773,7 +2809,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     tlFiltered.forEach(r=>{
       const bucket=isNewFacility(r.facility)?"New":"Old";
       const m=tlGetM(r);
-      const d=fDT==="checkin"?r.checkinStr:r.dateStr;
+      const d=(fDT==="checkin"||fDT==="stay")?r.checkinStr:r.dateStr;
       const dow=r.checkinDow;
       const rev=r.totalRev||0;
       if(m){if(!byMonth[m])byMonth[m]={New:{count:0,rev:0},Old:{count:0,rev:0}};byMonth[m][bucket].count++;byMonth[m][bucket].rev+=rev}
@@ -3411,7 +3447,8 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   const tlCancelRpt=useMemo(()=>{
     if(tab!=="tl-cancellations"||!tlData.length)return null;
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
-    const dateField=fDT==="checkin"?"checkin":"date";
+    const dateField=fDT==="checkin"||fDT==="stay"?"checkin":"date";
+    const isStay=fDT==="stay";
     const apply=r=>{
       if(fP.length&&!fP.includes(r.facility))return false;
       if(fChannelBucket.length&&!fChannelBucket.includes(r.channelBucket))return false;
@@ -3422,9 +3459,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fS.length&&!fS.includes(r.segment))return false;
       if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
       if(!fP.length&&facAgeFilter!=="all"){const isNew=isNewFacility(r.facility);if(facAgeFilter==="new"&&!isNew)return false;if(facAgeFilter==="old"&&isNew)return false}
-      const dt=r[dateField];
-      if(from&&(!dt||dt<from))return false;
-      if(to&&(!dt||dt>to))return false;
+      if(isStay){
+        if(!r.checkin||!r.checkout)return false;
+        if(to&&r.checkin>to)return false;
+        if(from&&r.checkout<=from)return false;
+      }else{
+        const dt=r[dateField];
+        if(from&&(!dt||dt<from))return false;
+        if(to&&(!dt||dt>to))return false;
+      }
       return true;
     };
     const base=tlData.filter(apply);
@@ -3791,7 +3834,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {isTlTab&&<div><div style={Sc.fl}>{t.tlStatus}</div><div style={{display:"flex",gap:2,flexWrap:"wrap"}}>{[["net",t.tlStatusNet],["all",t.tlStatusAll],["cancelled",t.tlStatusCancelled],["modified",t.tlStatusModified]].map(([v,l])=><button key={v} style={{...Sc.btn,...(fTlStatus===v?S.ba:{})}} onClick={()=>setFTlStatus(v)}>{l}</button>)}</div></div>}
 {!isTlTab&&<div><div style={Sc.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>}
 <div><div style={Sc.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>
-        <div><div style={Sc.fl}>{t.dateType}</div><select style={Sc.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></>}</select></div>
+        <div><div style={Sc.fl}>{t.dateType}</div><select style={Sc.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option><option value="stay">{t.stayNight}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option><option value="stay">{t.stayNight}</option></>}</select></div>
         <div><div style={Sc.fl}>{t.dateRange}</div><DateRangePicker from={fDF} to={fDTo} onApply={(f,tt)=>{setFDF(f);setFDTo(tt)}} S={Sc} theme={TH} t={t} lang={lang} isMobile={isMobile}/></div>
         <div><div style={Sc.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...Sc.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
         <button style={{...Sc.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF(defaultDateFrom());setFDTo(defaultDateTo());setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setCountryViewMode("aggregate");setPropertyViewMode("aggregate");setCountryWithOther(false);setPropertyWithOther(false);setActivePreset(null)}}>{t.reset}</button>

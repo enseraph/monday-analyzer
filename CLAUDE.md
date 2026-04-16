@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.21
+Current: 2.22
 
 Recent changes:
+- v2.22: **New "Stay Night" date type option.** Added as a 4th choice in the global Date Type dropdown (YYB and TL both expose it). Unlike the existing point-in-time options (check-in / check-out / booking date), Stay Night uses an **overlap filter**: a reservation is included if ANY of its stay nights falls within the date range — i.e. `checkin ≤ to AND checkout > from` (checkout night isn't counted as occupied). Applied to the main `filtered` memo, `compareRpt`/`cancelRpt`/`paceRpt` `getDateStr`/`inRange` helpers, the `losRpt` inline date filter, and the TL-side filter (`tlFiltered` / `tlAllStatusFiltered`) and `tlCancelRpt.apply`. For aggregation (daily/DOW charts), `getDateField()` uses `r.checkin` as the anchor date in stay mode — night-level distribution would require exploding each reservation into N rows, out of scope for this change. New i18n key `t.stayNight` ("Stay Night" / "宿泊日").
 - v2.21: **Default global date range = 1st of current month → yesterday.** Previously the default was empty/no filter, meaning every tab loaded the full multi-year dataset. This froze the browser on the Facilities tab (daily per-facility stacked charts render tens of thousands of SVG rects when spanning years × 30+ facilities). New module-level helpers `defaultDateFrom()` / `defaultDateTo()` compute the range dynamically per session. Applied to: initial `fDF`/`fDTo` state, and the Reset button (resetting now restores this-month rather than clearing). URL state still overrides the default when present (shareable links still work).
 - v2.20.1: **Fix "Other" row doubling up in charts.** Root cause: `COUNTRY_MAP` had legacy entries mapping the literal strings `"Other"` and `"その他"` → `"Other"` — meaning the data could contain a country *literally named* "Other" that then collided with the v2.20 aggregate bucket also labeled "Other". A chart would show a real "Other" row AND an aggregate "Other" row with different numbers. Fixes:
   1. Renamed `OTHER_KEY_NAME` from `"Other"` → `"__MA_OTHER__"` (internal sentinel, won't collide with any real country name).
