@@ -10,6 +10,7 @@
 | `monday-analyzer-backup-v2.07` | 2026-04-15 | v2.07 | Pre–Hotel Opening tab |
 | `monday-analyzer-backup-v2.09` | 2026-04-15 | v2.09 | Pre–constants extraction + Kansai kw + unclassified banner |
 | `monday-analyzer-backup-v2.13` | 2026-04-16 | v2.13 | Pre–"+ Other" modes for country + property views |
+| `monday-analyzer-backup-v2.14` | 2026-04-16 | v2.14 | Pre–Hotel Opening tab restructure (ramp window, rev ramp, stacked cohort, channel removed) |
 
 *Note: v1.91, v1.92, v1.93 changes are incremental and backed by git history (commits on `master`). Use `git checkout <commit-sha>` to restore any version.*
 

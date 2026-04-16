@@ -88,5 +88,5 @@ export const isNewFacility=f=>{const d=FACILITY_OPENING_DATES[f];return d?d>=NEW
 export const FACILITIES_WITH_PREOPEN_DATA=Object.keys(FACILITY_OPENING_DATES).filter(f=>FACILITY_OPENING_DATES[f]>="2024-01-01").sort((a,b)=>FACILITY_OPENING_DATES[b].localeCompare(FACILITY_OPENING_DATES[a]));
 
 // ─── Hotel Opening tab settings ───
-export const PRE_OPEN_RAMP_DAYS=180; // days of pre-opening booking ramp to show
+export const PRE_OPEN_RAMP_DAYS=100; // days of pre-opening booking ramp to show
 export const COHORT_DAYS=180;        // days of post-opening cohort curve to show
