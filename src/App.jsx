@@ -10,11 +10,15 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.20.1";
+const APP_VERSION="2.21";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
+// Default global date range: 1st of current month → yesterday (avoids loading the full multi-year
+// dataset into daily per-facility charts, which was freezing the browser on the Facilities tab).
+function defaultDateFrom(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`}
+function defaultDateTo(){const d=new Date();d.setDate(d.getDate()-DATA_LAG_DAYS);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
 const SOURCE_COLORS={yyb:"#c9a84c",tl:"#5eead4"};
 // Channel bucket colors for TL tab
@@ -936,7 +940,7 @@ export default function App(){
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
   useEffect(()=>{let raf=0;const h=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const m=window.innerWidth<768;setIsMobile(p=>p===m?p:m)})};window.addEventListener("resize",h);return()=>{window.removeEventListener("resize",h);if(raf)cancelAnimationFrame(raf)}},[]);
   const[allData,setAllData]=useState([]);const[allH,setAllH]=useState([]);const[fL,setFL]=useState([]);const[errs,setErrs]=useState([]);const[proc,setProc]=useState(false);
-  const[fR,setFR]=useState(INITIAL_URL_STATE.fR||"All");const[fC,setFC]=useState(INITIAL_URL_STATE.fC||[]);const[fDT,setFDT]=useState(INITIAL_URL_STATE.fDT||"booking");const[fDF,setFDF]=useState(INITIAL_URL_STATE.fDF||"");const[fDTo,setFDTo]=useState(INITIAL_URL_STATE.fDTo||"");const[fS,setFS]=useState(INITIAL_URL_STATE.fS||[]);const[fP,setFP]=useState(INITIAL_URL_STATE.fP||[]);
+  const[fR,setFR]=useState(INITIAL_URL_STATE.fR||"All");const[fC,setFC]=useState(INITIAL_URL_STATE.fC||[]);const[fDT,setFDT]=useState(INITIAL_URL_STATE.fDT||"booking");const[fDF,setFDF]=useState(INITIAL_URL_STATE.fDF||defaultDateFrom());const[fDTo,setFDTo]=useState(INITIAL_URL_STATE.fDTo||defaultDateTo());const[fS,setFS]=useState(INITIAL_URL_STATE.fS||[]);const[fP,setFP]=useState(INITIAL_URL_STATE.fP||[]);
   const[fCancel,setFCancel]=useState(INITIAL_URL_STATE.fCancel||"all"); // "confirmed" | "cancelled" | "all"
   const[fHType,setFHType]=useState(INITIAL_URL_STATE.fHType||"All"); // "All" | "Hotel" | "Apart"
   const[fBrands,setFBrands]=useState(INITIAL_URL_STATE.fBrands||[]);
@@ -3790,7 +3794,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         <div><div style={Sc.fl}>{t.dateType}</div><select style={Sc.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></>}</select></div>
         <div><div style={Sc.fl}>{t.dateRange}</div><DateRangePicker from={fDF} to={fDTo} onApply={(f,tt)=>{setFDF(f);setFDTo(tt)}} S={Sc} theme={TH} t={t} lang={lang} isMobile={isMobile}/></div>
         <div><div style={Sc.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...Sc.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
-        <button style={{...Sc.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setCountryViewMode("aggregate");setPropertyViewMode("aggregate");setCountryWithOther(false);setPropertyWithOther(false);setActivePreset(null)}}>{t.reset}</button>
+        <button style={{...Sc.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF(defaultDateFrom());setFDTo(defaultDateTo());setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setCountryViewMode("aggregate");setPropertyViewMode("aggregate");setCountryWithOther(false);setPropertyWithOther(false);setActivePreset(null)}}>{t.reset}</button>
         <button style={{...Sc.btn,fontSize:14,padding:"3px 8px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}

@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.20.1
+Current: 2.21
 
 Recent changes:
+- v2.21: **Default global date range = 1st of current month → yesterday.** Previously the default was empty/no filter, meaning every tab loaded the full multi-year dataset. This froze the browser on the Facilities tab (daily per-facility stacked charts render tens of thousands of SVG rects when spanning years × 30+ facilities). New module-level helpers `defaultDateFrom()` / `defaultDateTo()` compute the range dynamically per session. Applied to: initial `fDF`/`fDTo` state, and the Reset button (resetting now restores this-month rather than clearing). URL state still overrides the default when present (shareable links still work).
 - v2.20.1: **Fix "Other" row doubling up in charts.** Root cause: `COUNTRY_MAP` had legacy entries mapping the literal strings `"Other"` and `"その他"` → `"Other"` — meaning the data could contain a country *literally named* "Other" that then collided with the v2.20 aggregate bucket also labeled "Other". A chart would show a real "Other" row AND an aggregate "Other" row with different numbers. Fixes:
   1. Renamed `OTHER_KEY_NAME` from `"Other"` → `"__MA_OTHER__"` (internal sentinel, won't collide with any real country name).
   2. Added `"__MA_OTHER__"` → `t.otherLabel` mapping in `tlBase` so `tl()` renders it as "Other"/"その他" on axes and legends.
