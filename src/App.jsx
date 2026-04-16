@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.19";
+const APP_VERSION="2.20";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -79,6 +79,30 @@ function writeUrlState(state){
 }
 const INITIAL_URL_STATE=typeof window!=="undefined"?readUrlState():{};
 
+// ─── "Top N + Other" helpers ───
+// Used by summary/bar charts to avoid silent truncation. When a sorted list of rows
+// exceeds the display cap, the excess is aggregated into a single "Other" bucket row.
+const OTHER_KEY_NAME="Other"; // country/facility/channel label for the aggregate bucket
+// Market-style rows with {country, count, rev, avgRev}. Sums count+rev, recomputes avgRev.
+function topNPlusOtherMkt(rows,n,labelKey="country"){
+  if(!rows||rows.length<=n)return rows||[];
+  const top=rows.slice(0,n);
+  const rest=rows.slice(n);
+  const count=rest.reduce((a,r)=>a+(r.count||0),0);
+  const rev=rest.reduce((a,r)=>a+(r.rev||0),0);
+  return[...top,{[labelKey]:OTHER_KEY_NAME,count,rev,avgRev:count>0?Math.round(rev/count):0}];
+}
+// Generic numeric-field summer. `numericFields` are summed verbatim; `computedFields` are
+// recomputed from the summed Other row (e.g., avg = rev/count). `label` fills in the key field.
+function topNPlusOtherGeneric(rows,n,labelKey,numericFields,computedFields){
+  if(!rows||rows.length<=n)return rows||[];
+  const top=rows.slice(0,n);
+  const rest=rows.slice(n);
+  const other={[labelKey]:OTHER_KEY_NAME};
+  numericFields.forEach(f=>{other[f]=rest.reduce((a,r)=>a+(r[f]||0),0)});
+  if(computedFields)Object.entries(computedFields).forEach(([k,fn])=>{other[k]=fn(other)});
+  return[...top,other];
+}
 
 // ─── Grid Layout Helpers ───
 function loadLayouts(tabId){try{const v=localStorage.getItem("rgl_schema");if(v!==LAYOUT_SCHEMA_VERSION){Object.keys(localStorage).filter(k=>k.startsWith("rgl_")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("rgl_schema",LAYOUT_SCHEMA_VERSION);return null}return JSON.parse(localStorage.getItem(`rgl_${tabId}`))||null}catch{return null}}
@@ -904,7 +928,7 @@ export default function App(){
   const t=T[lang];const dL=lang==="ja"?DOW_JA:DOW_SHORT;
   // Translate data-level labels (region, segment, type, rank, country)
   // Translator dicts are memoized per-lang to avoid allocating ~60-key objects on every tl() call (was called 1000+/render)
-  const tlBase=useMemo(()=>({"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum,"返金不可":t._PlanNR,"学生":t._PlanStudent,"その他":t._PlanOther}),[t]);
+  const tlBase=useMemo(()=>({"Kanto":t.kanto,"Kansai":t.kansai,"Solo":t._Solo,"Couple":t._Couple,"Family":t._Family,"Group":t._Group,"Hotel":t._Hotel,"Apart":t._Apart,"No Rank":t._NoRank,"Regular":t._Regular,"Gold":t._Gold,"Platinum":t._Platinum,"返金不可":t._PlanNR,"学生":t._PlanStudent,"その他":t._PlanOther,"Other":t.otherLabel}),[t]);
   const tlJa=useMemo(()=>lang==="ja"?{"Couple (1M+1F)":"カップル(1M+1F)","Duo (Male)":"男性ペア","Duo (Female)":"女性ペア","Family (1 child)":"ファミリー(子1)","Family (2 children)":"ファミリー(子2)","Family (3+ children)":"ファミリー(子3+)","Group (All Male)":"グループ(全男性)","Group (All Female)":"グループ(全女性)","Group (Mixed)":"グループ(混合)","Overall":"全体","Japanese":"日本","Japan":"日本","United States":"アメリカ","Canada":"カナダ","Taiwan":"台湾","Australia":"オーストラリア","Hong Kong":"香港","Singapore":"シンガポール","South Korea":"韓国","Indonesia":"インドネシア","Thailand":"タイ","Malaysia":"マレーシア","UK":"英国","Philippines":"フィリピン","France":"フランス","China":"中国","New Zealand":"ニュージーランド","India":"インド","Germany":"ドイツ","Spain":"スペイン","Mexico":"メキシコ","Brazil":"ブラジル","Italy":"イタリア","Ireland":"アイルランド","Switzerland":"スイス","Israel":"イスラエル","UAE":"UAE","Chile":"チリ","Argentina":"アルゼンチン","Netherlands":"オランダ","Denmark":"デンマーク","Austria":"オーストリア","Brunei":"ブルネイ","Finland":"フィンランド","Poland":"ポーランド","Norway":"ノルウェー","Russia":"ロシア","Belgium":"ベルギー","Sweden":"スウェーデン","Vietnam":"ベトナム","Unknown":"不明","Other":"その他","International (EN)":"英語(国不明)","EN (no country)":"英語(国不明)"}:null,[lang]);
   const tl=useCallback(v=>{if(tlBase[v])return tlBase[v];if(tlJa&&tlJa[v])return tlJa[v];return v},[tlBase,tlJa]);
   const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<768);
@@ -1276,8 +1300,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   },[filtered,monthMode,tz]);
 
   // ─── CHART DATA ───
-  const mktD=useMemo(()=>!agg?[]:Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
-  const mktDByRev=useMemo(()=>mktD?[...mktD].sort((a,b)=>b.rev-a.rev):[],[mktD]);
+  // mktRevAll: ALL countries sorted by revenue, no truncation. Used by Revenue tab "Total Revenue by Country" chart.
+  const mktRevAll=useMemo(()=>!agg?[]:Object.entries(agg.byC).sort((a,b)=>b[1].rev-a[1].rev).map(([c,v])=>({country:c,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
+  // mktAllByCount: same data sorted by count (baseline for all other Top-N+Other country charts)
+  const mktAllByCount=useMemo(()=>!agg?[]:Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).map(([c,v])=>({country:c,count:v.n,rev:v.rev,avgRev:Math.round(v.rev/v.n)})),[agg]);
+  // mktD: top 15 by count + aggregated "Other" row (drives Country Overview ch-mf, ch-mr, Country Summary Table)
+  const mktD=useMemo(()=>topNPlusOtherMkt(mktAllByCount,15),[mktAllByCount]);
+  // mktDByRev: top 15 by revenue + Other (drives Country Overview ch-mrev and Overview ch-rev-country)
+  const mktDByRev=useMemo(()=>topNPlusOtherMkt(mktRevAll,15),[mktRevAll]);
+  // overviewTopMkt: top 10 by count + Other (for Overview "Top Source Markets")
+  const overviewTopMkt=useMemo(()=>topNPlusOtherMkt(mktAllByCount,10),[mktAllByCount]);
   const segD=useMemo(()=>!agg?[]:SEG_ORDER.filter(s=>agg.byS[s]).map(s=>({segment:s,count:agg.byS[s].n,avgRev:Math.round(agg.byS[s].rev/agg.byS[s].n),avgLOS:+(avg(agg.byS[s].nights)).toFixed(2),avgLead:+(avg(agg.byS[s].lead)).toFixed(1)})),[agg]);
   // Detailed segment breakdown computed directly from filtered (not in agg)
   const segDetailedD=useMemo(()=>{
@@ -1353,7 +1385,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const coData=DOW_FULL.map((d,i)=>{const row={day:dL[i]};months.forEach(m=>{row[m]=byMonthDow[m]?.[d+"_co"]||0});return row});
     return{months,ciData,coData};
   },[filtered,monthMode,tz,dL]);
-  const rmD=useMemo(()=>!agg?[]:Object.entries(agg.byRm).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([r,c])=>({room:r,count:c})),[agg]);
+  const rmD=useMemo(()=>{
+    if(!agg)return[];
+    const all=Object.entries(agg.byRm).sort((a,b)=>b[1]-a[1]);
+    if(all.length<=12)return all.map(([r,c])=>({room:r,count:c}));
+    const top=all.slice(0,12).map(([r,c])=>({room:r,count:c}));
+    const o=all.slice(12).reduce((a,[,c])=>a+c,0);
+    return[...top,{room:OTHER_KEY_NAME,count:o}];
+  },[agg]);
   const facD=useMemo(()=>!agg?[]:Object.entries(agg.byF).sort((a,b)=>b[1].n-a[1].n).map(([nm,f])=>({name:shortFac(nm),fullName:nm,region:f.region,n:f.n,avgRev:f.n>0?Math.round(f.rev/f.n):0,intlPct:f.n>0?+((f.intl/f.n)*100).toFixed(1):0,avgLOS:f.nights.length?+(avg(f.nights)).toFixed(1):0,topSeg:Object.entries(f.segs).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"})),[agg]);
 
   // Facility time-series — daily/monthly count + revenue per facility + new-vs-old grouping
@@ -1560,9 +1599,26 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     };
   },[tab,facAgeView,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
 
-  // Country LOS and Lead for Country Overview tab
-  const mktLOS=useMemo(()=>tab!=="markets"||!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.nights.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)})),[tab,agg]);
-  const mktLead=useMemo(()=>tab!=="markets"||!agg?[]:Object.entries(agg.byC).filter(([,v])=>v.lead.length>=5).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgLead:+avg(v.lead).toFixed(1)})),[tab,agg]);
+  // Country LOS and Lead for Country Overview tab. Top 15 by count + "Other" row
+  // whose avg is computed across ALL non-top-15 nights/lead arrays (weighted by sample count).
+  const mktLOS=useMemo(()=>{
+    if(tab!=="markets"||!agg)return[];
+    const all=Object.entries(agg.byC).filter(([,v])=>v.nights.length>=5).sort((a,b)=>b[1].n-a[1].n);
+    if(all.length<=15)return all.map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)}));
+    const top=all.slice(0,15).map(([c,v])=>({country:c,avgLOS:+avg(v.nights).toFixed(2)}));
+    const rest=all.slice(15);
+    let sum=0,cnt=0;rest.forEach(([,v])=>{v.nights.forEach(n=>{sum+=n;cnt++})});
+    return cnt>0?[...top,{country:OTHER_KEY_NAME,avgLOS:+(sum/cnt).toFixed(2)}]:top;
+  },[tab,agg]);
+  const mktLead=useMemo(()=>{
+    if(tab!=="markets"||!agg)return[];
+    const all=Object.entries(agg.byC).filter(([,v])=>v.lead.length>=5).sort((a,b)=>b[1].n-a[1].n);
+    if(all.length<=15)return all.map(([c,v])=>({country:c,avgLead:+avg(v.lead).toFixed(1)}));
+    const top=all.slice(0,15).map(([c,v])=>({country:c,avgLead:+avg(v.lead).toFixed(1)}));
+    const rest=all.slice(15);
+    let sum=0,cnt=0;rest.forEach(([,v])=>{v.lead.forEach(l=>{sum+=l;cnt++})});
+    return cnt>0?[...top,{country:OTHER_KEY_NAME,avgLead:+(sum/cnt).toFixed(1)}]:top;
+  },[tab,agg]);
 
   // Revenue by market by month (stacked)
   const revMktMo=useMemo(()=>{
@@ -1657,8 +1713,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   // ─── KVK CHART DATA ───
   const kvk=useMemo(()=>{
     if((tab!=="kvk"&&tab!=="markets")||!agg)return null;
-    // Market bars per region (excl Japan)
-    const mkR=reg=>Object.entries(agg.rC[reg]||{}).filter(([c])=>c!=="Japan").sort((a,b)=>b[1]-a[1]).slice(0,10).map(([c,n])=>({country:c,count:n}));
+    // Market bars per region (excl Japan) — top 10 + Other
+    const mkR=reg=>{
+      const all=Object.entries(agg.rC[reg]||{}).filter(([c])=>c!=="Japan").sort((a,b)=>b[1]-a[1]);
+      if(all.length<=10)return all.map(([c,n])=>({country:c,count:n}));
+      const top=all.slice(0,10).map(([c,n])=>({country:c,count:n}));
+      const oCount=all.slice(10).reduce((a,[,n])=>a+n,0);
+      return[...top,{country:OTHER_KEY_NAME,count:oCount}];
+    };
     // Monthly stacked by top countries
     const months=Object.keys(agg.byM).sort();
     const topC=[...new Set(Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,8).map(([c])=>c))];
@@ -1668,11 +1730,25 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const segReg=SEG_ORDER.map(s=>({segment:s,Kanto:agg.rS.Kanto[s]||0,Kansai:agg.rS.Kansai[s]||0}));
     // Seg by month stacked
     const segMo=months.map(m=>{const row={month:m};(byMonthMap.get(m)||[]).forEach(r=>{row[r.segment]=(row[r.segment]||0)+1});return row});
-    // Seg by country %
-    const topCforSeg=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,12).map(([c])=>c);
+    // Seg by country % — top 12 + Other (aggregated rest's segment mix as %)
+    const allByC=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n);
+    const topCforSeg=allByC.slice(0,12).map(([c])=>c);
     const segCountry=topCforSeg.map(c=>{const segs=agg.cS[c]||{};const tot=Object.values(segs).reduce((a,b)=>a+b,0);const row={country:c};SEG_ORDER.forEach(s=>{row[s]=tot>0?Math.round(100*(segs[s]||0)/tot):0});return row});
-    // LOS by country
-    const losC=Object.entries(agg.cLOS).filter(([,a])=>a.length>=5).sort((a,b)=>avg(b[1])-avg(a[1])).slice(0,15).map(([c,a])=>({country:c,avg:+avg(a).toFixed(2),n:a.length}));
+    if(allByC.length>12){
+      const restC=allByC.slice(12).map(([c])=>c);
+      const aggSegs={};
+      restC.forEach(c=>{const segs=agg.cS[c]||{};Object.entries(segs).forEach(([s,n])=>{aggSegs[s]=(aggSegs[s]||0)+n})});
+      const tot=Object.values(aggSegs).reduce((a,b)=>a+b,0);
+      const row={country:OTHER_KEY_NAME};SEG_ORDER.forEach(s=>{row[s]=tot>0?Math.round(100*(aggSegs[s]||0)/tot):0});
+      segCountry.push(row);
+    }
+    // LOS by country — top 15 by avg LOS + Other (weighted avg of rest's nights arrays)
+    const losEntries=Object.entries(agg.cLOS).filter(([,a])=>a.length>=5).sort((a,b)=>avg(b[1])-avg(a[1]));
+    const losC=losEntries.slice(0,15).map(([c,a])=>({country:c,avg:+avg(a).toFixed(2),n:a.length}));
+    if(losEntries.length>15){
+      let sum=0,cnt=0;losEntries.slice(15).forEach(([,a])=>{a.forEach(n=>{sum+=n;cnt++})});
+      if(cnt>0)losC.push({country:OTHER_KEY_NAME,avg:+(sum/cnt).toFixed(2),n:cnt});
+    }
     // LOS by seg×region
     const losSR=SEG_ORDER.map(s=>({segment:s,Kanto:agg.rSL.Kanto[s]?+avg(agg.rSL.Kanto[s]).toFixed(2):0,Kansai:agg.rSL.Kansai[s]?+avg(agg.rSL.Kansai[s]).toFixed(2):0}));
     // Lead by seg (avg+med)
@@ -1694,8 +1770,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const adrSeg=SEG_ORDER.filter(s=>agg.segADR[s]&&agg.segADR[s].rn>0).map(s=>({segment:s,adr:Math.round(agg.segADR[s].rev/agg.segADR[s].rn)}));
     // Rev by seg×region
     const revSR=SEG_ORDER.map(s=>({segment:s,Kanto:agg.rSR.Kanto[s]?Math.round(avg(agg.rSR.Kanto[s])):0,Kansai:agg.rSR.Kansai[s]?Math.round(avg(agg.rSR.Kansai[s])):0}));
-    // Rev by country
-    const revC=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,15).map(([c,v])=>({country:c,avgRev:Math.round(v.rev/v.n)}));
+    // Rev by country — top 15 by count + Other (weighted avg = restTotalRev/restTotalCount)
+    const revCAll=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n);
+    const revC=revCAll.slice(0,15).map(([c,v])=>({country:c,avgRev:Math.round(v.rev/v.n)}));
+    if(revCAll.length>15){
+      const restN=revCAll.slice(15).reduce((a,[,v])=>a+v.n,0);
+      const restR=revCAll.slice(15).reduce((a,[,v])=>a+v.rev,0);
+      if(restN>0)revC.push({country:OTHER_KEY_NAME,avgRev:Math.round(restR/restN)});
+    }
     // Room by seg
     const allRoomTypes=[...new Set(SEG_ORDER.flatMap(s=>Object.keys(Object.entries(filtered.reduce((a,r)=>{if(r.segment===s){a[r.roomSimple]=(a[r.roomSimple]||0)+1}return a},{})).sort((a,b)=>b[1]-a[1]).slice(0,8).reduce((o,[k,v])=>({...o,[k]:v}),{}))))];
     const roomSeg=SEG_ORDER.map(s=>{const row={segment:s};filtered.filter(r=>r.segment===s).forEach(r=>{row[r.roomSimple]=(row[r.roomSimple]||0)+1});return row});
@@ -1704,9 +1786,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const roomReg=allRoomRegion.map(rm=>({room:rm,Kanto:agg.rRoom.Kanto[rm]||0,Kansai:agg.rRoom.Kansai[rm]||0}));
     // Rank by region
     const rankReg=["Kanto","Kansai"].map(reg=>{const row={region:reg};RANK_ORDER.forEach(rk=>{row[rk]=agg.rRank[reg][rk]||0});return row});
-    // Rank by country (top 6)
-    const topRkC=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n).slice(0,6).map(([c])=>c);
+    // Rank by country — top 6 + Other (summed rank counts across non-top countries)
+    const rkAllByC=Object.entries(agg.byC).sort((a,b)=>b[1].n-a[1].n);
+    const topRkC=rkAllByC.slice(0,6).map(([c])=>c);
     const rankC=topRkC.map(c=>{const row={country:c};RANK_ORDER.forEach(rk=>{row[rk]=agg.rkC[c]?.[rk]||0});return row});
+    if(rkAllByC.length>6){
+      const restC=rkAllByC.slice(6).map(([c])=>c);
+      const other={country:OTHER_KEY_NAME};
+      RANK_ORDER.forEach(rk=>{other[rk]=restC.reduce((a,c)=>a+(agg.rkC[c]?.[rk]||0),0)});
+      rankC.push(other);
+    }
 
     return{mkKanto:mkR("Kanto"),mkKansai:mkR("Kansai"),mktMo,topC,segReg,segMo,segCountry,losC,losSR,leadSeg,leadMo,dowCI,dowCO,devR,adrSeg,revSR,revC,roomSeg,allRoomTypes,roomReg,rankReg,rankC,kantoN,kansaiN};
   },[tab,agg,filtered,dL,lang,tz]);
@@ -1754,9 +1843,14 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
     const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
-    const topC=[...countryRows].sort((x,y)=>y.revA-x.revA).slice(0,10);
-    const revChart=topC.map(c=>({country:c.country,A:c.revA,B:c.revB}));
-    const countChart=[...countryRows].sort((x,y)=>y.countA-x.countA).slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
+    // Top 10 by Period A revenue + Other (aggregated from the rest)
+    const byRevA=[...countryRows].sort((x,y)=>y.revA-x.revA);
+    const revChart=byRevA.slice(0,10).map(c=>({country:c.country,A:c.revA,B:c.revB}));
+    if(byRevA.length>10){const r=byRevA.slice(10);revChart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c.revA,0),B:r.reduce((a,c)=>a+c.revB,0)})}
+    const byCountA=[...countryRows].sort((x,y)=>y.countA-x.countA);
+    const countChart=byCountA.slice(0,10).map(c=>({country:c.country,A:c.countA,B:c.countB}));
+    if(byCountA.length>10){const r=byCountA.slice(10);countChart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c.countA,0),B:r.reduce((a,c)=>a+c.countB,0)})}
+    const topC=revChart;
     const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
     const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
     // ─── Daily + Monthly time-series (A vs B aligned by day/month index) ───
@@ -1903,10 +1997,18 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     base.forEach(r=>{const m=getM(r);if(!m)return;if(!byMonth[m])byMonth[m]={total:0,cancelled:0,lostRev:0};byMonth[m].total++;if(r.isCancelled){byMonth[m].cancelled++;byMonth[m].lostRev+=r.totalRev||0}});
     const monthTrend=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>({month:m,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev}));
 
-    // By country (top 15 by total volume)
+    // By country — top 15 by total volume + Other (rate recomputed from summed total/cancelled)
     const byCountry={};
     base.forEach(r=>{if(!byCountry[r.country])byCountry[r.country]={total:0,cancelled:0,lostRev:0,cancelFee:0};byCountry[r.country].total++;if(r.isCancelled){byCountry[r.country].cancelled++;byCountry[r.country].lostRev+=r.totalRev||0;byCountry[r.country].cancelFee+=r.cancelFee||0}});
-    const countryRows=Object.entries(byCountry).sort((a,b)=>b[1].total-a[1].total).slice(0,15).map(([c,v])=>({country:c,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev,cancelFee:v.cancelFee}));
+    const byCountryAll=Object.entries(byCountry).sort((a,b)=>b[1].total-a[1].total);
+    const countryRows=byCountryAll.slice(0,15).map(([c,v])=>({country:c,total:v.total,cancelled:v.cancelled,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0,lostRev:v.lostRev,cancelFee:v.cancelFee}));
+    if(byCountryAll.length>15){
+      const rest=byCountryAll.slice(15);
+      const o={country:OTHER_KEY_NAME,total:0,cancelled:0,lostRev:0,cancelFee:0};
+      rest.forEach(([,v])=>{o.total+=v.total;o.cancelled+=v.cancelled;o.lostRev+=v.lostRev;o.cancelFee+=v.cancelFee});
+      o.rate=o.total>0?+((o.cancelled/o.total)*100).toFixed(1):0;
+      countryRows.push(o);
+    }
     const countryByRate=[...countryRows].sort((a,b)=>b.rate-a.rate);
 
     // By segment
@@ -1953,10 +2055,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       return{segment:s,avgLOS:d.length?+(d.reduce((a,r)=>a+r.nights,0)/d.length).toFixed(2):0,count:d.length};
     }).filter(s=>s.count>0);
 
-    // By country: avg LOS top 15
+    // By country — top 15 by count + Other (weighted avg = rest nights / rest total)
     const byC={};
     withNights.forEach(r=>{if(!byC[r.country])byC[r.country]={total:0,nights:0};byC[r.country].total++;byC[r.country].nights+=r.nights});
-    const countryLOS=Object.entries(byC).sort((a,b)=>b[1].total-a[1].total).slice(0,15).map(([c,v])=>({country:c,avgLOS:+(v.nights/v.total).toFixed(2),count:v.total}));
+    const byCAll=Object.entries(byC).sort((a,b)=>b[1].total-a[1].total);
+    const countryLOS=byCAll.slice(0,15).map(([c,v])=>({country:c,avgLOS:+(v.nights/v.total).toFixed(2),count:v.total}));
+    if(byCAll.length>15){
+      const rest=byCAll.slice(15);
+      const t=rest.reduce((a,[,v])=>a+v.total,0);
+      const n=rest.reduce((a,[,v])=>a+v.nights,0);
+      if(t>0)countryLOS.push({country:OTHER_KEY_NAME,avgLOS:+(n/t).toFixed(2),count:t});
+    }
 
     // Detail table: per bucket
     const detailRows=buckets.map(b=>{
@@ -2076,7 +2185,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     }
     const computeAdr=v=>({...v,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0});
     const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
-    const countryRows=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
+    const countryAll=Object.values(byCountry).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr);
+    const countryRows=countryAll.slice(0,15);
+    if(countryAll.length>15){
+      const rest=countryAll.slice(15);
+      const o={country:OTHER_KEY_NAME,rev:0,roomNights:0,count:0};
+      rest.forEach(v=>{o.rev+=v.rev;o.roomNights+=v.roomNights;o.count+=v.count});
+      o.adr=o.roomNights>0?Math.round(o.rev/o.roomNights):0;
+      countryRows.push(o);
+    }
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
     const regionRows=["Kanto","Kansai"].filter(r=>byRegion[r].count).map(r=>({region:r,...computeAdr(byRegion[r])}));
     const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
@@ -2460,10 +2577,17 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(v.count>=2)countryGuests[v.country].repeaters++;
       else countryGuests[v.country].firstTimers++;
     });
-    const countryRptRows=Object.entries(countryGuests)
+    const countryRptAll=Object.entries(countryGuests)
       .map(([c,v])=>{const total=v.firstTimers+v.repeaters;return{country:c,firstTimers:v.firstTimers,repeaters:v.repeaters,total,rate:total>0?+((v.repeaters/total)*100).toFixed(1):0}})
-      .sort((a,b)=>b.total-a.total)
-      .slice(0,15);
+      .sort((a,b)=>b.total-a.total);
+    const countryRptRows=countryRptAll.slice(0,15);
+    if(countryRptAll.length>15){
+      const rest=countryRptAll.slice(15);
+      const o={country:OTHER_KEY_NAME,firstTimers:0,repeaters:0,total:0};
+      rest.forEach(v=>{o.firstTimers+=v.firstTimers;o.repeaters+=v.repeaters;o.total+=v.total});
+      o.rate=o.total>0?+((o.repeaters/o.total)*100).toFixed(1):0;
+      countryRptRows.push(o);
+    }
 
     return{totalGuests,repeatCount,repeatRate,avgBookings,overviewPie,jpIntlData,rankRows,segRows,detailRows,facRows,facByRate,
       windowSegments:segments,bucketLabels,tightestRows,firstSecondRows,tightestChart,firstSecondChart,countryRptRows};
@@ -2721,15 +2845,35 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const directPct=f.total>0?+((f.direct/f.total)*100).toFixed(1):0;
       return{...f,name:shortFac(f.facility),directPct};
     }).sort((a,b)=>b.total-a.total);
-    const facByDirect=[...facList].filter(f=>f.totalB>=3).sort((a,b)=>b.directPct-a.directPct).slice(0,10);
+    // Top 10 facilities by direct % + Other (weighted avg from summed direct/total)
+    const facDirectAll=[...facList].filter(f=>f.totalB>=3).sort((a,b)=>b.directPct-a.directPct);
+    const facByDirect=facDirectAll.slice(0,10);
+    if(facDirectAll.length>10){
+      const rest=facDirectAll.slice(10);
+      const tot=rest.reduce((a,f)=>a+f.total,0),dir=rest.reduce((a,f)=>a+f.direct,0),totB=rest.reduce((a,f)=>a+f.totalB,0);
+      facByDirect.push({facility:OTHER_KEY_NAME,name:OTHER_KEY_NAME,total:tot,direct:dir,totalB:totB,directPct:tot>0?+((dir/tot)*100).toFixed(1):0,ota:0,rta:0,otaB:0,rtaB:0,directB:0});
+    }
 
     // Channel name drilldown: sort by revenue within each bucket
     const channelNameList=Object.values(byChannelName).sort((a,b)=>b.rev-a.rev);
+    // OTA top 15 + Other
+    const otaAll=channelNameList.filter(c=>c.bucket==="ota");
+    const otaTop=otaAll.slice(0,15);
+    if(otaAll.length>15){
+      const r=otaAll.slice(15);
+      otaTop.push({channel:OTHER_KEY_NAME,bucket:"ota",count:r.reduce((a,x)=>a+x.count,0),rev:r.reduce((a,x)=>a+x.rev,0)});
+    }
     const channelNameByBucket={
-      ota:channelNameList.filter(c=>c.bucket==="ota").slice(0,15),
+      ota:otaTop,
       rta:channelNameList.filter(c=>c.bucket==="rta"),
       direct:channelNameList.filter(c=>c.bucket==="direct"),
     };
+    // Top 20 channels + Other
+    const top20Channels=channelNameList.slice(0,20);
+    if(channelNameList.length>20){
+      const r=channelNameList.slice(20);
+      top20Channels.push({channel:OTHER_KEY_NAME,bucket:"",count:r.reduce((a,x)=>a+x.count,0),rev:r.reduce((a,x)=>a+x.rev,0)});
+    }
 
     return{
       totalRev,totalBookings,totalRoomNights,totalCancellations,totalModifications,cancelRevLost,modRevImpact,directShare,
@@ -2740,7 +2884,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowRows:DOW.map(d=>byDow[d]),
       bucketKeys:buckets,
       channelNameList,channelNameByBucket,
-      top20Channels:channelNameList.slice(0,20),
+      top20Channels,
     };
   },[tab,tlFiltered,tlAllStatusFiltered,monthMode]);
 
@@ -2862,7 +3006,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const cur=agg(curData),prev=agg(prevData);
     const yoyRev=prev.rev>0?+((cur.rev-prev.rev)/prev.rev*100).toFixed(1):null;
     const yoyCount=prev.count>0?+((cur.count-prev.count)/prev.count*100).toFixed(1):null;
-    const channelNameRows=Object.values(cur.byChannel.name).sort((a,b)=>b.rev-a.rev).slice(0,15);
+    const chAll=Object.values(cur.byChannel.name).sort((a,b)=>b.rev-a.rev);
+    const channelNameRows=chAll.slice(0,15);
+    if(chAll.length>15){
+      const r=chAll.slice(15);
+      channelNameRows.push({channel:OTHER_KEY_NAME,bucket:"",count:r.reduce((a,x)=>a+x.count,0),rev:r.reduce((a,x)=>a+x.rev,0)});
+    }
     return{cur,prev,yoyRev,yoyCount,from,to,channelNameRows};
   },[tab,tlData,drFrom,drTo,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus]);
 
@@ -2925,9 +3074,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       bySeg[r.segment].count++;
       byDow[DOW[(r.date.getDay()+6)%7]].count++;
     }
+    const mktAll=Object.values(byMkt).sort((a,b)=>b.count-a.count);
+    const mktRows=topNPlusOtherMkt(mktAll,15);
     return{
       moRows:Object.values(byMo).sort((a,b)=>a.month.localeCompare(b.month)),
-      mktRows:Object.values(byMkt).sort((a,b)=>b.count-a.count).slice(0,15),
+      mktRows,
       segRows:SEG_ORDER.filter(s=>bySeg[s]).map(s=>bySeg[s]),
       dowRows:DOW.map(d=>byDow[d]),
     };
@@ -2953,7 +3104,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     });
     const detailRows=["1","2","3","4","5","6","7+"].filter(k=>byNight[k]).map(k=>({nights:k,count:byNight[k].count,share:+((byNight[k].count/total)*100).toFixed(1),avgRev:byNight[k].count>0?Math.round(byNight[k].rev/byNight[k].count):0}));
     const segLOS=SEG_ORDER.filter(s=>bySeg[s]).map(s=>({segment:s,avgLOS:+avg(bySeg[s].nights).toFixed(2)}));
-    const countryLOS=Object.values(byCountry).filter(v=>v.nights.length>=5).map(v=>({country:v.country,avgLOS:+avg(v.nights).toFixed(2),count:v.nights.length})).sort((a,b)=>b.count-a.count).slice(0,15);
+    const countryLosAll=Object.values(byCountry).filter(v=>v.nights.length>=5).map(v=>({country:v.country,nights:v.nights.slice(),avgLOS:+avg(v.nights).toFixed(2),count:v.nights.length})).sort((a,b)=>b.count-a.count);
+    const countryLOS=countryLosAll.slice(0,15).map(v=>({country:v.country,avgLOS:v.avgLOS,count:v.count}));
+    if(countryLosAll.length>15){
+      let s=0,c=0;countryLosAll.slice(15).forEach(v=>{v.nights.forEach(n=>{s+=n;c++})});
+      if(c>0)countryLOS.push({country:OTHER_KEY_NAME,avgLOS:+(s/c).toFixed(2),count:c});
+    }
     return{overallAvg:+(sum/total).toFixed(2),totalWithNights:total,detailRows,segLOS,countryLOS};
   },[tab,tlFiltered]);
 
@@ -3032,7 +3188,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const segRows=allSegs.map(s=>({segment:s,countA:a.bySegment[s]?.count||0,revA:a.bySegment[s]?.rev||0,countB:b.bySegment[s]?.count||0,revB:b.bySegment[s]?.rev||0,countDelta:(a.bySegment[s]?.count||0)-(b.bySegment[s]?.count||0),revDelta:(a.bySegment[s]?.rev||0)-(b.bySegment[s]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
     const allFacs=[...new Set([...Object.keys(a.byFacility),...Object.keys(b.byFacility)])];
     const facRows=allFacs.map(f=>({facility:f,name:shortFac(f),countA:a.byFacility[f]?.count||0,revA:a.byFacility[f]?.rev||0,countB:b.byFacility[f]?.count||0,revB:b.byFacility[f]?.rev||0,countDelta:(a.byFacility[f]?.count||0)-(b.byFacility[f]?.count||0),revDelta:(a.byFacility[f]?.rev||0)-(b.byFacility[f]?.rev||0)})).sort((x,y)=>Math.abs(y.revDelta)-Math.abs(x.revDelta));
-    return{a,b,countryRows,segRows,facRows};
+    // Top N + Other view (keeps "Δ by absolute" sort but aggregates tail rows into Other)
+    const sumRows=(rows,labelKey,labelVal)=>{
+      const o={[labelKey]:labelVal,countA:0,revA:0,countB:0,revB:0};
+      rows.forEach(r=>{o.countA+=r.countA;o.revA+=r.revA;o.countB+=r.countB;o.revB+=r.revB});
+      o.countDelta=o.countA-o.countB;o.revDelta=o.revA-o.revB;
+      return o;
+    };
+    const countryRowsWO=countryRows.length<=15?countryRows:[...countryRows.slice(0,15),sumRows(countryRows.slice(15),"country",OTHER_KEY_NAME)];
+    const facRowsWO=facRows.length<=20?facRows:[...facRows.slice(0,20),{...sumRows(facRows.slice(20),"facility",OTHER_KEY_NAME),name:OTHER_KEY_NAME}];
+    return{a,b,countryRows,segRows,facRows,countryRowsWO,facRowsWO};
   },[tab,tlData,cmpA,cmpB,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus,facAgeFilter]);
 
   // ─── TL Pace ───
@@ -3142,13 +3307,29 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     }
     const computeAdr=v=>({...v,adr:v.roomNights>0?Math.round(v.rev/v.roomNights):0});
     const facRows=Object.values(byFac).map(computeAdr).sort((a,b)=>b.adr-a.adr);
-    // Country rows: keep top 15 by ADR (min 5 rsv threshold), but ALWAYS include Japan if present
+    // Country rows: top 15 by ADR (min 5 rsv threshold) + Other, always include Japan if present
     const allCountryRows=Object.values(byCountry).map(computeAdr);
     const jpRow=allCountryRows.find(v=>v.country==="Japan");
-    const topCountries=allCountryRows.filter(v=>v.count>=5&&v.country!=="Japan").sort((a,b)=>b.adr-a.adr).slice(0,15);
-    const countryRows=jpRow?[jpRow,...topCountries]:topCountries;
+    const nonJpEligible=allCountryRows.filter(v=>v.count>=5&&v.country!=="Japan").sort((a,b)=>b.adr-a.adr);
+    const topCountries=nonJpEligible.slice(0,15);
+    const countryRows=jpRow?[jpRow,...topCountries]:[...topCountries];
+    if(nonJpEligible.length>15){
+      const rest=nonJpEligible.slice(15);
+      const o={country:OTHER_KEY_NAME,rev:0,roomNights:0,count:0};
+      rest.forEach(v=>{o.rev+=v.rev;o.roomNights+=v.roomNights;o.count+=v.count});
+      o.adr=o.roomNights>0?Math.round(o.rev/o.roomNights):0;
+      countryRows.push(o);
+    }
     const segRows=SEG_ORDER.filter(s=>bySeg[s]).map(s=>computeAdr(bySeg[s]));
-    const channelRows=Object.values(byChannel).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr).slice(0,15);
+    const channelAll=Object.values(byChannel).filter(v=>v.count>=5).map(computeAdr).sort((a,b)=>b.adr-a.adr);
+    const channelRows=channelAll.slice(0,15);
+    if(channelAll.length>15){
+      const rest=channelAll.slice(15);
+      const o={channel:OTHER_KEY_NAME,bucket:"",rev:0,roomNights:0,count:0};
+      rest.forEach(v=>{o.rev+=v.rev;o.roomNights+=v.roomNights;o.count+=v.count});
+      o.adr=o.roomNights>0?Math.round(o.rev/o.roomNights):0;
+      channelRows.push(o);
+    }
     const bucketRows=["ota","rta","direct"].filter(b=>byBucket[b].count).map(b=>({bucket:b,...computeAdr(byBucket[b])}));
     const monthRows=Object.values(byMonth).sort((a,b)=>a.month.localeCompare(b.month)).map(computeAdr);
     const overallAdr=totalRoomNights>0?Math.round(totalRev/totalRoomNights):0;
@@ -3186,8 +3367,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(!monthlyByReg[m])monthlyByReg[m]={month:m,Kanto:0,Kansai:0};
       monthlyByReg[m][rg]++;
     }
-    const mkKanto=Object.entries(byC.Kanto).filter(([c])=>c!=="Japan"&&c!=="Unknown").sort((a,b)=>b[1]-a[1]).slice(0,10).map(([c,n])=>({country:c,count:n}));
-    const mkKansai=Object.entries(byC.Kansai).filter(([c])=>c!=="Japan"&&c!=="Unknown").sort((a,b)=>b[1]-a[1]).slice(0,10).map(([c,n])=>({country:c,count:n}));
+    const makeMk=(byReg)=>{
+      const all=Object.entries(byReg).filter(([c])=>c!=="Japan"&&c!=="Unknown").sort((a,b)=>b[1]-a[1]);
+      if(all.length<=10)return all.map(([c,n])=>({country:c,count:n}));
+      const top=all.slice(0,10).map(([c,n])=>({country:c,count:n}));
+      const o=all.slice(10).reduce((a,[,n])=>a+n,0);
+      return[...top,{country:OTHER_KEY_NAME,count:o}];
+    };
+    const mkKanto=makeMk(byC.Kanto);
+    const mkKansai=makeMk(byC.Kansai);
     const mktMo=Object.values(monthlyByReg).sort((a,b)=>a.month.localeCompare(b.month));
     const segRegRows=SEG_ORDER.map(s=>({segment:s,Kanto:segReg.Kanto[s]||0,Kansai:segReg.Kansai[s]||0}));
     const losSRRows=SEG_ORDER.map(s=>({segment:s,Kanto:losSR.Kanto[s]?+avg(losSR.Kanto[s]).toFixed(2):0,Kansai:losSR.Kansai[s]?+avg(losSR.Kansai[s]).toFixed(2):0}));
@@ -3256,7 +3444,15 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const facRows=Object.values(byFac).sort((a,b)=>b.total-a.total).map(v=>({...v,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0}));
     const facByRate=[...facRows].sort((a,b)=>b.rate-a.rate);
     const segRows=Object.values(bySeg).map(v=>({...v,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0}));
-    const countryRows=Object.values(byCountry).sort((a,b)=>b.total-a.total).slice(0,15).map(v=>({...v,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0}));
+    const countryAll=Object.values(byCountry).sort((a,b)=>b.total-a.total);
+    const countryRows=countryAll.slice(0,15).map(v=>({...v,rate:v.total>0?+((v.cancelled/v.total)*100).toFixed(1):0}));
+    if(countryAll.length>15){
+      const rest=countryAll.slice(15);
+      const o={country:OTHER_KEY_NAME,total:0,cancelled:0};
+      rest.forEach(v=>{o.total+=v.total;o.cancelled+=v.cancelled});
+      o.rate=o.total>0?+((o.cancelled/o.total)*100).toFixed(1):0;
+      countryRows.push(o);
+    }
     return{total,cancelled,rate,lost,monthTrend,facRows,facByRate,segRows,countryRows};
   },[tab,tlData,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fDT,fDF,fDTo,monthMode,facAgeFilter]);
 
@@ -3834,7 +4030,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {tab==="overview"&&<><DraggableGrid {...dgProps("overview")}>
           <div key="ch-mo"><CC grid title={t.resByMonth} id="ch-mo" nm="monthly" data={perPropertySeries?perPropertySeries.monthlyCount:facAgeSeries?facAgeSeries.monthlyCount:(perCountrySeries?perCountrySeries.monthlyCount:moD)}><BarChart data={perPropertySeries?perPropertySeries.monthlyCount:facAgeSeries?facAgeSeries.monthlyCount:(perCountrySeries?perCountrySeries.monthlyCount:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="count" fill="#4ea8de" radius={[4,4,0,0]} name={t.reservations}/>}</BarChart></CC></div>
           <div key="ch-sp"><CC grid title={t.resBySeg} id="ch-sp" nm="seg_pie" data={segD}><PieChart><Pie data={segD} dataKey="count" nameKey="segment" cx="50%" cy="50%" outerRadius="65%" label={({segment,percent,cx,cy,midAngle,outerRadius:r})=>{const x=cx+Math.cos(-midAngle*Math.PI/180)*(r+14);const y=cy+Math.sin(-midAngle*Math.PI/180)*(r+14);return<text x={x} y={y} textAnchor={x>cx?"start":"end"} fill={TH.pieLabelFill} fontSize={10}>{`${tl(segment)} ${(percent*100).toFixed(0)}%`}</text>}} labelLine={{stroke:"#a0977f"}}>{segD.map((e,i)=><Cell key={i} fill={SEG_COLORS[e.segment]||PALETTE[i]}/>)}</Pie><Tooltip content={<CT/>}/></PieChart></CC></div>
-          <div key="ch-mk"><CC grid title={t.topMarkets} id="ch-mk" nm="top_markets" h={320} data={mktD.slice(0,10)}><BarChart data={mktD.slice(0,10)} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c9a84c" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
+          <div key="ch-mk"><CC grid title={t.topMarkets} id="ch-mk" nm="top_markets" h={320} data={overviewTopMkt}><BarChart data={overviewTopMkt} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Bar dataKey="count" fill="#c9a84c" radius={[0,4,4,0]} name={t.reservations}/></BarChart></CC></div>
           <div key="ch-dw"><CC grid title={t.checkinDOW} id="ch-dw" nm="dow" h={320} data={dowD}><BarChart data={dowD}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="checkin" fill="#4ea8de" radius={[4,4,0,0]} name={t.checkInLabel}/><Bar dataKey="checkout" fill="#e07b54" radius={[4,4,0,0]} name={t.checkOutLabel}/></BarChart></CC></div>
           <div key="ch-mo-rev"><CC grid title={t.monthlyRev} id="ch-mo-rev" nm="monthly_rev_ov" data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><BarChart data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rev-country"><CC grid title={t.revByCountry} id="ch-rev-country" nm="rev_country_ov" h={Math.max(300,mktD.length*24)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
@@ -3876,7 +4072,16 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-msc">{kvk&&<CC grid title={t.segMixByCountry} id="ch-msc" nm="seg_mix_country" h={Math.max(300,kvk.segCountry.length*26)} data={kvk.segCountry}><BarChart data={kvk.segCountry} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" domain={[0,100]} tick={tks} tickFormatter={v=>v+"%"}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>v+"%"}/>}/><Legend/>{SEG_ORDER.map(s=><Bar key={s} dataKey={s} stackId="a" fill={SEG_COLORS[s]} name={tl(s)}/>)}</BarChart></CC>}</div>
           <div key="ch-rkc">{kvk&&<CC grid title={t.kvkRankByCountry} id="ch-rkc" nm="rank_country" h={Math.max(250,kvk.rankC.length*30)} data={kvk.rankC}><BarChart data={kvk.rankC} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks}/><YAxis dataKey="country" type="category" width={100} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT/>}/><Legend/>{RANK_ORDER.map((rk,i)=><Bar key={rk} dataKey={rk} stackId="a" fill={RANK_COLORS[i]} name={tl(rk)}/>)}</BarChart></CC>}</div>
         </DraggableGrid><div style={{marginTop:14}}><SortTbl
-          data={mktD.map(d=>({country:d.country,count:d.count,totalRev:agg.byC[d.country]?.rev||0,avgRev:d.avgRev,avgLOS:agg.byC[d.country]?.nights.length?(avg(agg.byC[d.country].nights)):0,avgLead:agg.byC[d.country]?.lead.length?(avg(agg.byC[d.country].lead)):0}))}
+          data={mktD.map(d=>{
+            if(d.country===OTHER_KEY_NAME){
+              // Weighted avg LOS/Lead across all non-top countries (those not in mktD)
+              const topSet=new Set(mktD.filter(x=>x.country!==OTHER_KEY_NAME).map(x=>x.country));
+              let nS=0,nC=0,lS=0,lC=0;
+              Object.entries(agg.byC).forEach(([c,v])=>{if(topSet.has(c))return;v.nights.forEach(n=>{nS+=n;nC++});v.lead.forEach(l=>{lS+=l;lC++})});
+              return{country:d.country,count:d.count,totalRev:d.rev,avgRev:d.avgRev,avgLOS:nC>0?nS/nC:0,avgLead:lC>0?lS/lC:0};
+            }
+            return{country:d.country,count:d.count,totalRev:agg.byC[d.country]?.rev||0,avgRev:d.avgRev,avgLOS:agg.byC[d.country]?.nights.length?(avg(agg.byC[d.country].nights)):0,avgLead:agg.byC[d.country]?.lead.length?(avg(agg.byC[d.country].lead)):0};
+          })}
           columns={[{key:"country",label:t.thCountry},{key:"count",label:t.reservations},{key:"totalRev",label:t.thTotalRev},{key:"avgRev",label:t.thAvgRev},{key:"avgLOS",label:t.thAvgLOS},{key:"avgLead",label:t.thAvgLeadTime}]}
           renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m}}>{fmtN(r.count)}</td><td style={{...S.td,...S.m}}>{fmtY(r.totalRev)}</td><td style={{...S.td,...S.m}}>{fmtY(r.avgRev)}</td><td style={{...S.td,...S.m}}>{r.avgLOS.toFixed(1)}{t.ns}</td><td style={{...S.td,...S.m}}>{r.avgLead>0?r.avgLead.toFixed(0)+t.ds:"—"}</td></tr>}
           title={t.marketSummary}
@@ -3980,7 +4185,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div key="ch-drev"><CC grid title={t.dailyRev} id="ch-drev" nm="daily_rev" data={perPropertySeries?perPropertySeries.dailyRev:facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><BarChart data={perPropertySeries?perPropertySeries.dailyRev:facAgeSeries?facAgeSeries.dailyRev:(perCountrySeries?perCountrySeries.dailyRev:dailyD)}><CartesianGrid {...gl}/><XAxis dataKey="date" tick={tks}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rdow"><CC grid title={t.revByDOW} id="ch-rdow" nm="rev_dow" data={perPropertySeries?perPropertySeries.dowRev:facAgeSeries?facAgeSeries.dowRev:(perCountrySeries?perCountrySeries.dowRev:revDowD)}><BarChart data={perPropertySeries?perPropertySeries.dowRev:facAgeSeries?facAgeSeries.dowRev:(perCountrySeries?perCountrySeries.dowRev:revDowD)}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rdowm"><CC grid title={t.revByDOWMonth} id="ch-rdowm" nm="rev_dow_month" data={revDowMonthD.data}><LineChart data={revDowMonthD.data}><CartesianGrid {...gl}/><XAxis dataKey="day" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revDowMonthD.months.map((m,i)=><Line key={m} type="monotone" dataKey={m} stroke={PALETTE[i%PALETTE.length]} strokeWidth={2} dot={{r:3}} name={m}/>)}</LineChart></CC></div>
-          <div key="ch-rev-country-r"><CC grid title={t.revByCountry} id="ch-rev-country-r" nm="rev_country" h={Math.max(300,mktD.length*24)} data={mktDByRev}><BarChart data={mktDByRev} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
+          <div key="ch-rev-country-r"><CC grid title={t.revByCountry} id="ch-rev-country-r" nm="rev_country" h={Math.max(300,mktRevAll.length*22)} data={mktRevAll}><BarChart data={mktRevAll} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="rev" fill="#34d399" radius={[0,4,4,0]} name={t.totalRevenue}/></BarChart></CC></div>
         </DraggableGrid></>}
 
         {/* CANCELLATIONS */}
@@ -4520,7 +4725,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
               <SortTbl
-                data={tlCompareRpt.countryRows.slice(0,15)}
+                data={tlCompareRpt.countryRowsWO}
                 columns={[{key:"country",label:"Country"},{key:"revA",label:"A"},{key:"revB",label:"B"},{key:"revDelta",label:"Δ"}]}
                 renderRow={r=><tr key={r.country}><td style={S.td}>{tl(r.country)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
                 title={t.cmpByCountry}
@@ -4532,7 +4737,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 title={t.cmpBySegment}
               />
               <div style={{gridColumn:isMobile?"auto":"span 2"}}><SortTbl
-                data={tlCompareRpt.facRows.slice(0,20)}
+                data={tlCompareRpt.facRowsWO}
                 columns={[{key:"name",label:"Facility"},{key:"revA",label:"A Rev"},{key:"revB",label:"B Rev"},{key:"revDelta",label:"Δ"}]}
                 renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap"}}>{r.name}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revA)}</td><td style={{...S.td,...S.m,textAlign:"right"}}>¥{fmtN(r.revB)}</td><td style={{...S.td,...S.m,textAlign:"right",color:r.revDelta>=0?"#34d399":"#ef4444"}}>{r.revDelta>=0?"+":""}¥{fmtN(Math.abs(r.revDelta))}</td></tr>}
                 title={t.cmpByFacility}

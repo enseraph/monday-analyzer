@@ -123,9 +123,26 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.19
+Current: 2.20
 
 Recent changes:
+- v2.20: **Top-N silent truncation replaced with "Top-N + Other" across the board.** User directive: every capped chart (except the Top Repeater detail tables, which stay at top 50) should show selected + aggregated "Other" bucket so totals reconcile.
+  1. **Revenue tab "Total Revenue by Country" now uncapped** — new `mktRevAll` memo holds ALL countries sorted by revenue, no truncation. The chart auto-scales its height via `Math.max(300,mktRevAll.length*22)`.
+  2. **New module-level helpers** `topNPlusOtherMkt(rows,n,labelKey)` and `topNPlusOtherGeneric(rows,n,labelKey,numericFields,computedFields)` in App.jsx. First one handles the common `{country,count,rev,avgRev}` shape with correct avg recomputation.
+  3. **`mktD` redefined** to be top 15 by count + Other. Automatically propagates to every chart that used `mktD` or `mktDByRev` (Country Overview ch-mf/ch-mr/ch-mrev, Overview ch-rev-country, Country Summary Table).
+  4. **`overviewTopMkt`** new memo for Overview's "Top Source Markets" chart — top 10 by count + Other.
+  5. **`mktLOS` and `mktLead`** (Country Overview) now top 15 + Other with weighted averages computed across rest's nights/lead arrays.
+  6. **`kvk` memo** updated: `mkKanto`/`mkKansai` (top 10 + Other), `segCountry` (top 12 + Other with aggregated segment percentages), `losC` (top 15 + Other weighted), `revC` (top 15 + Other weighted), `rankC` (top 6 + Other with summed rank counts).
+  7. **`cancelRpt.countryRows`** (top 15 + Other, rate recomputed from summed total/cancelled).
+  8. **`losRpt.countryLOS`** (top 15 + Other weighted avgLOS).
+  9. **`adrRpt.countryRows`** (top 15 + Other, ADR recomputed from summed rev/roomNights).
+  10. **`compareRpt` revChart / countChart** (top 10 + Other for A vs B delta view).
+  11. **`rmD`** (Rooms tab Room Type Distribution — top 12 + Other).
+  12. **`memberRpt.countryRptRows`** (top 15 + Other with aggregated first-timer/repeater counts).
+  13. **TL side: `tlOverviewRpt.mktRows`, `tlMarketsRpt.countryLOS`, `tlCompareRpt.countryRowsWO/facRowsWO`, `tlAdrRpt.countryRows/channelRows`, `tlKvkRpt.mkKanto/mkKansai`, `tlCancelRpt.countryRows`, `tlDailyRpt.channelNameRows`, `tlChannelRpt.facByDirect/channelNameByBucket.ota/top20Channels`** — all converted to Top-N + Other.
+  14. **i18n**: `tl("Other")` now returns `t.otherLabel` ("Other"/"その他"), so the aggregated row displays in the user's language.
+  15. **Kept silent truncation** (per user): `memberRpt.detailRows` and `tlMemberRpt.detailRows` (Top 50 repeater tables).
+  Country Summary Table renders its "Other" row with weighted avg LOS/Lead computed inline from `agg.byC` (since mktD's Other row doesn't carry the raw arrays). All other "Other" rows get proper aggregate values from the respective memos.
 - v2.19: **More memory cleanup — drop unused TL fields, release raw CSV strings, clear booking_id after use.** Follow-up to v2.18 after user reported ~3 GB tab memory.
   1. **Dropped 5 unused TL fields from `parseTLRow` output** (`shared.js`): `facilityGroup`, `notification_id`, `guestNameKana`, `planCode`, `channel_code`. All were only consumed by the Raw Data tab (removed in v2.18) or stored but never read. Per-row memory cut ~15–20%. At 180k TL rows this saves ~25–35 MB.
   2. **Clear `booking_id` after `applyTLSameDayCancel`** — the ID is only needed for one-pass same-day-cancel detection, then becomes dead weight. Now nulled at the end of the pass. Another ~5–10 MB.

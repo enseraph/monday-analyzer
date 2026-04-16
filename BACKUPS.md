@@ -14,6 +14,7 @@
 | `monday-analyzer-backup-v2.16` | 2026-04-16 | v2.16 | Pre–"+ Other" independent toggle restructure |
 | `monday-analyzer-backup-v2.17` | 2026-04-16 | v2.17 | Pre–Raw Data tab removal + memo gating |
 | `monday-analyzer-backup-v2.18` | 2026-04-16 | v2.18 | Pre–field drops + CSV string release (v2.19 memory round 2) |
+| `monday-analyzer-backup-v2.19` | 2026-04-16 | v2.19 | Pre–Top-N+Other rollout |
 
 *Note: v1.91, v1.92, v1.93 changes are incremental and backed by git history (commits on `master`). Use `git checkout <commit-sha>` to restore any version.*
 
