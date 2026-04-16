@@ -126,6 +126,7 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 Current: 2.16
 
 Recent changes:
+- v2.16.1: **Country "+ Other" works with a single selected country.** Previously all three country-view buttons shared `fC.length<2` as the disabled threshold, so "+ Other" couldn't be activated with one country selected. Lowered the threshold for "+ Other" only (perCountry stays at 2+, since splitting into a single series is meaningless). Three call sites updated: button disabled condition (line ~3516), `perCountrySeries` useMemo gate (line ~1403), and `skipCountryFilter` flag (line ~1151). Mirrors the existing property-view threshold.
 - v2.16: **Country Overview tab — layout gap fix + two new time-series stacked-bar charts.**
   1. **Root cause of the big gap below Country Summary Table**: `ch-msc` (Segment Mix by Country) and `ch-rkc` (Membership Rank by Country) both read from the `kvk` useMemo, which was gated on `tab==="kvk"` only — so on the markets tab `kvk` was `null` and the two bottom cards rendered as empty space, reserving ~700px of height but showing nothing. Fixed by expanding the gate to `tab==="kvk"||tab==="markets"`. Also changed `ch-rkc` from half-width `[0,16,6,4]` → full-width `[0,26,12,4]` as part of the reflow.
   2. **New chart `ch-mrev-time`** — Total Revenue by Country, stacked bar, monthly/daily toggle. Top 8 countries by revenue + "Other" bucket. Uses PALETTE colors + warm taupe (#78716c) for Other (same convention as "+ Other" view mode).
