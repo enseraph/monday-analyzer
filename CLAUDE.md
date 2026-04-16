@@ -123,9 +123,23 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.16
+Current: 2.17
 
 Recent changes:
+- v2.17: **Country / Property "+ Other" is now an independent toggle + fixes bucketing on new Country Overview charts.**
+  1. **Root cause of the "stuck + Other" bug**: the three country-view buttons (Aggregate / Per country / + Other) were a single mutually-exclusive radio group. With 1 country selected, Aggregate and Per country were both greyed out (their threshold was `fC.length<2`), so there was no button the user could click to switch away from "+ Other" — it looked stuck.
+  2. **Root cause of the "per-country-instead-of-aggregated" bug on ch-mrev-time / ch-mcnt-time**: those two charts (added in v2.16) used their own `mktTimeRpt` memo which always computed top-8-by-revenue + "Other" regardless of the country filter or view mode. Pressing "+ Other" had no effect on them.
+  3. **State restructure**: `countryViewMode` no longer has a `"perCountryWithOther"` enum value — it's now just `"aggregate"|"perCountry"`. New independent boolean state `countryWithOther` (same for `propertyWithOther`). The "+ Other" button is now a true on/off toggle (`setCountryWithOther(v=>!v)`), orthogonal to the aggregate/per-country choice.
+  4. **Four valid combinations** now rendered correctly:
+     - aggregate + !withOther → no split (country filter restricts data)
+     - aggregate + withOther → 2 series: "Selected" (combined) vs "Other" (uses country's name if exactly 1 selected)
+     - perCountry + !withOther → N series, one per selected country (needs fC.length≥2)
+     - perCountry + withOther → N selected series + Other bucket
+  5. **`perCountrySeries` rewritten** to handle the new 4-case logic. New `SELECTED_KEY="__selected__"` label for the multi-select-aggregated bucket. Same changes mirrored for `perPropertySeries`.
+  6. **`mktTimeRpt` rewritten** to respect `countryWithOther` + `fC` + `countryViewMode`. Fallback to top-8 behavior when no selection or withOther off.
+  7. **Filter bar UI**: Aggregate button is now always enabled (it's the default/fallback state, no reason to grey it out). Per country stays `<2` gated. "+ Other" is `<1` gated and toggles on/off.
+  8. **Auto-clear**: `useEffect` watches `fC` and `fP` — if either is emptied, the corresponding withOther toggle auto-clears to avoid stale-state UX.
+  9. **Reset button** now also clears both viewMode states and both withOther flags.
 - v2.16.1: **Country "+ Other" works with a single selected country.** Previously all three country-view buttons shared `fC.length<2` as the disabled threshold, so "+ Other" couldn't be activated with one country selected. Lowered the threshold for "+ Other" only (perCountry stays at 2+, since splitting into a single series is meaningless). Three call sites updated: button disabled condition (line ~3516), `perCountrySeries` useMemo gate (line ~1403), and `skipCountryFilter` flag (line ~1151). Mirrors the existing property-view threshold.
 - v2.16: **Country Overview tab — layout gap fix + two new time-series stacked-bar charts.**
   1. **Root cause of the big gap below Country Summary Table**: `ch-msc` (Segment Mix by Country) and `ch-rkc` (Membership Rank by Country) both read from the `kvk` useMemo, which was gated on `tab==="kvk"` only — so on the markets tab `kvk` was `null` and the two bottom cards rendered as empty space, reserving ~700px of height but showing nothing. Fixed by expanding the gate to `tab==="kvk"||tab==="markets"`. Also changed `ch-rkc` from half-width `[0,16,6,4]` → full-width `[0,26,12,4]` as part of the reflow.

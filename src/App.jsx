@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.16";
+const APP_VERSION="2.17";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="10";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -953,8 +953,13 @@ const deletePreset=name=>{
 const[cmpA,setCmpA]=useState({from:"",to:""});const[cmpB,setCmpB]=useState({from:"",to:""});
 const[paceMetric,setPaceMetric]=useState("count");
 const[facViewMode,setFacViewMode]=useState("all"); // "all" | "newVsOld"
-const[countryViewMode,setCountryViewMode]=useState("aggregate"); // "aggregate" | "perCountry" | "perCountryWithOther"
-const[propertyViewMode,setPropertyViewMode]=useState("aggregate"); // "aggregate" | "perProperty" | "perPropertyWithOther"
+const[countryViewMode,setCountryViewMode]=useState("aggregate"); // "aggregate" | "perCountry"
+const[propertyViewMode,setPropertyViewMode]=useState("aggregate"); // "aggregate" | "perProperty"
+const[countryWithOther,setCountryWithOther]=useState(false); // independent "+ Other" toggle
+const[propertyWithOther,setPropertyWithOther]=useState(false); // independent "+ Other" toggle
+// Auto-clear toggles when their underlying selection is emptied (avoids stale "+ Other" state)
+useEffect(()=>{if(fC.length===0&&countryWithOther)setCountryWithOther(false)},[fC,countryWithOther]);
+useEffect(()=>{if(fP.length===0&&propertyWithOther)setPropertyWithOther(false)},[fP,propertyWithOther]);
 const[facAgeFilter,setFacAgeFilter]=useState("all"); // "all" | "new" | "old" — global data filter; overridden if specific facilities selected
 const[facAgeView,setFacAgeView]=useState("aggregate"); // "aggregate" | "newVsOld" — global visual split on compatible charts
 const[openingFacs,setOpeningFacs]=useState(FACILITIES_WITH_PREOPEN_DATA); // Hotel Opening tab — selected facilities for cohort analysis
@@ -1148,8 +1153,8 @@ const[drSingle,setDrSingle]=useState("");
   const filtered=useMemo(()=>{
     // In "+ Other" modes, the country/property filter becomes a grouping rather than a filter —
     // all rows included, non-selected bucketed into "Other" downstream. Skip the filter here.
-    const skipCountryFilter=countryViewMode==="perCountryWithOther"&&fC.length>=1;
-    const skipPropertyFilter=propertyViewMode==="perPropertyWithOther"&&fP.length>=1;
+    const skipCountryFilter=countryWithOther&&fC.length>=1;
+    const skipPropertyFilter=propertyWithOther&&fP.length>=1;
     const fCSet=!skipCountryFilter&&fC.length?new Set(fC):null,fSSet=fS.length?new Set(fS):null,fPSet=!skipPropertyFilter&&fP.length?new Set(fP):null,fBSet=fBrands.length?new Set(fBrands):null,fGSet=fGeo.length?new Set(fGeo):null,fDSet=fDOW.length?new Set(fDOW):null;
     // Use T00:00:00 to force local-midnight parsing (new Date("YYYY-MM-DD") is UTC midnight, which breaks timezone-aware comparisons)
     const from=fDF?new Date(fDF+"T00:00:00"):null,to=fDTo?new Date(fDTo+"T23:59:59"):null;
@@ -1172,7 +1177,7 @@ const[drSingle,setDrSingle]=useState("");
       out.push(r);
     }
     return out;
-  },[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW,facAgeFilter,countryViewMode,propertyViewMode]);
+  },[allData,fR,fC,fS,fP,fDT,fDF,fDTo,fCancel,fHType,fBrands,fGeo,fDOW,facAgeFilter,countryWithOther,propertyWithOther]);
 
   const uTlFac=useMemo(()=>[...new Set(tlData.map(r=>r.facility))].sort(),[tlData]);
   const uTlChannelName=useMemo(()=>[...new Set(tlData.map(r=>r.channel_name).filter(Boolean))].sort(),[tlData]);
@@ -1395,24 +1400,47 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     return Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
   },[filtered,tz,fDT]);
 
-  // ─── Per-country time-series — active when countryViewMode is "perCountry" or "perCountryWithOther" ───
-  // "perCountry": each selected country as its own series, non-selected rows excluded (filtered upstream)
-  // "perCountryWithOther": each selected country individually + "Other" bucket for all non-selected countries
+  // ─── Per-country time-series — active when perCountry mode OR countryWithOther toggle is on ───
+  // Four cases:
+  //   aggregate + !withOther → null (no country split needed; the filtered memo already restricts)
+  //   aggregate + withOther  → 2 series: "Selected" (combined) + Other (everything else)
+  //   perCountry + !withOther → N series, one per selected country (needs fC.length >= 2)
+  //   perCountry + withOther  → N selected series + Other bucket
   const OTHER_KEY="__other__"; // internal key to avoid collision with any real country name
+  const SELECTED_KEY="__selected__"; // used for aggregate+withOther combined bucket
   const perCountrySeries=useMemo(()=>{
-    const minSel=countryViewMode==="perCountryWithOther"?1:2;
-    if(!(countryViewMode==="perCountry"||countryViewMode==="perCountryWithOther")||fC.length<minSel||!filtered.length)return null;
-    const withOther=countryViewMode==="perCountryWithOther";
+    // Gate
+    const perCountryActive=countryViewMode==="perCountry"&&fC.length>=2;
+    const aggregateOther=countryViewMode==="aggregate"&&countryWithOther&&fC.length>=1;
+    const perCountryOther=countryViewMode==="perCountry"&&countryWithOther&&fC.length>=1;
+    if(!perCountryActive&&!aggregateOther&&!perCountryOther)return null;
+    if(!filtered.length)return null;
     const selected=new Set(fC);
-    const totals={};let otherTotal=0;
-    filtered.forEach(r=>{if(selected.has(r.country))totals[r.country]=(totals[r.country]||0)+1;else if(withOther)otherTotal++});
-    const countries=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c])=>c);
-    if(countries.length<2)return null;
-    // Append "Other" bucket at end of list (renders as the last stack segment)
-    if(withOther&&otherTotal>0)countries.push(OTHER_KEY);
+    const withOther=countryWithOther;
+    // Determine bucket list
+    let countries;
+    if(countryViewMode==="aggregate"){
+      // Combined selection → 1 series; Other → 1 series. Use country's name if exactly 1 selected.
+      const selLabel=fC.length===1?fC[0]:SELECTED_KEY;
+      countries=[selLabel,OTHER_KEY];
+    }else{
+      // perCountry mode: rank selected countries by count; optionally append Other
+      const totals={};let otherTotal=0;
+      filtered.forEach(r=>{if(selected.has(r.country))totals[r.country]=(totals[r.country]||0)+1;else if(withOther)otherTotal++});
+      countries=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c])=>c);
+      if(withOther&&otherTotal>0)countries.push(OTHER_KEY);
+      if(countries.length<2)return null;
+    }
+    const bucketOf=r=>{
+      if(countryViewMode==="aggregate"){
+        return selected.has(r.country)?countries[0]:OTHER_KEY;
+      }
+      if(selected.has(r.country))return r.country;
+      return withOther?OTHER_KEY:null;
+    };
     const byMonth={},byDate={},byDow={};
     filtered.forEach(r=>{
-      const bucket=selected.has(r.country)?r.country:(withOther?OTHER_KEY:null);
+      const bucket=bucketOf(r);
       if(!bucket)return;
       const m=getM(r);
       const d=tzFmt(getDateField(r));
@@ -1433,21 +1461,37 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowCount:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"count")),
       dowRev:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"rev")),
     };
-  },[countryViewMode,fC,filtered,monthMode,tz,fDT,tzFmt,dL]);
-  // ─── Per-property time-series — active when propertyViewMode is "perProperty" or "perPropertyWithOther" ───
-  // Mirrors the country logic but splits by facility. Needs >=1 property selected.
+  },[countryViewMode,countryWithOther,fC,filtered,monthMode,tz,fDT,tzFmt,dL]);
+  // ─── Per-property time-series — mirrors country logic (see perCountrySeries above) ───
   const perPropertySeries=useMemo(()=>{
-    if(!(propertyViewMode==="perProperty"||propertyViewMode==="perPropertyWithOther")||fP.length<1||!filtered.length)return null;
-    const withOther=propertyViewMode==="perPropertyWithOther";
+    const perPropActive=propertyViewMode==="perProperty"&&fP.length>=1;
+    const aggregateOther=propertyViewMode==="aggregate"&&propertyWithOther&&fP.length>=1;
+    const perPropOther=propertyViewMode==="perProperty"&&propertyWithOther&&fP.length>=1;
+    if(!perPropActive&&!aggregateOther&&!perPropOther)return null;
+    if(!filtered.length)return null;
     const selected=new Set(fP);
-    const totals={};let otherTotal=0;
-    filtered.forEach(r=>{if(selected.has(r.facility))totals[r.facility]=(totals[r.facility]||0)+1;else if(withOther)otherTotal++});
-    const properties=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([f])=>f);
-    if(!properties.length)return null;
-    if(withOther&&otherTotal>0)properties.push(OTHER_KEY);
+    const withOther=propertyWithOther;
+    let properties;
+    if(propertyViewMode==="aggregate"){
+      const selLabel=fP.length===1?fP[0]:SELECTED_KEY;
+      properties=[selLabel,OTHER_KEY];
+    }else{
+      const totals={};let otherTotal=0;
+      filtered.forEach(r=>{if(selected.has(r.facility))totals[r.facility]=(totals[r.facility]||0)+1;else if(withOther)otherTotal++});
+      properties=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([f])=>f);
+      if(withOther&&otherTotal>0)properties.push(OTHER_KEY);
+      if(!properties.length)return null;
+    }
+    const bucketOf=r=>{
+      if(propertyViewMode==="aggregate"){
+        return selected.has(r.facility)?properties[0]:OTHER_KEY;
+      }
+      if(selected.has(r.facility))return r.facility;
+      return withOther?OTHER_KEY:null;
+    };
     const byMonth={},byDate={},byDow={};
     filtered.forEach(r=>{
-      const bucket=selected.has(r.facility)?r.facility:(withOther?OTHER_KEY:null);
+      const bucket=bucketOf(r);
       if(!bucket)return;
       const m=getM(r);
       const d=tzFmt(getDateField(r));
@@ -1468,7 +1512,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowCount:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"count")),
       dowRev:DOW_FULL.map((d,i)=>buildRow(byDow,d,"day",dL[i],"rev")),
     };
-  },[propertyViewMode,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
+  },[propertyViewMode,propertyWithOther,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
   // Color helper for countries — same pattern as facColor
   const countryColor=(i)=>i<PALETTE.length?PALETTE[i]:`hsl(${(i*137.508)%360}, 65%, 55%)`;
   // Display label for a country/property series key — translates via tl() except for internal "Other" key
@@ -1517,18 +1561,42 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   },[filtered,agg]);
 
   // ─── COUNTRY OVERVIEW: monthly + daily stacked series for total rev + total reservations ───
+  // Respects the country selection + "+ Other" modifier:
+  //   withOther on + fC selected: series = (selected countries) + Other, aggregating non-selected
+  //     - aggregate mode combines selected into 1 series
+  //     - perCountry mode splits selected into N series
+  //   otherwise: fallback = top-8 by revenue + Other (default)
   const mktTimeRpt=useMemo(()=>{
     if(tab!=="markets"||!filtered.length||!agg)return null;
-    const topN=Object.entries(agg.byC).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8).map(([c])=>c);
-    const topSet=new Set(topN);
-    const bucket=c=>topSet.has(c)?c:"Other";
-    // Monthly
+    const useSelection=countryWithOther&&fC.length>=1;
+    let countries;
+    let bucketOf;
+    if(useSelection){
+      const selected=new Set(fC);
+      if(countryViewMode==="aggregate"){
+        const selLabel=fC.length===1?fC[0]:SELECTED_KEY;
+        countries=[selLabel,OTHER_KEY];
+        bucketOf=r=>selected.has(r.country)?selLabel:OTHER_KEY;
+      }else{
+        // Rank selected by revenue for stack ordering
+        const selRev={};
+        filtered.forEach(r=>{if(selected.has(r.country))selRev[r.country]=(selRev[r.country]||0)+(r.totalRev||0)});
+        countries=Object.entries(selRev).sort((a,b)=>b[1]-a[1]).map(([c])=>c);
+        countries.push(OTHER_KEY);
+        bucketOf=r=>selected.has(r.country)?r.country:OTHER_KEY;
+      }
+    }else{
+      const topN=Object.entries(agg.byC).sort((a,b)=>b[1].rev-a[1].rev).slice(0,8).map(([c])=>c);
+      const topSet=new Set(topN);
+      countries=[...topN,OTHER_KEY];
+      bucketOf=r=>topSet.has(r.country)?r.country:OTHER_KEY;
+    }
     const monthMap=new Map();
     const dayMap=new Map();
     filtered.forEach(r=>{
       const m=getM(r);
       const d=tzFmt(getDateField(r));
-      const c=bucket(r.country);
+      const c=bucketOf(r);
       const rev=r.totalRev||0;
       if(m){
         if(!monthMap.has(m))monthMap.set(m,{period:m});
@@ -1545,7 +1613,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     });
     const buildSeries=(m,suffix)=>[...m.values()].sort((a,b)=>a.period.localeCompare(b.period)).map(r=>{
       const out={period:r.period};
-      [...topN,"Other"].forEach(c=>{out[c]=r[c+suffix]||0});
+      countries.forEach(c=>{out[c]=r[c+suffix]||0});
       return out;
     });
     return{
@@ -1553,9 +1621,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dailyRev:buildSeries(dayMap,"__rev"),
       monthlyCount:buildSeries(monthMap,"__cnt"),
       dailyCount:buildSeries(dayMap,"__cnt"),
-      countries:[...topN,"Other"],
+      countries,
     };
-  },[tab,filtered,agg,monthMode,fDT,tz,tzFmt]);
+  },[tab,filtered,agg,monthMode,fDT,tz,tzFmt,fC,countryViewMode,countryWithOther]);
 
   // Facility comparisons: Kanto vs Kansai, Hotel vs Apart
   const kvkFac=useMemo(()=>{
@@ -3514,10 +3582,10 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {!isTlTab&&<div><div style={Sc.fl}>{t.brand}</div><MS options={uB} selected={fBrands} onChange={setFBrands} placeholder={t.allBrands} S={Sc} cl={t.clear} theme={TH}/></div>}
         <div><div style={Sc.fl}>{t.region}</div><div style={{display:"flex",gap:2}}>{["All","Kanto","Kansai"].map(r=><button key={r} style={{...Sc.btn,...(fR===r?S.ba:{})}} onClick={()=>setFR(r)}>{r==="All"?t.all:tl(r)}</button>)}</div></div>
         {!isTlTab&&<div><div style={Sc.fl}>{t.country}</div><MS options={uC} selected={fC} onChange={setFC} placeholder={t.allCountries} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>}
-        {!isTlTab&&<div><div style={Sc.fl} title={t.countryViewHint}>{t.countryView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(countryViewMode==="aggregate"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("aggregate")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":""}>{t.countryViewAgg}</button><button style={{...Sc.btn,...(countryViewMode==="perCountry"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("perCountry")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":t.countryViewHint}>{t.countryViewPer}</button><button style={{...Sc.btn,...(countryViewMode==="perCountryWithOther"?S.ba:{}),...(fC.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("perCountryWithOther")} disabled={fC.length<1} title={fC.length<1?"Select 1+ country to use":t.countryViewWithOtherHint}>{t.countryViewWithOther}</button></div></div>}
+        {!isTlTab&&<div><div style={Sc.fl} title={t.countryViewHint}>{t.countryView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(countryViewMode==="aggregate"?S.ba:{})}} onClick={()=>setCountryViewMode("aggregate")} title={t.countryViewAgg}>{t.countryViewAgg}</button><button style={{...Sc.btn,...(countryViewMode==="perCountry"?S.ba:{}),...(fC.length<2?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryViewMode("perCountry")} disabled={fC.length<2} title={fC.length<2?"Select 2+ countries to use":t.countryViewHint}>{t.countryViewPer}</button><button style={{...Sc.btn,...(countryWithOther?S.ba:{}),...(fC.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setCountryWithOther(v=>!v)} disabled={fC.length<1} title={fC.length<1?"Select 1+ country to use":t.countryViewWithOtherHint}>{t.countryViewWithOther}</button></div></div>}
         <div><div style={Sc.fl}>{t.segment}</div><MS options={uS} selected={fS} onChange={setFS} placeholder={t.allSegments} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>
         {!isTlTab&&<div><div style={Sc.fl}>{t.property}</div><MS options={uP} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={Sc} cl={t.clear} theme={TH}/></div>}
-        {!isTlTab&&<div><div style={Sc.fl} title={t.propertyViewHint}>{t.propertyView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(propertyViewMode==="aggregate"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("aggregate")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":""}>{t.propertyViewAgg}</button><button style={{...Sc.btn,...(propertyViewMode==="perProperty"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("perProperty")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":t.propertyViewHint}>{t.propertyViewPer}</button><button style={{...Sc.btn,...(propertyViewMode==="perPropertyWithOther"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("perPropertyWithOther")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":t.propertyViewWithOtherHint}>{t.propertyViewWithOther}</button></div></div>}
+        {!isTlTab&&<div><div style={Sc.fl} title={t.propertyViewHint}>{t.propertyView}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(propertyViewMode==="aggregate"?S.ba:{})}} onClick={()=>setPropertyViewMode("aggregate")} title={t.propertyViewAgg}>{t.propertyViewAgg}</button><button style={{...Sc.btn,...(propertyViewMode==="perProperty"?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyViewMode("perProperty")} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":t.propertyViewHint}>{t.propertyViewPer}</button><button style={{...Sc.btn,...(propertyWithOther?S.ba:{}),...(fP.length<1?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>setPropertyWithOther(v=>!v)} disabled={fP.length<1} title={fP.length<1?"Select 1+ properties to use":t.propertyViewWithOtherHint}>{t.propertyViewWithOther}</button></div></div>}
         {isTlTab&&<div><div style={Sc.fl}>{t.property}</div><MS options={uTlFac} selected={fP} onChange={setFP} placeholder={t.allProperties} maxShow={1} S={Sc} cl={t.clear} theme={TH}/></div>}
         {/* Facility age filter + view — global across YYB & TL. Overridden when specific facilities selected. */}
         <div><div style={Sc.fl} title={fP.length?t.facAgeDisabled:t.facAgeHint}>{t.facAge}</div><div style={{display:"flex",gap:2}}>{[["all",t.facAgeAll],["new",t.facAgeNew],["old",t.facAgeOld]].map(([v,l])=><button key={v} style={{...Sc.btn,...(facAgeFilter===v?S.ba:{}),...(fP.length?{opacity:0.5,cursor:"not-allowed"}:{})}} onClick={()=>!fP.length&&setFacAgeFilter(v)} disabled={fP.length>0} title={fP.length?t.facAgeDisabled:""}>{l}</button>)}</div></div>
@@ -3532,7 +3600,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         <div><div style={Sc.fl}>{t.dateType}</div><select style={Sc.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option></>}</select></div>
         <div><div style={Sc.fl}>{t.dateRange}</div><DateRangePicker from={fDF} to={fDTo} onApply={(f,tt)=>{setFDF(f);setFDTo(tt)}} S={Sc} theme={TH} t={t} lang={lang} isMobile={isMobile}/></div>
         <div><div style={Sc.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...Sc.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
-        <button style={{...Sc.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setActivePreset(null)}}>{t.reset}</button>
+        <button style={{...Sc.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF("");setFDTo("");setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setCountryViewMode("aggregate");setPropertyViewMode("aggregate");setCountryWithOther(false);setPropertyWithOther(false);setActivePreset(null)}}>{t.reset}</button>
         <button style={{...Sc.btn,fontSize:14,padding:"3px 8px",marginLeft:"auto"}} onClick={()=>setFiltersOpen(false)} title="Minimize filters">−</button>
       </div>:<button onClick={()=>setFiltersOpen(true)} style={{position:"sticky",top:8,zIndex:50,marginLeft:"auto",display:"block",background:TH.filterBg,border:"1px solid "+TH.border,borderRadius:8,padding:"8px 14px",cursor:"pointer",color:TH.gold,fontSize:12,fontFamily:"'DM Sans',sans-serif",marginBottom:12,boxShadow:"0 4px 12px rgba(0,0,0,0.4)"}}>⚙ Filters</button>}
       {/* KPIs */}
