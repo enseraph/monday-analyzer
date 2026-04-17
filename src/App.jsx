@@ -2062,9 +2062,12 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     };
     const cumA=buildCumByCountry(dataA,daysA);
     const cumB=buildCumByCountry(dataB,daysB);
+    const fmtShort=d=>{if(!d)return"";const p=d.split("-");return(parseInt(p[1]))+"/"+parseInt(p[2])};
     const cumSeries=[];
     for(let i=0;i<maxDays;i++){
-      const row={idx:"D"+(i+1)};
+      const dA=daysA[i]||null,dB=daysB[i]||null;
+      const label=dA?fmtShort(dA):(dB?fmtShort(dB):"");
+      const row={idx:label,dateA:dA,dateB:dB};
       cumCountries.forEach(c=>{
         row[c+"_A"]=i<cumA.length?cumA[i][c]:null;
         row[c+"_B"]=i<cumB.length?cumB[i][c]:null;
@@ -4230,7 +4233,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div key="cmp-monthly-rev"><CC grid title={t.cmpMonthlyRev} id="cmp-monthly-rev" nm="cmp_monthly_rev" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
               <div key="cmp-monthly-count"><CC grid title={t.cmpMonthlyCount} id="cmp-monthly-count" nm="cmp_monthly_count" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
               <div key="cmp-nights"><CC grid title={t.cmpNightsChart} id="cmp-nights" nm="cmp_nights" data={compareRpt.nightsChart}><BarChart data={compareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
-              <div key="cmp-cum-rev">{compareRpt.cumSeries&&<CC grid title={t.cmpCumRevByNationality} id="cmp-cum-rev" nm="cmp_cum_rev" data={compareRpt.cumSeries}><LineChart data={compareRpt.cumSeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>v!=null?"¥"+v.toLocaleString():"—"}/>}/><Legend wrapperStyle={{fontSize:9}}/>{compareRpt.cumCountries.map((c,i)=>{const color=(c===OTHER_KEY_NAME||c===OTHER_KEY)?"#78716c":PALETTE[i%PALETTE.length];return[<Line key={c+"_A"} type="monotone" dataKey={c+"_A"} stroke={color} strokeWidth={2.5} dot={false} name={tl(c)+" (A)"}/>,<Line key={c+"_B"} type="monotone" dataKey={c+"_B"} stroke={color} strokeWidth={1.5} strokeDasharray="5 3" dot={false} name={tl(c)+" (B)"}/>]})}</LineChart></CC>}</div>
+              <div key="cmp-cum-rev">{compareRpt.cumSeries&&<CC grid title={t.cmpCumRevByNationality} id="cmp-cum-rev" nm="cmp_cum_rev" data={compareRpt.cumSeries}><LineChart data={compareRpt.cumSeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>v!=null?"¥"+v.toLocaleString():"—"}/>}/><Legend wrapperStyle={{fontSize:9}}/>{compareRpt.cumCountries.map((c,i)=>{const color=(c===OTHER_KEY_NAME||c===OTHER_KEY)?"#78716c":PALETTE[i%PALETTE.length];return[<Line key={c+"_A"} type="monotone" dataKey={c+"_A"} stroke={color} strokeWidth={2.5} dot={false} name={tl(c)+" (A)"}/>,<Line key={c+"_B"} type="monotone" dataKey={c+"_B"} stroke={color} strokeWidth={1.5} strokeDasharray="5 3" dot={false} name={tl(c)+" (B)"}/>]})}</LineChart></CC>}</div>
             </DraggableGrid>
           </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
