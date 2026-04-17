@@ -16,6 +16,7 @@
 | `monday-analyzer-backup-v2.18` | 2026-04-16 | v2.18 | Pre–field drops + CSV string release (v2.19 memory round 2) |
 | `monday-analyzer-backup-v2.19` | 2026-04-16 | v2.19 | Pre–Top-N+Other rollout |
 | `monday-analyzer-backup-v2.21` | 2026-04-16 | v2.21 | Pre–Stay Night date type |
+| `monday-analyzer-backup-v2.24` | 2026-04-17 | v2.24 | Pre–Cumulative Revenue + Date Type info |
 
 *Note: v1.91, v1.92, v1.93 changes are incremental and backed by git history (commits on `master`). Use `git checkout <commit-sha>` to restore any version.*
 

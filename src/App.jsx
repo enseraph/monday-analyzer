@@ -10,9 +10,9 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.24";
+const APP_VERSION="2.25";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
-const LAYOUT_SCHEMA_VERSION="11";
+const LAYOUT_SCHEMA_VERSION="12";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
 const DATA_LAG_DAYS=1;
 // Default global date range: 1st of current month → yesterday (avoids loading the full multi-year
@@ -126,7 +126,7 @@ const DL={
   booking:mkL([["ch-bd",0,0,6,3],["ch-mdow",6,0,6,3],["ch-mdow2",0,3,6,3],["ch-bt",6,3,6,3],["ch-bv",0,6,6,3]]),
   member:mkL([["mb-overview",0,0,6,3],["mb-jpintl",6,0,6,3],["mb-cntry-stack",0,3,12,5],["mb-cntry-counts",0,8,12,5],["mb-rank",0,13,6,4],["mb-seg",6,13,6,3],["mb-fac",0,17,6,7],["mb-fac-tbl",6,17,6,7],["mb-tight-chart",0,24,6,5],["mb-tight-tbl",6,24,6,5],["mb-fs-chart",0,29,6,5],["mb-fs-tbl",6,29,6,5],["mb-detail",0,34,12,14]]),
   los:mkL([["los-hist",0,0,6,4],["los-seg",6,0,6,4],["los-country",0,4,6,5],["los-detail",6,4,6,4]]),
-  revenue:mkL([["ch-rm",0,0,6,4],["ch-rv",6,0,6,3],["ch-rmm",0,4,6,3],["ch-drev",6,3,6,3],["ch-rdow",0,7,6,3],["ch-rdowm",6,7,6,3],["ch-rev-country-r",0,10,12,4]]),
+  revenue:mkL([["ch-cum-rev",0,0,12,5],["ch-rm",0,5,6,4],["ch-rv",6,5,6,3],["ch-rmm",0,9,6,3],["ch-drev",6,8,6,3],["ch-rdow",0,12,6,3],["ch-rdowm",6,12,6,3],["ch-rev-country-r",0,15,12,4]]),
   rooms:mkL([["ch-rt",0,0,12,4]]),
   facilities:mkL([["fac-res",0,0,6,7],["fac-rev",6,0,6,7],["fac-intl",0,7,6,7],["fac-los",6,7,6,7],["fac-kvk",0,14,6,3],["fac-hva",6,14,6,3],["fac-daily-count",0,17,6,4],["fac-daily-rev",6,17,6,4],["fac-monthly-count",0,21,6,4],["fac-monthly-rev",6,21,6,4]]),
   opening:mkL([["op-ramp",0,0,6,5],["op-ramp-rev",6,0,6,5],["op-cohort",0,5,12,5],["op-split",0,10,6,5],["op-adr",6,10,6,5],["op-country",0,15,12,5]]),
@@ -219,6 +219,8 @@ const T = {
     dateType:"Date Type",from:"From",to:"To",
     all:"All",allCountries:"All countries",allSegments:"All segments",allProperties:"All properties",
     checkin:"Check-in",checkout:"Check-out",bookingDate:"Booking Date",stayNight:"Stay Night",
+    dateTypeInfo:"Booking Date: Filters and groups by the date the reservation was made. Shows when business was received (入れ込み).\n\nCheck-in: Filters and groups by the guest's arrival date. A reservation appears only in the month/day it checks in.\n\nCheck-out: Filters and groups by the guest's departure date. YYB only.\n\nStay Night: Includes any reservation with at least one overnight stay in the selected range (e.g., a Feb 28→Mar 2 booking is included when filtering March). For charting, the reservation is counted once at its check-in date. Revenue is not split across individual nights.",
+    cumRevByNationality:"Cumulative Revenue by Nationality (YoY)",
     reservations:"Reservations",totalRevenue:"Total Revenue",avgRevRes:"Avg Rev/Res",
     avgLOS:"Avg LOS",avgLeadTime:"Avg Lead Time",intlPct:"International %",
     overview:"Overview",sourceMarkets:"Country Overview",segments:"Segments",
@@ -394,6 +396,8 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
     dateType:"日付種別",from:"開始日",to:"終了日",
     all:"全て",allCountries:"全ての国",allSegments:"全タイプ",allProperties:"全施設",
     checkin:"チェックイン",checkout:"チェックアウト",bookingDate:"予約日",stayNight:"宿泊日",
+    dateTypeInfo:"予約日: 予約が行われた日付でフィルタリング・集計します。入れ込みの視点です。\n\nチェックイン: 宿泊開始日でフィルタリング・集計します。\n\nチェックアウト: 宿泊終了日でフィルタリング・集計します（YYBのみ）。\n\n宿泊日: 選択した期間に1泊でも滞在がある予約を含みます（例：2/28→3/2の予約は3月でフィルターすると含まれます）。グラフ上はチェックイン日で1回カウントされ、売上は泊数ごとに分割されません。",
+    cumRevByNationality:"国別累積売上（前年比）",
     reservations:"予約件数",totalRevenue:"売上合計",avgRevRes:"平均単価/件",
     avgLOS:"平均泊数",avgLeadTime:"平均リードタイム",intlPct:"海外比率",
     overview:"概要",sourceMarkets:"国・地域概要",segments:"旅行者タイプ",
@@ -952,6 +956,7 @@ const[segDetailed,setSegDetailed]=useState(false);
 const[fDOW,setFDOW]=useState(INITIAL_URL_STATE.fDOW||[]);
   const[tab,setTab]=useState(INITIAL_URL_STATE.tab||"overview");
   const[filtersOpen,setFiltersOpen]=useState(true);
+  const[dateTypeInfoOpen,setDateTypeInfoOpen]=useState(false);
   const[sidebarCollapsed,setSidebarCollapsed]=useState(()=>{try{return localStorage.getItem("rgl_sidebar_collapsed")==="1"}catch{return false}});
   useEffect(()=>{try{localStorage.setItem("rgl_sidebar_collapsed",sidebarCollapsed?"1":"0")}catch{}},[sidebarCollapsed]);
 const[presets,setPresets]=useState(()=>{try{return JSON.parse(localStorage.getItem("monday_presets"))||[]}catch{return[]}});
@@ -1622,6 +1627,80 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       dowRev:DOW_FULL.map((d,i)=>row(byDow,d,"day",dL[i],"rev")),
     };
   },[tab,facAgeView,fP,filtered,monthMode,tz,fDT,tzFmt,dL]);
+
+  // ─── CUMULATIVE REVENUE BY NATIONALITY (YoY) — Revenue tab ───
+  const cumRevByNationality=useMemo(()=>{
+    if(tab!=="revenue"||!allData.length)return null;
+    const now=new Date();
+    const curYear=now.getFullYear();
+    const prevYear=curYear-1;
+    const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    // Respect global filters EXCEPT date range (we always show full calendar years)
+    const applyFilters=r=>{
+      if(fCancel==="confirmed"&&r.isCancelled)return false;
+      if(fCancel==="cancelled"&&!r.isCancelled)return false;
+      if(fHType!=="All"&&r.hotelType!==fHType)return false;
+      if(fBrands.length&&!fBrands.includes(r.brand))return false;
+      if(fR!=="All"&&r.region!==fR)return false;
+      if(fC.length&&!fC.includes(r.country))return false;
+      if(fS.length&&!fS.includes(r.segment))return false;
+      if(fP.length&&!fP.includes(r.facility))return false;
+      if(fGeo.length&&!fGeo.includes(GEO_REGION(r.country)))return false;
+      if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
+      if(!fP.length&&facAgeFilter!=="all"){const isNew=isNewFacility(r.facility);if(facAgeFilter==="new"&&!isNew)return false;if(facAgeFilter==="old"&&isNew)return false}
+      return true;
+    };
+    // Determine which date field to use for assigning a reservation to a month
+    const getMonth=r=>{
+      const dt=fDT==="checkin"||fDT==="stay"?r.checkin:fDT==="checkout"?r.checkout:r.bookingDate;
+      if(!dt)return null;
+      return{y:dt.getFullYear(),m:dt.getMonth()};
+    };
+    // Accumulate: country → year → month → revenue
+    const byCountryYearMonth={};
+    const countryTotals={};
+    for(let i=0;i<allData.length;i++){
+      const r=allData[i];
+      if(!applyFilters(r))continue;
+      const ym=getMonth(r);
+      if(!ym||!(ym.y===curYear||ym.y===prevYear))continue;
+      const c=r.country;
+      const rev=r.totalRev||0;
+      if(!byCountryYearMonth[c])byCountryYearMonth[c]={};
+      if(!byCountryYearMonth[c][ym.y])byCountryYearMonth[c][ym.y]=new Array(12).fill(0);
+      byCountryYearMonth[c][ym.y][ym.m]+=rev;
+      if(!countryTotals[c])countryTotals[c]=0;
+      if(ym.y===curYear)countryTotals[c]+=rev;
+    }
+    // Top 5 countries by current-year revenue + Other
+    const sorted=Object.entries(countryTotals).sort((a,b)=>b[1]-a[1]);
+    const topCountries=sorted.slice(0,5).map(([c])=>c);
+    const topSet=new Set(topCountries);
+    const countries=[...topCountries,OTHER_KEY_NAME];
+    // Merge non-top into Other
+    const merged={};
+    countries.forEach(c=>{merged[c]={[curYear]:new Array(12).fill(0),[prevYear]:new Array(12).fill(0)}});
+    Object.entries(byCountryYearMonth).forEach(([c,years])=>{
+      const bucket=topSet.has(c)?c:OTHER_KEY_NAME;
+      [curYear,prevYear].forEach(y=>{
+        if(years[y])years[y].forEach((v,m)=>{merged[bucket][y][m]+=v});
+      });
+    });
+    // Build cumulative rows
+    const data=MONTHS.map((label,mi)=>{
+      const row={month:label};
+      countries.forEach(c=>{
+        [curYear,prevYear].forEach(y=>{
+          const key=c+"_"+y;
+          let cum=0;
+          for(let m=0;m<=mi;m++)cum+=merged[c][y][m];
+          row[key]=cum;
+        });
+      });
+      return row;
+    });
+    return{data,countries,curYear,prevYear};
+  },[tab,allData,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,facAgeFilter,fDT]);
 
   // Country LOS and Lead for Country Overview tab. Top 15 by count + "Other" row
   // whose avg is computed across ALL non-top-15 nights/lead arrays (weighted by sample count).
@@ -3869,7 +3948,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         {isTlTab&&<div><div style={Sc.fl}>{t.tlStatus}</div><div style={{display:"flex",gap:2,flexWrap:"wrap"}}>{[["net",t.tlStatusNet],["all",t.tlStatusAll],["cancelled",t.tlStatusCancelled],["modified",t.tlStatusModified]].map(([v,l])=><button key={v} style={{...Sc.btn,...(fTlStatus===v?S.ba:{})}} onClick={()=>setFTlStatus(v)}>{l}</button>)}</div></div>}
 {!isTlTab&&<div><div style={Sc.fl}>{t.geoArea}</div><MS options={uGeo} selected={fGeo} onChange={setFGeo} placeholder={t.allGeoAreas} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>}
 <div><div style={Sc.fl}>{t.dowFilter}</div><MS options={uDOW} selected={fDOW} onChange={setFDOW} placeholder={t.allDOW} S={Sc} cl={t.clear} theme={TH} displayFn={tl}/></div>
-        <div><div style={Sc.fl}>{t.dateType}</div><select style={Sc.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option><option value="stay">{t.stayNight}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option><option value="stay">{t.stayNight}</option></>}</select></div>
+        <div style={{position:"relative"}}><div style={{display:"flex",alignItems:"center",gap:4}}><div style={Sc.fl}>{t.dateType}</div><button style={{background:"none",border:"1px solid "+TH.border,borderRadius:"50%",width:16,height:16,fontSize:9,color:TH.textMuted,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,lineHeight:1}} onClick={()=>setDateTypeInfoOpen(v=>!v)} title={t.dateTypeInfo}>?</button></div><select style={Sc.sel} value={fDT} onChange={e=>setFDT(e.target.value)}>{isTlTab?<><option value="booking">{t.bookingDate}</option><option value="checkin">{t.checkin}</option><option value="stay">{t.stayNight}</option></>:<><option value="checkin">{t.checkin}</option><option value="checkout">{t.checkout}</option><option value="booking">{t.bookingDate}</option><option value="stay">{t.stayNight}</option></>}</select>{dateTypeInfoOpen&&<div style={{position:"absolute",top:"100%",left:0,zIndex:100,background:TH.card,border:"1px solid "+TH.border,borderRadius:8,padding:"12px 16px",marginTop:4,width:340,boxShadow:"0 8px 24px rgba(0,0,0,0.4)",fontSize:11,lineHeight:1.6,color:TH.text,whiteSpace:"pre-line"}} onClick={()=>setDateTypeInfoOpen(false)}>{t.dateTypeInfo}</div>}</div>
         <div><div style={Sc.fl}>{t.dateRange}</div><DateRangePicker from={fDF} to={fDTo} onApply={(f,tt)=>{setFDF(f);setFDTo(tt)}} S={Sc} theme={TH} t={t} lang={lang} isMobile={isMobile}/></div>
         <div><div style={Sc.fl}>{t.monthModeLabel}</div><div style={{display:"flex",gap:2}}><button style={{...Sc.btn,...(monthMode==="stay"?S.ba:{})}} onClick={()=>setMonthMode("stay")}>{t.monthByStay}</button><button style={{...Sc.btn,...(monthMode==="booking"?S.ba:{})}} onClick={()=>setMonthMode("booking")}>{t.monthByBooking}</button></div></div>
         <button style={{...Sc.btn,color:"#ef4444",borderColor:"rgba(239,68,68,0.3)"}} onClick={()=>{setFR("All");setFC([]);setFS([]);setFP([]);setFDF(defaultDateFrom());setFDTo(defaultDateTo());setMonthMode("booking");setFCancel("all");setFHType("All");setFBrands([]);setFGeo([]);setFDOW([]);setFChannelBucket([]);setFTlChannelName([]);setFTlStatus("net");setFTlBrand([]);setFTlHotelType("All");setCountryViewMode("aggregate");setPropertyViewMode("aggregate");setCountryWithOther(false);setPropertyWithOther(false);setActivePreset(null)}}>{t.reset}</button>
@@ -4265,6 +4344,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
 
         {/* REVENUE */}
         {tab==="revenue"&&<><DraggableGrid {...dgProps("revenue")}>
+          <div key="ch-cum-rev">{cumRevByNationality&&<CC grid title={t.cumRevByNationality} id="ch-cum-rev" nm="cum_rev_nationality" data={cumRevByNationality.data}><LineChart data={cumRevByNationality.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:9}}/>{cumRevByNationality.countries.map((c,i)=>{const color=(c===OTHER_KEY_NAME||c===OTHER_KEY)?"#78716c":PALETTE[i%PALETTE.length];return[<Line key={c+"_cur"} type="monotone" dataKey={c+"_"+cumRevByNationality.curYear} stroke={color} strokeWidth={2.5} dot={{r:2}} name={tl(c)+" "+cumRevByNationality.curYear}/>,<Line key={c+"_prev"} type="monotone" dataKey={c+"_"+cumRevByNationality.prevYear} stroke={color} strokeWidth={1.5} strokeDasharray="5 3" dot={false} name={tl(c)+" "+cumRevByNationality.prevYear}/>]})}</LineChart></CC>}</div>
           <div key="ch-rm"><CC grid title={t.revByMarket} id="ch-rm" nm="rev_mkt" h={Math.max(300,mktD.length*28)} data={mktD}><BarChart data={mktD} layout="vertical"><CartesianGrid {...gl}/><XAxis type="number" tick={tks} tickFormatter={fmtY}/><YAxis dataKey="country" type="category" width={120} tick={<TlTickV/>} interval={0}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Bar dataKey="avgRev" fill="#c9a84c" radius={[0,4,4,0]} name={t.avgRevRes}/></BarChart></CC></div>
           <div key="ch-rv"><CC grid title={t.monthlyRev} id="ch-rv" nm="monthly_rev" h={300} data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><BarChart data={perPropertySeries?perPropertySeries.monthlyRev:facAgeSeries?facAgeSeries.monthlyRev:(perCountrySeries?perCountrySeries.monthlyRev:moD)}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/>{(perPropertySeries||facAgeSeries||perCountrySeries)?<Legend wrapperStyle={{fontSize:9}}/>:null}{perPropertySeries?perPropertySeries.properties.map((f,i)=><Bar key={f} dataKey={f} stackId="a" fill={seriesColor(f,i)} name={seriesFacLabel(f)}/>):facAgeSeries?[<Bar key="Old" dataKey="Old" stackId="a" fill={OLD_COHORT_COLOR} name={t.facOldLabel}/>,<Bar key="New" dataKey="New" stackId="a" fill={NEW_COHORT_COLOR} name={t.facNewLabel}/>]:perCountrySeries?perCountrySeries.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={seriesColor(c,i)} name={seriesLabel(c)}/>):<Bar dataKey="rev" fill="#34d399" radius={[4,4,0,0]} name={t.totalRevenue}/>}</BarChart></CC></div>
           <div key="ch-rmm"><CC grid title={t.revByMarketMonth} id="ch-rmm" nm="rev_mkt_month" h={300} data={revMktMo.data}><BarChart data={revMktMo.data}><CartesianGrid {...gl}/><XAxis dataKey="month" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend wrapperStyle={{fontSize:10}}/>{revMktMo.countries.map((c,i)=><Bar key={c} dataKey={c} stackId="a" fill={PALETTE[i%PALETTE.length]} name={tl(c)}/>)}</BarChart></CC></div>

@@ -123,9 +123,14 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.24
+Current: 2.25
 
 Recent changes:
+- v2.25: **Cumulative Revenue by Nationality (YoY) chart + Date Type info button.**
+  1. **New headline chart on the Revenue tab**: `ch-cum-rev` — full-width LineChart at the top showing cumulative revenue build-up across Jan–Dec for the current vs. previous year, split by top 5 countries + "Other". Each country gets a **solid line** (current year) and a **dashed line** (previous year) in matching color. Data comes from `allData` — **ignores the global date range** (always shows full calendar years) but respects all other filters (region, segment, property, etc.). The date type setting controls which date field assigns each reservation to a month (booking / check-in / checkout / stay).
+  2. **New `cumRevByNationality` useMemo** gated on `tab==="revenue"`. Scans all data for current + previous year, groups by country → year → month, picks top 5 by current-year revenue + Other, computes running cumulative. Returns `{data, countries, curYear, prevYear}`.
+  3. **Date Type info button** ("?") in the global filter bar next to the Date Type dropdown. Clicking it opens a styled popup explaining all four date type modes (Booking Date, Check-in, Check-out, Stay Night) with bilingual EN/JA text. New i18n key `t.dateTypeInfo`. State: `dateTypeInfoOpen` boolean. Popup dismisses on click.
+  4. Revenue tab layout: `ch-cum-rev` placed at `[0,0,12,5]` (top), existing charts shifted down. LAYOUT_SCHEMA_VERSION bumped to 12.
 - v2.24: **Compare tab layout redesign + A/B color update + TL Compare gains all 3 comparison charts.**
   1. **YYB Compare default layout** now matches the screenshot: tables on the left (7 cols), charts stacked on the right (5 cols). cmp-country + cmp-rev side-by-side, cmp-segment + cmp-count side-by-side, cmp-facility + cmp-nights side-by-side. Time-series charts below at full width. LAYOUT_SCHEMA_VERSION bumped 11.
   2. **A/B color scheme updated** for better distinction: A = `#2563eb` (bold blue), B = `#d97706` (amber). Applied to KPI card labels AND values (both colored now, not just the tiny label), all bar chart fills, and all line chart strokes on the Compare tab. New module-level constants `CMP_A_COLOR` / `CMP_B_COLOR`.
