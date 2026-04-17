@@ -9,6 +9,8 @@ import TlWorker from "./tlWorker.js?worker";
 import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegion, getBrand, getSegment, getSegmentDetailed, parseTLRow, applyTLSameDayCancel, pctChg, normalizeFacility } from "./shared.js";
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
+// Sidebar tab icons — SVG line icons that inherit currentColor
+import TAB_ICONS from "./icons.jsx";
 
 const APP_VERSION="2.26";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
@@ -3889,37 +3891,37 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
   };
 
   const TABS=[
-    {id:"daily",l:t.dailyReport,src:"yyb",i:"📋"},
-    {id:"compare",l:t.compare,src:"yyb",i:"⇆"},
-    {id:"pace",l:t.pace,src:"yyb",i:"⏱"},
-    {id:"overview",l:t.overview,src:"yyb",i:"📊"},
-    {id:"kvk",l:t.kvk,src:"yyb",i:"⛩"},
-    {id:"markets",l:t.sourceMarkets,src:"yyb",i:"🌏"},
-    {id:"segments",l:t.segments,src:"yyb",i:"👥"},
-    {id:"booking",l:t.bookingPatterns,src:"yyb",i:"📅"},
-    {id:"member",l:t.memberTab,src:"yyb",i:"🎫"},
-    {id:"los",l:t.losTab,src:"yyb",i:"🌙"},
-    {id:"revenue",l:t.revenue,src:"yyb",i:"¥"},
-    {id:"cancellations",l:t.cancellations,src:"yyb",i:"✖"},
-    {id:"rooms",l:t.roomTypes,src:"yyb",i:"🛏"},
-    {id:"adr",l:t.adrTab,src:"yyb",i:"💴"},
-    {id:"facilities",l:t.facilities,src:"yyb",i:"🏨"},
-    {id:"opening",l:t.openingTab,src:"yyb",i:"🆕"},
-    {id:"tl-channel",l:t.tlChannelMix,src:"tl",i:"📊"},
-    {id:"tl-daily",l:t.tlDailyReport,src:"tl",i:"📋"},
-    {id:"tl-revenue",l:t.tlRevenueTab,src:"tl",i:"¥"},
-    {id:"tl-segments",l:t.tlSegmentsTab,src:"tl",i:"👥"},
-    {id:"tl-member",l:t.tlMemberTab,src:"tl",i:"🎫"},
-    {id:"tl-overview",l:t.tlOverviewTab,src:"tl",i:"📈"},
-    {id:"tl-los",l:t.tlLosTab,src:"tl",i:"🌙"},
-    {id:"tl-booking",l:t.tlBookingTab,src:"tl",i:"📅"},
-    {id:"tl-compare",l:t.tlCompareTab,src:"tl",i:"⇆"},
-    {id:"tl-pace",l:t.tlPaceTab,src:"tl",i:"⏱"},
-    {id:"tl-adr",l:t.tlAdrTab,src:"tl",i:"💴"},
-    {id:"tl-facilities",l:t.tlFacilitiesTab,src:"tl",i:"🏨"},
-    {id:"tl-kvk",l:t.tlKvkTab,src:"tl",i:"⛩"},
-    {id:"tl-markets",l:t.tlMarketsTab,src:"tl",i:"🌏"},
-    {id:"tl-cancellations",l:t.tlCancellationsTab,src:"tl"},
+    {id:"daily",l:t.dailyReport,src:"yyb",i:TAB_ICONS.daily},
+    {id:"compare",l:t.compare,src:"yyb",i:TAB_ICONS.compare},
+    {id:"pace",l:t.pace,src:"yyb",i:TAB_ICONS.pace},
+    {id:"overview",l:t.overview,src:"yyb",i:TAB_ICONS.overview},
+    {id:"kvk",l:t.kvk,src:"yyb",i:TAB_ICONS.kvk},
+    {id:"markets",l:t.sourceMarkets,src:"yyb",i:TAB_ICONS.markets},
+    {id:"segments",l:t.segments,src:"yyb",i:TAB_ICONS.segments},
+    {id:"booking",l:t.bookingPatterns,src:"yyb",i:TAB_ICONS.booking},
+    {id:"member",l:t.memberTab,src:"yyb",i:TAB_ICONS.member},
+    {id:"los",l:t.losTab,src:"yyb",i:TAB_ICONS.los},
+    {id:"revenue",l:t.revenue,src:"yyb",i:TAB_ICONS.revenue},
+    {id:"cancellations",l:t.cancellations,src:"yyb",i:TAB_ICONS.cancellations},
+    {id:"rooms",l:t.roomTypes,src:"yyb",i:TAB_ICONS.rooms},
+    {id:"adr",l:t.adrTab,src:"yyb",i:TAB_ICONS.adr},
+    {id:"facilities",l:t.facilities,src:"yyb",i:TAB_ICONS.facilities},
+    {id:"opening",l:t.openingTab,src:"yyb",i:TAB_ICONS.opening},
+    {id:"tl-channel",l:t.tlChannelMix,src:"tl",i:TAB_ICONS.channel},
+    {id:"tl-daily",l:t.tlDailyReport,src:"tl",i:TAB_ICONS.daily},
+    {id:"tl-revenue",l:t.tlRevenueTab,src:"tl",i:TAB_ICONS.revenue},
+    {id:"tl-segments",l:t.tlSegmentsTab,src:"tl",i:TAB_ICONS.segments},
+    {id:"tl-member",l:t.tlMemberTab,src:"tl",i:TAB_ICONS.member},
+    {id:"tl-overview",l:t.tlOverviewTab,src:"tl",i:TAB_ICONS.trending},
+    {id:"tl-los",l:t.tlLosTab,src:"tl",i:TAB_ICONS.los},
+    {id:"tl-booking",l:t.tlBookingTab,src:"tl",i:TAB_ICONS.booking},
+    {id:"tl-compare",l:t.tlCompareTab,src:"tl",i:TAB_ICONS.compare},
+    {id:"tl-pace",l:t.tlPaceTab,src:"tl",i:TAB_ICONS.pace},
+    {id:"tl-adr",l:t.tlAdrTab,src:"tl",i:TAB_ICONS.adr},
+    {id:"tl-facilities",l:t.tlFacilitiesTab,src:"tl",i:TAB_ICONS.facilities},
+    {id:"tl-kvk",l:t.tlKvkTab,src:"tl",i:TAB_ICONS.kvk},
+    {id:"tl-markets",l:t.tlMarketsTab,src:"tl",i:TAB_ICONS.markets},
+    {id:"tl-cancellations",l:t.tlCancellationsTab,src:"tl",i:TAB_ICONS.cancellations},
   ];
   const activeTabSrc=(TABS.find(tb=>tb.id===tab)||{}).src||"yyb";
   const isTlTab=activeTabSrc==="tl";
@@ -3962,7 +3964,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               const active=tab===tb.id;
               const activeBg=src==="yyb"?(dk?"rgba(201,168,76,0.12)":"rgba(201,168,76,0.15)"):(dk?"rgba(94,234,212,0.12)":"rgba(94,234,212,0.15)");
               return<div key={tb.id} onClick={()=>{setTab(tb.id);setTPage(0);setTlPage(0);if(isMobile)setSidebarCollapsed(true)}} title={sidebarCollapsed?tb.l:undefined} style={{display:"flex",alignItems:"center",gap:10,padding:sidebarCollapsed?"10px 0":"7px 14px",fontSize:12,color:active?color:TH.text,cursor:"pointer",borderLeft:"2px solid "+(active?color:"transparent"),background:active?activeBg:"transparent",whiteSpace:"nowrap",justifyContent:sidebarCollapsed?"center":"flex-start",transition:"background 0.1s"}} onMouseEnter={e=>{if(!active)e.currentTarget.style.background=TH.sidebarHover}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent"}}>
-                <span style={{width:16,textAlign:"center",flexShrink:0,fontSize:12}}>{tb.i}</span>
+                <span style={{width:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{tb.i}</span>
                 {!sidebarCollapsed&&<span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{tb.l}</span>}
               </div>;
             })}
