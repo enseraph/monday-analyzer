@@ -1672,16 +1672,33 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(!countryTotals[c])countryTotals[c]=0;
       if(ym.y===curYear)countryTotals[c]+=rev;
     }
-    // Top 5 countries by current-year revenue + Other
-    const sorted=Object.entries(countryTotals).sort((a,b)=>b[1]-a[1]);
-    const topCountries=sorted.slice(0,5).map(([c])=>c);
-    const topSet=new Set(topCountries);
-    const countries=[...topCountries,OTHER_KEY_NAME];
-    // Merge non-top into Other
+    // Determine country buckets — respects countryWithOther + countryViewMode
+    let countries;
+    let bucketOfCountry;
+    if(countryWithOther&&fC.length>=1){
+      const selected=new Set(fC);
+      if(countryViewMode==="aggregate"){
+        const selLabel=fC.length===1?fC[0]:SELECTED_KEY;
+        countries=[selLabel,OTHER_KEY_NAME];
+        bucketOfCountry=c=>selected.has(c)?selLabel:OTHER_KEY_NAME;
+      }else{
+        const selSorted=[...fC].sort((x,y)=>(countryTotals[y]||0)-(countryTotals[x]||0));
+        countries=[...selSorted,OTHER_KEY_NAME];
+        bucketOfCountry=c=>selected.has(c)?c:OTHER_KEY_NAME;
+      }
+    }else{
+      // Filter out synthetic keys before picking top 5
+      const sorted=Object.entries(countryTotals).filter(([c])=>c!==OTHER_KEY_NAME&&c!==OTHER_KEY).sort((a,b)=>b[1]-a[1]);
+      const topCountries=sorted.slice(0,5).map(([c])=>c);
+      const topSet=new Set(topCountries);
+      countries=[...topCountries,OTHER_KEY_NAME];
+      bucketOfCountry=c=>topSet.has(c)?c:OTHER_KEY_NAME;
+    }
+    // Merge into buckets
     const merged={};
     countries.forEach(c=>{merged[c]={[curYear]:new Array(12).fill(0),[prevYear]:new Array(12).fill(0)}});
     Object.entries(byCountryYearMonth).forEach(([c,years])=>{
-      const bucket=topSet.has(c)?c:OTHER_KEY_NAME;
+      const bucket=bucketOfCountry(c);
       [curYear,prevYear].forEach(y=>{
         if(years[y])years[y].forEach((v,m)=>{merged[bucket][y][m]+=v});
       });
@@ -2004,16 +2021,36 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       monthlySeries.push({idx:"M"+(i+1),monthA:mA||null,monthB:mB||null,countA:vA?vA.count:null,countB:vB?vB.count:null,revA:vA?vA.rev:null,revB:vB?vB.rev:null});
     }
     // ─── Cumulative Revenue by Nationality (A vs B) ───
-    // Top 5 countries by Period A revenue + Other. Each country gets A (solid) + B (dashed) cumulative lines.
-    // X-axis = day index (D1, D2, ...) aligned like the daily charts above.
-    const cumTop5=byRevA.slice(0,5).map(c=>c.country);
-    const cumTopSet=new Set(cumTop5);
-    const cumCountries=[...cumTop5,OTHER_KEY_NAME];
+    // Respects countryWithOther + countryViewMode:
+    //   withOther + aggregate → selected countries combined + Other
+    //   withOther + perCountry → selected countries individually + Other
+    //   default → top 5 real countries by Period A revenue + Other
+    let cumCountries;
+    let cumBucketOf;
+    if(countryWithOther&&fC.length>=1){
+      const selected=new Set(fC);
+      if(countryViewMode==="aggregate"){
+        const selLabel=fC.length===1?fC[0]:SELECTED_KEY;
+        cumCountries=[selLabel,OTHER_KEY_NAME];
+        cumBucketOf=r=>selected.has(r.country)?selLabel:OTHER_KEY_NAME;
+      }else{
+        const selSorted=[...fC].sort((x,y)=>(countryRows.find(r=>r.country===y)?.revA||0)-(countryRows.find(r=>r.country===x)?.revA||0));
+        cumCountries=[...selSorted,OTHER_KEY_NAME];
+        cumBucketOf=r=>selected.has(r.country)?r.country:OTHER_KEY_NAME;
+      }
+    }else{
+      // Filter out synthetic __MA_OTHER__ before picking top 5
+      const realCountries=byRevA.filter(c=>c.country!==OTHER_KEY_NAME&&c.country!==OTHER_KEY);
+      const cumTop5=realCountries.slice(0,5).map(c=>c.country);
+      const cumTopSet=new Set(cumTop5);
+      cumCountries=[...cumTop5,OTHER_KEY_NAME];
+      cumBucketOf=r=>cumTopSet.has(r.country)?r.country:OTHER_KEY_NAME;
+    }
     const buildCumByCountry=(data,days)=>{
       const byDayCountry={};
       data.forEach(r=>{
         const d=getDateStr(r);if(!d)return;
-        const c=cumTopSet.has(r.country)?r.country:OTHER_KEY_NAME;
+        const c=cumBucketOf(r);
         if(!byDayCountry[d])byDayCountry[d]={};
         byDayCountry[d][c]=(byDayCountry[d][c]||0)+(r.totalRev||0);
       });
