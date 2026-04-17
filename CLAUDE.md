@@ -123,9 +123,13 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.23
+Current: 2.24
 
 Recent changes:
+- v2.24: **Compare tab layout redesign + A/B color update + TL Compare gains all 3 comparison charts.**
+  1. **YYB Compare default layout** now matches the screenshot: tables on the left (7 cols), charts stacked on the right (5 cols). cmp-country + cmp-rev side-by-side, cmp-segment + cmp-count side-by-side, cmp-facility + cmp-nights side-by-side. Time-series charts below at full width. LAYOUT_SCHEMA_VERSION bumped 11.
+  2. **A/B color scheme updated** for better distinction: A = `#2563eb` (bold blue), B = `#d97706` (amber). Applied to KPI card labels AND values (both colored now, not just the tiny label), all bar chart fills, and all line chart strokes on the Compare tab. New module-level constants `CMP_A_COLOR` / `CMP_B_COLOR`.
+  3. **TL Compare now has all 3 comparison charts** in a 3-column grid: Revenue Comparison, Reservation Comparison (new), Room-Nights Comparison. Previously only had the nightsChart. New `buildCmpChart` helper inside `tlCompareRpt` deduplicates the top-10+Other chart builder. TL Compare KPIs also use the new A/B colored format.
 - v2.23: **Compare tabs gain Room-Nights as a comparison metric.** Both YYB Compare and TL Compare now track `totalNights` = Σ (nights × rooms) per period alongside count and revenue.
   1. **Aggregation update (both tabs)**: `aggregate()` accumulates `nights` into `byCountry`/`bySegment`/`byFacility` dicts, plus a new `totalNights` top-level field on the period summary.
   2. **New KPI card** for A / B / Change Room-Nights (A = blue, B = gold, Δ color-coded green/red).

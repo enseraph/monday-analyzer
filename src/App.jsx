@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.23";
+const APP_VERSION="2.24";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="11";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -21,6 +21,8 @@ function defaultDateFrom(){const d=new Date();return`${d.getFullYear()}-${String
 function defaultDateTo(){const d=new Date();d.setDate(d.getDate()-DATA_LAG_DAYS);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 // Source color accents — used by sectioned tab strip, source banner, TL chart palette
 const SOURCE_COLORS={yyb:"#c9a84c",tl:"#5eead4"};
+const CMP_A_COLOR="#2563eb"; // bold blue — Period A
+const CMP_B_COLOR="#d97706"; // amber — Period B
 // Channel bucket colors for TL tab
 const CHANNEL_COLORS={direct:"#34d399",rta:"#5eead4",ota:"#4ea8de"};
 // ─── URL state (shareable views) ───
@@ -117,7 +119,7 @@ function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
 function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
 const DL={
-  compare:mkL([["cmp-country",0,0,6,5],["cmp-rev",6,0,6,4],["cmp-segment",0,5,6,4],["cmp-count",6,4,6,4],["cmp-nights",0,8,12,4],["cmp-facility",0,12,12,4],["cmp-daily-rev",0,16,12,4],["cmp-daily-count",0,20,12,4],["cmp-monthly-rev",0,24,6,4],["cmp-monthly-count",6,24,6,4]]),
+  compare:mkL([["cmp-country",0,0,7,6],["cmp-rev",7,0,5,6],["cmp-segment",0,6,7,5],["cmp-count",7,6,5,5],["cmp-facility",0,11,7,7],["cmp-nights",7,11,5,7],["cmp-daily-rev",0,18,12,4],["cmp-daily-count",0,22,12,4],["cmp-monthly-rev",0,26,6,4],["cmp-monthly-count",6,26,6,4]]),
   overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-rev-country",0,9,12,4],["ch-res-day",0,13,6,3],["ch-rev-day",6,13,6,3]]),
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-mrev",0,4,12,4],["ch-mrev-time",0,8,12,5],["ch-mcnt-time",0,13,12,5],["ch-ml",0,18,6,4],["ch-mld",6,18,6,4],["ch-msc",0,22,12,4],["ch-rkc",0,26,12,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
@@ -3260,13 +3262,19 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     };
     const countryRowsWO=countryRows.length<=15?countryRows:[...countryRows.slice(0,15),sumRows(countryRows.slice(15),"country",OTHER_KEY_NAME)];
     const facRowsWO=facRows.length<=20?facRows:[...facRows.slice(0,20),{...sumRows(facRows.slice(20),"facility",OTHER_KEY_NAME),name:OTHER_KEY_NAME}];
-    // Room-Nights comparison chart: top 10 countries by Period A room-nights + Other
-    const byNightsA=[...countryRows].sort((x,y)=>y.nightsA-x.nightsA);
-    const nightsChart=byNightsA.slice(0,10).map(c=>({country:c.country,A:c.nightsA,B:c.nightsB}));
-    if(byNightsA.length>10){const r=byNightsA.slice(10);nightsChart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c.nightsA,0),B:r.reduce((a,c)=>a+c.nightsB,0)})}
+    // Comparison charts: top 10 by Period A + Other
+    const buildCmpChart=(rows,fieldA,fieldB)=>{
+      const sorted=[...rows].sort((x,y)=>y[fieldA]-x[fieldA]);
+      const chart=sorted.slice(0,10).map(c=>({country:c.country,A:c[fieldA],B:c[fieldB]}));
+      if(sorted.length>10){const r=sorted.slice(10);chart.push({country:OTHER_KEY_NAME,A:r.reduce((a,c)=>a+c[fieldA],0),B:r.reduce((a,c)=>a+c[fieldB],0)})}
+      return chart;
+    };
+    const revChart=buildCmpChart(countryRows,"revA","revB");
+    const countChart=buildCmpChart(countryRows,"countA","countB");
+    const nightsChart=buildCmpChart(countryRows,"nightsA","nightsB");
     const labelA=cmpA.from===cmpA.to||!cmpA.to?fmtDate(cmpA.from):`${fmtDate(cmpA.from)} – ${fmtDate(cmpA.to)}`;
     const labelB=cmpB.from===cmpB.to||!cmpB.to?fmtDate(cmpB.from):`${fmtDate(cmpB.from)} – ${fmtDate(cmpB.to)}`;
-    return{a,b,countryRows,segRows,facRows,countryRowsWO,facRowsWO,nightsChart,labelA,labelB};
+    return{a,b,countryRows,segRows,facRows,countryRowsWO,facRowsWO,revChart,countChart,nightsChart,labelA,labelB};
   },[tab,tlData,cmpA,cmpB,fP,fChannelBucket,fTlChannelName,fTlBrand,fTlHotelType,fR,fS,fDOW,fTlStatus,facAgeFilter]);
 
   // ─── TL Pace ───
@@ -4046,7 +4054,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 [t.totalRevenue,compareRpt.a.totalRev,compareRpt.b.totalRev],
                 [t.roomNights,compareRpt.a.totalNights,compareRpt.b.totalNights],
                 [t.drADR,compareRpt.a.adr,compareRpt.b.adr],
-              ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue||label===t.drADR;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,color:"#4ea8de"}}>A</div><div style={{...S.kv,fontSize:18}}>{fmt(va)}</div></div><div><div style={{fontSize:10,color:TH.gold}}>B</div><div style={{...S.kv,fontSize:18}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({pctChg(va,vb)})</div></div>})}
+              ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue||label===t.drADR;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,fontWeight:700,color:CMP_A_COLOR}}>A</div><div style={{...S.kv,fontSize:18,color:CMP_A_COLOR}}>{fmt(va)}</div></div><div><div style={{fontSize:10,fontWeight:700,color:CMP_B_COLOR}}>B</div><div style={{...S.kv,fontSize:18,color:CMP_B_COLOR}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({pctChg(va,vb)})</div></div>})}
             </div>
             <DraggableGrid {...dgProps("compare")}>
               <div key="cmp-country"><SortTbl
@@ -4055,25 +4063,25 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 renderRow={r=><tr key={r.country}><td style={{...S.td,padding:"3px 6px"}}>{tl(r.country)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countA}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countB}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.nightsDelta>0?"#34d399":r.nightsDelta<0?"#ef4444":TH.text}}>{r.nightsDelta>0?"+":""}{fmtN(r.nightsDelta)}</td></tr>}
                 title={t.cmpByCountry}
               /></div>
-              <div key="cmp-rev"><CC grid title={t.cmpRevChart} id="cmp-rev" nm="cmp_rev" data={compareRpt.revChart}><BarChart data={compareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-rev"><CC grid title={t.cmpRevChart} id="cmp-rev" nm="cmp_rev" data={compareRpt.revChart}><BarChart data={compareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
               <div key="cmp-segment"><SortTbl
                 data={compareRpt.segRows}
                 columns={[{key:"segment",label:t.thSegment},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"nightsA",label:"A "+t.roomNights},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ "+t.drRevenue},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
                 renderRow={r=><tr key={r.segment}><td style={{...S.td,padding:"3px 6px"}}>{tl(r.segment)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countA}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countB}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.nightsDelta>0?"#34d399":r.nightsDelta<0?"#ef4444":TH.text}}>{r.nightsDelta>0?"+":""}{fmtN(r.nightsDelta)}</td></tr>}
                 title={t.cmpBySegment}
               /></div>
-              <div key="cmp-count"><CC grid title={t.cmpCountChart} id="cmp-count" nm="cmp_count" data={compareRpt.countChart}><BarChart data={compareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-count"><CC grid title={t.cmpCountChart} id="cmp-count" nm="cmp_count" data={compareRpt.countChart}><BarChart data={compareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
               <div key="cmp-facility"><SortTbl
                 data={compareRpt.facRows}
                 columns={[{key:"name",label:t.thFacility},{key:"countA",label:"A "+t.drCount},{key:"revA",label:"A "+t.drRevenue},{key:"nightsA",label:"A "+t.roomNights},{key:"countB",label:"B "+t.drCount},{key:"revB",label:"B "+t.drRevenue},{key:"nightsB",label:"B "+t.roomNights},{key:"revDelta",label:"Δ "+t.drRevenue},{key:"nightsDelta",label:"Δ "+t.roomNights}]}
                 renderRow={r=><tr key={r.facility}><td style={{...S.td,whiteSpace:"nowrap",padding:"3px 6px"}}>{r.name}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countA}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsA)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{r.countB}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.revB)}</td><td style={{...S.td,...S.m,padding:"3px 6px"}}>{fmtN(r.nightsB)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.revDelta>0?"#34d399":r.revDelta<0?"#ef4444":TH.text}}>{r.revDelta>0?"+":""}{fmtN(r.revDelta)}</td><td style={{...S.td,...S.m,padding:"3px 6px",color:r.nightsDelta>0?"#34d399":r.nightsDelta<0?"#ef4444":TH.text}}>{r.nightsDelta>0?"+":""}{fmtN(r.nightsDelta)}</td></tr>}
                 title={t.cmpByFacility}
               /></div>
-              <div key="cmp-daily-rev"><CC grid title={t.cmpDailyRev} id="cmp-daily-rev" nm="cmp_daily_rev" data={compareRpt.dailySeries}><LineChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Line type="monotone" dataKey="revB" stroke={TH.gold} strokeWidth={2} dot={{r:2}} name={compareRpt.labelB} connectNulls={false}/><Line type="monotone" dataKey="revA" stroke="#4ea8de" strokeWidth={2} dot={{r:2}} name={compareRpt.labelA} connectNulls={false}/></LineChart></CC></div>
-              <div key="cmp-daily-count"><CC grid title={t.cmpDailyCount} id="cmp-daily-count" nm="cmp_daily_count" data={compareRpt.dailySeries}><LineChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Line type="monotone" dataKey="countB" stroke={TH.gold} strokeWidth={2} dot={{r:2}} name={compareRpt.labelB} connectNulls={false}/><Line type="monotone" dataKey="countA" stroke="#4ea8de" strokeWidth={2} dot={{r:2}} name={compareRpt.labelA} connectNulls={false}/></LineChart></CC></div>
-              <div key="cmp-monthly-rev"><CC grid title={t.cmpMonthlyRev} id="cmp-monthly-rev" nm="cmp_monthly_rev" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
-              <div key="cmp-monthly-count"><CC grid title={t.cmpMonthlyCount} id="cmp-monthly-count" nm="cmp_monthly_count" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={TH.gold} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill="#4ea8de" name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
-              <div key="cmp-nights"><CC grid title={t.cmpNightsChart} id="cmp-nights" nm="cmp_nights" data={compareRpt.nightsChart}><BarChart data={compareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-daily-rev"><CC grid title={t.cmpDailyRev} id="cmp-daily-rev" nm="cmp_daily_rev" data={compareRpt.dailySeries}><LineChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Line type="monotone" dataKey="revB" stroke={CMP_B_COLOR} strokeWidth={2} dot={{r:2}} name={compareRpt.labelB} connectNulls={false}/><Line type="monotone" dataKey="revA" stroke={CMP_A_COLOR} strokeWidth={2} dot={{r:2}} name={compareRpt.labelA} connectNulls={false}/></LineChart></CC></div>
+              <div key="cmp-daily-count"><CC grid title={t.cmpDailyCount} id="cmp-daily-count" nm="cmp_daily_count" data={compareRpt.dailySeries}><LineChart data={compareRpt.dailySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Line type="monotone" dataKey="countB" stroke={CMP_B_COLOR} strokeWidth={2} dot={{r:2}} name={compareRpt.labelB} connectNulls={false}/><Line type="monotone" dataKey="countA" stroke={CMP_A_COLOR} strokeWidth={2} dot={{r:2}} name={compareRpt.labelA} connectNulls={false}/></LineChart></CC></div>
+              <div key="cmp-monthly-rev"><CC grid title={t.cmpMonthlyRev} id="cmp-monthly-rev" nm="cmp_monthly_rev" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
+              <div key="cmp-monthly-count"><CC grid title={t.cmpMonthlyCount} id="cmp-monthly-count" nm="cmp_monthly_count" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
+              <div key="cmp-nights"><CC grid title={t.cmpNightsChart} id="cmp-nights" nm="cmp_nights" data={compareRpt.nightsChart}><BarChart data={compareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
             </DraggableGrid>
           </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
@@ -4794,15 +4802,11 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           </div>
           {tlCompareRpt&&!tlCompareRpt.empty?<div>
             <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpPeriodA} Rev</div><div style={S.kv}>¥{fmtN(tlCompareRpt.a.totalRev)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpPeriodB} Rev</div><div style={S.kv}>¥{fmtN(tlCompareRpt.b.totalRev)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Rev</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalRev,tlCompareRpt.b.totalRev)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>A Res</div><div style={S.kv}>{fmtN(tlCompareRpt.a.totalCount)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>B Res</div><div style={S.kv}>{fmtN(tlCompareRpt.b.totalCount)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} Res</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalCount,tlCompareRpt.b.totalCount)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>A {t.roomNights}</div><div style={S.kv}>{fmtN(tlCompareRpt.a.totalNights)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>B {t.roomNights}</div><div style={S.kv}>{fmtN(tlCompareRpt.b.totalNights)}</div></div>
-              <div style={S.kpi}><div style={S.kl}>{t.cmpChange} {t.roomNights}</div><div style={S.kv}>{pctChg(tlCompareRpt.a.totalNights,tlCompareRpt.b.totalNights)}</div></div>
+              {[
+                [t.reservations,tlCompareRpt.a.totalCount,tlCompareRpt.b.totalCount],
+                [t.totalRevenue,tlCompareRpt.a.totalRev,tlCompareRpt.b.totalRev],
+                [t.roomNights,tlCompareRpt.a.totalNights,tlCompareRpt.b.totalNights],
+              ].map(([label,va,vb])=>{const d=va-vb;const isRev=label===t.totalRevenue;const fmt=v=>isRev?"¥"+fmtN(v):fmtN(v);return<div key={label} style={S.kpi}><div style={S.kl}>{label}</div><div style={{display:"flex",gap:12,alignItems:"baseline"}}><div><div style={{fontSize:10,fontWeight:700,color:CMP_A_COLOR}}>A</div><div style={{...S.kv,fontSize:18,color:CMP_A_COLOR}}>{fmt(va)}</div></div><div><div style={{fontSize:10,fontWeight:700,color:CMP_B_COLOR}}>B</div><div style={{...S.kv,fontSize:18,color:CMP_B_COLOR}}>{fmt(vb)}</div></div></div><div style={{fontSize:11,marginTop:4,color:d>0?"#34d399":d<0?"#ef4444":TH.textMuted}}>{d>0?"+":""}{fmt(d)} ({pctChg(va,vb)})</div></div>})}
             </div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
               <SortTbl
@@ -4824,14 +4828,28 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
                 title={t.cmpByFacility}
               /></div>
             </div>
-            <div style={{...S.card,marginTop:14}}>
-              <div style={S.ct}>{t.cmpNightsChart}</div>
-              <div id="tl-cmp-nights">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={tlCompareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={TH.gold} name={tlCompareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill="#4ea8de" name={tlCompareRpt.labelA} radius={[4,4,0,0]}/></BarChart>
-                </ResponsiveContainer>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:14,marginTop:14}}>
+              <div style={S.card}>
+                <div style={S.ct}>{t.cmpRevChart}</div>
+                <div id="tl-cmp-rev"><ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={tlCompareRpt.revChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>"¥"+v.toLocaleString()}/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={tlCompareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={tlCompareRpt.labelA} radius={[4,4,0,0]}/></BarChart>
+                </ResponsiveContainer></div>
+                <div style={{marginTop:4}}><EB id="tl-cmp-rev" nm="tl_cmp_rev" data={tlCompareRpt.revChart} title={t.cmpRevChart}/></div>
               </div>
-              <div style={{marginTop:4}}><EB id="tl-cmp-nights" nm="tl_cmp_nights" data={tlCompareRpt.nightsChart} title={t.cmpNightsChart}/></div>
+              <div style={S.card}>
+                <div style={S.ct}>{t.cmpCountChart}</div>
+                <div id="tl-cmp-count"><ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={tlCompareRpt.countChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={tlCompareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={tlCompareRpt.labelA} radius={[4,4,0,0]}/></BarChart>
+                </ResponsiveContainer></div>
+                <div style={{marginTop:4}}><EB id="tl-cmp-count" nm="tl_cmp_count" data={tlCompareRpt.countChart} title={t.cmpCountChart}/></div>
+              </div>
+              <div style={S.card}>
+                <div style={S.ct}>{t.cmpNightsChart}</div>
+                <div id="tl-cmp-nights"><ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={tlCompareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={tlCompareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={tlCompareRpt.labelA} radius={[4,4,0,0]}/></BarChart>
+                </ResponsiveContainer></div>
+                <div style={{marginTop:4}}><EB id="tl-cmp-nights" nm="tl_cmp_nights" data={tlCompareRpt.nightsChart} title={t.cmpNightsChart}/></div>
+              </div>
             </div>
           </div>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
