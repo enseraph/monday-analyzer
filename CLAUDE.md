@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.25
+Current: 2.26
 
 Recent changes:
+- v2.26: **Cumulative Revenue by Nationality on Compare tab.** New `cmp-cum-rev` chart at the bottom of the YYB Compare tab — shows cumulative revenue build-up across the two comparison periods, split by top 5 countries (by Period A revenue) + "Other". Each country has a solid line (Period A) and a dashed line (Period B) in matching color. X-axis uses day-index (D1, D2...) aligned like the existing daily Compare charts so unequal-length periods still overlay cleanly. Respects all global filters including Date Type. Data computed inside the existing `compareRpt` useMemo — new `buildCumByCountry` helper builds per-day cumulative sums per country per period. Returns `cumSeries` (chart data) and `cumCountries` (legend keys). Grid key `cmp-cum-rev` at `[0,30,12,5]`.
 - v2.25: **Cumulative Revenue by Nationality (YoY) chart + Date Type info button.**
   1. **New headline chart on the Revenue tab**: `ch-cum-rev` — full-width LineChart at the top showing cumulative revenue build-up across Jan–Dec for the current vs. previous year, split by top 5 countries + "Other". Each country gets a **solid line** (current year) and a **dashed line** (previous year) in matching color. Data comes from `allData` — **ignores the global date range** (always shows full calendar years) but respects all other filters (region, segment, property, etc.). The date type setting controls which date field assigns each reservation to a month (booking / check-in / checkout / stay).
   2. **New `cumRevByNationality` useMemo** gated on `tab==="revenue"`. Scans all data for current + previous year, groups by country → year → month, picks top 5 by current-year revenue + Other, computes running cumulative. Returns `{data, countries, curYear, prevYear}`.

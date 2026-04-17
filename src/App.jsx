@@ -10,7 +10,7 @@ import { KANSAI_KW, DOW_FULL, DOW_SHORT as _DOW_SHORT, TL_REQUIRED_COLS, getRegi
 // Maintenance constants — edit src/constants.js when new facilities launch
 import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, NEW_HOTEL_CUTOFF, isNewFacility, FACILITIES_WITH_PREOPEN_DATA, PRE_OPEN_RAMP_DAYS, COHORT_DAYS } from "./constants.js";
 
-const APP_VERSION="2.25";
+const APP_VERSION="2.26";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="12";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -119,7 +119,7 @@ function clearLayout(tabId){localStorage.removeItem(`rgl_${tabId}`)}
 // 12-column grid (like Looker Studio) — items sized in 1/12 increments for free-form layout
 function mkL(items){return{lg:items.map(([i,x,y,w,h])=>({i,x,y,w:w||6,h:h||3,minW:2,minH:2})),sm:items.map(([i,_x,_y,_w,h])=>({i,x:0,y:0,w:12,h:h||3,minW:4,minH:2}))}}
 const DL={
-  compare:mkL([["cmp-country",0,0,7,6],["cmp-rev",7,0,5,6],["cmp-segment",0,6,7,5],["cmp-count",7,6,5,5],["cmp-facility",0,11,7,7],["cmp-nights",7,11,5,7],["cmp-daily-rev",0,18,12,4],["cmp-daily-count",0,22,12,4],["cmp-monthly-rev",0,26,6,4],["cmp-monthly-count",6,26,6,4]]),
+  compare:mkL([["cmp-country",0,0,7,6],["cmp-rev",7,0,5,6],["cmp-segment",0,6,7,5],["cmp-count",7,6,5,5],["cmp-facility",0,11,7,7],["cmp-nights",7,11,5,7],["cmp-daily-rev",0,18,12,4],["cmp-daily-count",0,22,12,4],["cmp-monthly-rev",0,26,6,4],["cmp-monthly-count",6,26,6,4],["cmp-cum-rev",0,30,12,5]]),
   overview:mkL([["ch-mo",0,0,6,3],["ch-sp",6,0,6,3],["ch-mk",0,3,6,3],["ch-dw",6,3,6,3],["ch-mo-rev",0,6,12,3],["ch-rev-country",0,9,12,4],["ch-res-day",0,13,6,3],["ch-rev-day",6,13,6,3]]),
   markets:mkL([["ch-mf",0,0,6,4],["ch-mr",6,0,6,4],["ch-mrev",0,4,12,4],["ch-mrev-time",0,8,12,5],["ch-mcnt-time",0,13,12,5],["ch-ml",0,18,6,4],["ch-mld",6,18,6,4],["ch-msc",0,22,12,4],["ch-rkc",0,26,12,4]]),
   segments:mkL([["ch-sb",0,0,6,3],["ch-sr",6,0,6,3],["ch-sl",0,3,6,3],["ch-slt",6,3,6,3],["sg-seg-mo",0,6,6,3],["sg-seg-co",6,6,6,4],["sg-ld-sg",0,9,6,3],["sg-ld-mo",6,10,6,3],["sg-adr",0,12,6,3]]),
@@ -2003,7 +2003,39 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       const vB=mB?(mMapB[mB]||{count:0,rev:0}):null;
       monthlySeries.push({idx:"M"+(i+1),monthA:mA||null,monthB:mB||null,countA:vA?vA.count:null,countB:vB?vB.count:null,revA:vA?vA.rev:null,revB:vB?vB.rev:null});
     }
-    return{a,b,countryRows,segRows,facRows,revChart,countChart,nightsChart,labelA,labelB,dailySeries,monthlySeries};
+    // ─── Cumulative Revenue by Nationality (A vs B) ───
+    // Top 5 countries by Period A revenue + Other. Each country gets A (solid) + B (dashed) cumulative lines.
+    // X-axis = day index (D1, D2, ...) aligned like the daily charts above.
+    const cumTop5=byRevA.slice(0,5).map(c=>c.country);
+    const cumTopSet=new Set(cumTop5);
+    const cumCountries=[...cumTop5,OTHER_KEY_NAME];
+    const buildCumByCountry=(data,days)=>{
+      const byDayCountry={};
+      data.forEach(r=>{
+        const d=getDateStr(r);if(!d)return;
+        const c=cumTopSet.has(r.country)?r.country:OTHER_KEY_NAME;
+        if(!byDayCountry[d])byDayCountry[d]={};
+        byDayCountry[d][c]=(byDayCountry[d][c]||0)+(r.totalRev||0);
+      });
+      const cum={};cumCountries.forEach(c=>{cum[c]=0});
+      return days.map(d=>{
+        cumCountries.forEach(c=>{cum[c]+=(byDayCountry[d]?.[c]||0)});
+        return{...cum};
+      });
+    };
+    const cumA=buildCumByCountry(dataA,daysA);
+    const cumB=buildCumByCountry(dataB,daysB);
+    const cumSeries=[];
+    for(let i=0;i<maxDays;i++){
+      const row={idx:"D"+(i+1)};
+      cumCountries.forEach(c=>{
+        row[c+"_A"]=i<cumA.length?cumA[i][c]:null;
+        row[c+"_B"]=i<cumB.length?cumB[i][c]:null;
+      });
+      cumSeries.push(row);
+    }
+
+    return{a,b,countryRows,segRows,facRows,revChart,countChart,nightsChart,labelA,labelB,dailySeries,monthlySeries,cumSeries,cumCountries};
   },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,facAgeFilter]);
 
   // ─── PACE REPORT ───
@@ -4161,6 +4193,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div key="cmp-monthly-rev"><CC grid title={t.cmpMonthlyRev} id="cmp-monthly-rev" nm="cmp_monthly_rev" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CmpTip th={TH} fmtV={v=>"¥"+(v||0).toLocaleString()}/>}/><Legend/><Bar dataKey="revB" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="revA" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
               <div key="cmp-monthly-count"><CC grid title={t.cmpMonthlyCount} id="cmp-monthly-count" nm="cmp_monthly_count" data={compareRpt.monthlySeries}><BarChart data={compareRpt.monthlySeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tk}/><YAxis tick={tk}/><Tooltip content={<CmpTip th={TH}/>}/><Legend/><Bar dataKey="countB" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[3,3,0,0]}/><Bar dataKey="countA" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[3,3,0,0]}/></BarChart></CC></div>
               <div key="cmp-nights"><CC grid title={t.cmpNightsChart} id="cmp-nights" nm="cmp_nights" data={compareRpt.nightsChart}><BarChart data={compareRpt.nightsChart}><CartesianGrid {...gl}/><XAxis dataKey="country" tick={<TlTickV2/>} interval={0} height={isMobile?60:30}/><YAxis tick={tk}/><Tooltip content={<CT/>}/><Legend/><Bar dataKey="B" fill={CMP_B_COLOR} name={compareRpt.labelB} radius={[4,4,0,0]}/><Bar dataKey="A" fill={CMP_A_COLOR} name={compareRpt.labelA} radius={[4,4,0,0]}/></BarChart></CC></div>
+              <div key="cmp-cum-rev">{compareRpt.cumSeries&&<CC grid title={t.cumRevByNationality} id="cmp-cum-rev" nm="cmp_cum_rev" data={compareRpt.cumSeries}><LineChart data={compareRpt.cumSeries}><CartesianGrid {...gl}/><XAxis dataKey="idx" tick={tks} interval="preserveStartEnd"/><YAxis tick={tk} tickFormatter={fmtY}/><Tooltip content={<CT formatter={v=>v!=null?"¥"+v.toLocaleString():"—"}/>}/><Legend wrapperStyle={{fontSize:9}}/>{compareRpt.cumCountries.map((c,i)=>{const color=(c===OTHER_KEY_NAME||c===OTHER_KEY)?"#78716c":PALETTE[i%PALETTE.length];return[<Line key={c+"_A"} type="monotone" dataKey={c+"_A"} stroke={color} strokeWidth={2.5} dot={false} name={tl(c)+" (A)"}/>,<Line key={c+"_B"} type="monotone" dataKey={c+"_B"} stroke={color} strokeWidth={1.5} strokeDasharray="5 3" dot={false} name={tl(c)+" (B)"}/>]})}</LineChart></CC>}</div>
             </DraggableGrid>
           </>:<div style={{textAlign:"center",padding:40,color:TH.textMuted}}>{t.cmpNoData}</div>}
         </div>}
