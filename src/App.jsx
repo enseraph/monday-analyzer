@@ -1642,9 +1642,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fHType!=="All"&&r.hotelType!==fHType)return false;
       if(fBrands.length&&!fBrands.includes(r.brand))return false;
       if(fR!=="All"&&r.region!==fR)return false;
-      if(fC.length&&!fC.includes(r.country))return false;
+      if(fC.length&&!(countryWithOther&&fC.length>=1)&&!fC.includes(r.country))return false;
       if(fS.length&&!fS.includes(r.segment))return false;
-      if(fP.length&&!fP.includes(r.facility))return false;
+      if(fP.length&&!(propertyWithOther&&fP.length>=1)&&!fP.includes(r.facility))return false;
       if(fGeo.length&&!fGeo.includes(GEO_REGION(r.country)))return false;
       if(fDOW.length&&!fDOW.includes(r.checkinDow))return false;
       if(!fP.length&&facAgeFilter!=="all"){const isNew=isNewFacility(r.facility);if(facAgeFilter==="new"&&!isNew)return false;if(facAgeFilter==="old"&&isNew)return false}
@@ -1700,7 +1700,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       return row;
     });
     return{data,countries,curYear,prevYear};
-  },[tab,allData,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,facAgeFilter,fDT]);
+  },[tab,allData,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,facAgeFilter,fDT,countryWithOther,propertyWithOther]);
 
   // Country LOS and Lead for Country Overview tab. Top 15 by count + "Other" row
   // whose avg is computed across ALL non-top-15 nights/lead arrays (weighted by sample count).
@@ -1912,9 +1912,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);
       if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));
       if(fR!=="All")d=d.filter(r=>r.region===fR);
-      if(fC.length)d=d.filter(r=>fC.includes(r.country));
+      if(fC.length&&!(countryWithOther&&fC.length>=1))d=d.filter(r=>fC.includes(r.country));
       if(fS.length)d=d.filter(r=>fS.includes(r.segment));
-      if(fP.length)d=d.filter(r=>fP.includes(r.facility));
+      if(fP.length&&!(propertyWithOther&&fP.length>=1))d=d.filter(r=>fP.includes(r.facility));
       if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
       if(fDOW.length)d=d.filter(r=>fDOW.includes(r.checkinDow));
       // Age filter (skipped when specific facilities are selected — they override)
@@ -2036,7 +2036,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     }
 
     return{a,b,countryRows,segRows,facRows,revChart,countChart,nightsChart,labelA,labelB,dailySeries,monthlySeries,cumSeries,cumCountries};
-  },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,facAgeFilter]);
+  },[tab,allData,cmpA,cmpB,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,facAgeFilter,countryWithOther,propertyWithOther]);
 
   // ─── PACE REPORT ───
   const paceRpt=useMemo(()=>{
@@ -2048,9 +2048,9 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       if(fHType!=="All")d=d.filter(r=>r.hotelType===fHType);
       if(fBrands.length)d=d.filter(r=>fBrands.includes(r.brand));
       if(fR!=="All")d=d.filter(r=>r.region===fR);
-      if(fC.length)d=d.filter(r=>fC.includes(r.country));
+      if(fC.length&&!(countryWithOther&&fC.length>=1))d=d.filter(r=>fC.includes(r.country));
       if(fS.length)d=d.filter(r=>fS.includes(r.segment));
-      if(fP.length)d=d.filter(r=>fP.includes(r.facility));
+      if(fP.length&&!(propertyWithOther&&fP.length>=1))d=d.filter(r=>fP.includes(r.facility));
       if(fGeo.length)d=d.filter(r=>fGeo.includes(GEO_REGION(r.country)));
       if(fDOW.length)d=d.filter(r=>fDOW.includes(r.checkinDow));
       // Age filter (skipped when specific facilities are selected — they override)
@@ -2122,7 +2122,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     const projectedRev=todayDay>0?Math.round(curAtDay.rev/todayDay*daysInMonth):0;
 
     return{months,currentMonth,todayDay,chartData,summaryRows,curAtDay,lastAtDay,projectedCount,projectedRev,daysInMonth};
-  },[tab,allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,paceMetric,facAgeFilter]);
+  },[tab,allData,fDT,fCancel,fHType,fBrands,fR,fC,fS,fP,fGeo,fDOW,tz,tzFmt,paceMetric,facAgeFilter,countryWithOther,propertyWithOther]);
 
   // ─── CANCELLATION RATE TRACKER ───
   const cancelRpt=useMemo(()=>{
