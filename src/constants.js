@@ -15,7 +15,7 @@
 export const FACILITY_ALIASES={
   // GRAND MONday 浅草 rebranded from MONday Apart Premium 浅草 (both names appear in YYB data)
   "MONday Apart Premium 浅草":"GRAND MONday 浅草",
-  // Premium MONday 浅草 Ⅰ (opened 2026-05-01) was previously named "ONE" in brand-strategy deck;
+  // Premium MONday 浅草 Ⅰ (opens 2026-06-01) was previously named "ONE" in brand-strategy deck;
   // canonical in data is the Roman numeral Ⅰ. Alias handles either variant.
   "Premium MONday 浅草 ONE":"Premium MONday 浅草 Ⅰ",
   "MONday Premium 浅草 ONE":"Premium MONday 浅草 Ⅰ",
@@ -77,7 +77,7 @@ export const FACILITY_OPENING_DATES={
   "TABI上野":"2026-04-10",
   "GRAND MONday 上野御徒町":"2026-05-01",
   "Premium Apart MONday 浜松町ステーション":"2026-03-27",
-  "Premium MONday 浅草 Ⅰ":"2026-05-01",
+  "Premium MONday 浅草 Ⅰ":"2026-06-01",
 };
 
 // ─── Cohort cutoff — Maihama View I opening date ───
