@@ -12,7 +12,7 @@ import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, 
 // Sidebar tab icons — SVG line icons that inherit currentColor
 import TAB_ICONS from "./icons.jsx";
 
-const APP_VERSION="2.27";
+const APP_VERSION="2.28";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="12";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -1438,7 +1438,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
     filtered.forEach(r=>{
       const dt=getDateField(r);
       const dStr=tzFmt(dt);if(!dStr)return;
-      const mStr=dStr.slice(0,7);
+      const mStr=getM(r);if(!mStr)return;
       if(!dMap[dStr])dMap[dStr]={};
       if(!mMap[mStr])mMap[mStr]={};
       if(!dMap[dStr][r.facility])dMap[dStr][r.facility]={count:0,rev:0};
@@ -1465,7 +1465,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
       monthlyCountNvO:mKeys.map(m=>buildNvORow(mMap,m,"month",m,"count")),
       monthlyRevNvO:mKeys.map(m=>buildNvORow(mMap,m,"month",m,"rev")),
     };
-  },[tab,filtered,fDT,tz,tzFmt]);
+  },[tab,filtered,fDT,tz,tzFmt,monthMode]);
   // Color helper for many facilities: PALETTE first, then golden-angle HSL for the rest
   const facColor=(i)=>i<PALETTE.length?PALETTE[i]:`hsl(${(i*137.508)%360}, 65%, 55%)`;
 

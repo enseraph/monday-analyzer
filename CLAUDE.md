@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.27
+Current: 2.28
 
 Recent changes:
+- v2.28: **Fix: Facilities tab monthly charts now respect the Month Axis toggle.** `facTimeRpt` (powers Daily/Monthly Reservations + Revenue by Facility on the Facilities tab) was grouping months by slicing the Date Type field's date string (`dStr.slice(0,7)`), bypassing the `monthMode` state entirely. Switching "By Booking Month" ↔ "By Stay Month" had no visible effect on the two monthly charts. Now uses `getM(r)` (the monthMode-aware helper) for month grouping; `monthMode` added to the useMemo deps. Daily charts were unaffected (they don't use month grouping). No other tabs had this bug — `getM()` was already used by Overview/Revenue monthly memos.
 - v2.27: **Premium MONday 浅草 Ⅰ opening pushed back to 2026-06-01** (was 2026-05-01). Updated `FACILITY_OPENING_DATES` in `src/constants.js` and the inline comment on the `FACILITY_ALIASES` entry. Knock-on effects: `isNewFacility` still classifies it as "New" (post-2025-12-05 cutoff); Hotel Opening tab's cohort/pre-open ramp charts now anchor day-0 to June 1 instead of May 1; the "days since opening" column in the Facilities performance table shifts accordingly. No code changes outside constants.
 - v2.26: **Cumulative Revenue by Nationality on Compare tab.** New `cmp-cum-rev` chart at the bottom of the YYB Compare tab — shows cumulative revenue build-up across the two comparison periods, split by top 5 countries (by Period A revenue) + "Other". Each country has a solid line (Period A) and a dashed line (Period B) in matching color. X-axis uses day-index (D1, D2...) aligned like the existing daily Compare charts so unequal-length periods still overlay cleanly. Respects all global filters including Date Type. Data computed inside the existing `compareRpt` useMemo — new `buildCumByCountry` helper builds per-day cumulative sums per country per period. Returns `cumSeries` (chart data) and `cumCountries` (legend keys). Grid key `cmp-cum-rev` at `[0,30,12,5]`.
 - v2.25: **Cumulative Revenue by Nationality (YoY) chart + Date Type info button.**
