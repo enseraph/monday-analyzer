@@ -123,9 +123,10 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.32
+Current: 2.32.1
 
 Recent changes:
+- v2.32.1: **Hotfix — TDZ on dashboard load.** v2.32 placed the `useEffect` that auto-clears `facTypeView` *before* the `const[facTypeView,setFacTypeView]=useState(...)` declaration. The deps array `[fHType,facTypeView]` evaluates at render time, so reading the still-uninitialized `let`-binding crashed the entire dashboard with `ReferenceError: Cannot access 'ot' before initialization` (minified). Moved the useEffect to after the state declaration. No other changes.
 - v2.32: **Hotel-vs-Apart visual split — new global view toggle.** Mirrors the existing Age view (New vs Old) pattern for hotelType.
   1. **New global toggle** in the filter bar next to Age view: `[Aggregate | Hotel vs Apart]` (label `t.facTypeView`). Default "aggregate". Auto-disabled and visually greyed when `fHType !== "All"` (filtering to one type would yield a single-series split).
   2. **`facTypeView` state** parallel to `facAgeView`. **`useEffect` auto-clears** the toggle if the user later sets the Hotel/Apart filter (mirrors the `countryWithOther`/`propertyWithOther` clear-on-deselect pattern).

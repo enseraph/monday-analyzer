@@ -12,7 +12,7 @@ import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, 
 // Sidebar tab icons — SVG line icons that inherit currentColor
 import TAB_ICONS from "./icons.jsx";
 
-const APP_VERSION="2.32";
+const APP_VERSION="2.32.1";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="12";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -998,11 +998,11 @@ const[propertyWithOther,setPropertyWithOther]=useState(false); // independent "+
 // Auto-clear toggles when their underlying selection is emptied (avoids stale "+ Other" state)
 useEffect(()=>{if(fC.length===0&&countryWithOther)setCountryWithOther(false)},[fC,countryWithOther]);
 useEffect(()=>{if(fP.length===0&&propertyWithOther)setPropertyWithOther(false)},[fP,propertyWithOther]);
-// v2.32: clear Hotel-vs-Apart view when user picks a specific Hotel/Apart filter (split would yield 1 series)
-useEffect(()=>{if(fHType!=="All"&&facTypeView!=="aggregate")setFacTypeView("aggregate")},[fHType,facTypeView]);
 const[facAgeFilter,setFacAgeFilter]=useState("all"); // "all" | "new" | "old" — global data filter; overridden if specific facilities selected
 const[facAgeView,setFacAgeView]=useState("aggregate"); // "aggregate" | "newVsOld" — global visual split on compatible charts
 const[facTypeView,setFacTypeView]=useState("aggregate"); // v2.32: "aggregate" | "hotelVsApart" — visual split on hotelType; auto-disabled when fHType≠"All"
+// v2.32: clear Hotel-vs-Apart view when user picks a specific Hotel/Apart filter (split would yield 1 series)
+useEffect(()=>{if(fHType!=="All"&&facTypeView!=="aggregate")setFacTypeView("aggregate")},[fHType,facTypeView]);
 const[openingFacs,setOpeningFacs]=useState(FACILITIES_WITH_PREOPEN_DATA); // Hotel Opening tab — selected facilities for cohort analysis
 // Colors for New vs Old cohort split (deliberately distinct from Compare tab's A=blue/B=gold)
 const NEW_COHORT_COLOR="#34d399"; // green — "fresh / growth"
