@@ -12,7 +12,7 @@ import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, 
 // Sidebar tab icons — SVG line icons that inherit currentColor
 import TAB_ICONS from "./icons.jsx";
 
-const APP_VERSION="2.30";
+const APP_VERSION="2.31";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="12";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
@@ -282,7 +282,7 @@ const T = {
 compare:"Compare",
 cmpPeriodA:"Period A",cmpPeriodB:"Period B",
 cmpPreset:"Quick Select",cmpCustom:"Custom",
-cmpMonthVsMonth:"This Month vs Last Month",cmpWeekVsWeek:"This Week vs Last Week",cmpYearVsYear:"This Year vs Last Year",cmpPrevYear:"Previous Year (B from A)",cmpPrevMonth:"Previous Month (B from A)",cmpPrevWeek:"Previous Week (B from A)",
+cmpMonthVsMonth:"Month vs Month",cmpWeekVsWeek:"Week vs Week",cmpYearVsYear:"Year vs Year",cmpPrevYear:"Prev Year →B",cmpPrevMonth:"Prev Month →B",cmpPrevWeek:"Prev Week →B",cmpMonthVsMonthTip:"This month-to-date vs last month same length",cmpWeekVsWeekTip:"Last 7 days vs prior 7 days",cmpYearVsYearTip:"This year-to-date vs last year same length",cmpPrevYearTip:"Fill Period B with Period A shifted back 1 year",cmpPrevMonthTip:"Fill Period B with Period A shifted back 1 month",cmpPrevWeekTip:"Fill Period B with Period A shifted back 7 days",
 cmpDelta:"Delta",cmpChange:"Change %",
 cmpByCountry:"By Country",cmpBySegment:"By Segment",cmpByFacility:"By Facility",
 cmpRevChart:"Revenue Comparison",cmpCountChart:"Reservation Comparison",
@@ -458,7 +458,7 @@ segBreakdownMode:"Breakdown",segSimple:"Simple",segDetailedLabel:"Detailed",
 compare:"比較",
 cmpPeriodA:"期間A",cmpPeriodB:"期間B",
 cmpPreset:"クイック選択",cmpCustom:"カスタム",
-cmpMonthVsMonth:"今月 vs 先月",cmpWeekVsWeek:"今週 vs 先週",cmpYearVsYear:"今年 vs 昨年",cmpPrevYear:"前年 (BをAから)",cmpPrevMonth:"前月 (BをAから)",cmpPrevWeek:"前週 (BをAから)",
+cmpMonthVsMonth:"月 vs 月",cmpWeekVsWeek:"週 vs 週",cmpYearVsYear:"年 vs 年",cmpPrevYear:"前年 →B",cmpPrevMonth:"前月 →B",cmpPrevWeek:"前週 →B",cmpMonthVsMonthTip:"今月（月初〜本日）vs 先月の同期間",cmpWeekVsWeekTip:"直近7日 vs その前の7日",cmpYearVsYearTip:"今年（年初〜本日）vs 昨年の同期間",cmpPrevYearTip:"期間Aを1年前にずらして期間Bに入力",cmpPrevMonthTip:"期間Aを1ヶ月前にずらして期間Bに入力",cmpPrevWeekTip:"期間Aを7日前にずらして期間Bに入力",
 cmpDelta:"差分",cmpChange:"変化率",
 cmpByCountry:"国別",cmpBySegment:"タイプ別",cmpByFacility:"施設別",
 cmpRevChart:"売上比較",cmpCountChart:"予約数比較",
@@ -4196,13 +4196,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
               <div><div style={S.fl}>{t.from}</div><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.from} onChange={e=>setCmpB(p=>({...p,from:e.target.value}))}/></div>
               <div><div style={S.fl}>{t.to}</div><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.to} onChange={e=>setCmpB(p=>({...p,to:e.target.value}))}/></div>
             </div>
-            <div style={{display:"flex",gap:4}}>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear(),m=end.getMonth(),d=end.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(end);const days=d-1;const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,1);bEnd.setDate(bEnd.getDate()+days);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const start=new Date(end);start.setDate(end.getDate()-6);const prevEnd=new Date(start);prevEnd.setDate(start.getDate()-1);const prevStart=new Date(prevEnd);prevStart.setDate(prevEnd.getDate()-6);setCmpA({from:tzFmt(start),to:tzFmt(end)});setCmpB({from:tzFmt(prevStart),to:tzFmt(prevEnd)})}}>{t.cmpWeekVsWeek}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(end);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,end.getMonth(),end.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
-              <button style={{...S.btn,fontSize:10,borderColor:TH.gold,color:TH.gold}} disabled={!cmpA.from} onClick={()=>cmpShiftB("year")}>{t.cmpPrevYear}</button>
-              <button style={{...S.btn,fontSize:10,borderColor:TH.gold,color:TH.gold}} disabled={!cmpA.from} onClick={()=>cmpShiftB("month")}>{t.cmpPrevMonth}</button>
-              <button style={{...S.btn,fontSize:10,borderColor:TH.gold,color:TH.gold}} disabled={!cmpA.from} onClick={()=>cmpShiftB("week")}>{t.cmpPrevWeek}</button>
+            <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px"}} title={t.cmpMonthVsMonthTip} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear(),m=end.getMonth(),d=end.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(end);const days=d-1;const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,1);bEnd.setDate(bEnd.getDate()+days);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px"}} title={t.cmpWeekVsWeekTip} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const start=new Date(end);start.setDate(end.getDate()-6);const prevEnd=new Date(start);prevEnd.setDate(start.getDate()-1);const prevStart=new Date(prevEnd);prevStart.setDate(prevEnd.getDate()-6);setCmpA({from:tzFmt(start),to:tzFmt(end)});setCmpB({from:tzFmt(prevStart),to:tzFmt(prevEnd)})}}>{t.cmpWeekVsWeek}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px"}} title={t.cmpYearVsYearTip} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(end);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,end.getMonth(),end.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px",borderColor:TH.gold,color:TH.gold}} title={t.cmpPrevYearTip} disabled={!cmpA.from} onClick={()=>cmpShiftB("year")}>{t.cmpPrevYear}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px",borderColor:TH.gold,color:TH.gold}} title={t.cmpPrevMonthTip} disabled={!cmpA.from} onClick={()=>cmpShiftB("month")}>{t.cmpPrevMonth}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px",borderColor:TH.gold,color:TH.gold}} title={t.cmpPrevWeekTip} disabled={!cmpA.from} onClick={()=>cmpShiftB("week")}>{t.cmpPrevWeek}</button>
             </div>
           </div>
           {compareRpt&&!compareRpt.empty?<>
@@ -4361,7 +4361,7 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
         </DraggableGrid></>}
 
         {/* MEMBER */}
-        {tab==="member"&&<>          <div style={{...S.card,background:TH.insightBg,border:"1px solid "+TH.insightBorder,marginBottom:14,fontSize:11,color:TH.textMuted,lineHeight:1.6}}>{t.memberDisclaimer}</div>
+        {tab==="member"&&<>          <div style={{background:"rgba(217,119,6,0.14)",border:"2px solid #d97706",borderLeft:"6px solid #d97706",borderRadius:6,padding:"12px 16px",marginBottom:16,fontSize:13,fontWeight:600,color:TH.textStrong,lineHeight:1.55,display:"flex",gap:10,alignItems:"flex-start"}}><span style={{fontSize:20,lineHeight:1,flexShrink:0}}>⚠</span><span>{t.memberDisclaimer}</span></div>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flexDirection:isMobile?"column":"row"}}>
             <div style={S.kpi}><div style={S.kl}>{t.memberTotal}</div><div style={S.kv}>{memberRpt?fmtN(memberRpt.totalGuests):"—"}</div></div>
             <div style={S.kpi}><div style={S.kl}>{t.memberRepeatCount}</div><div style={S.kv}>{memberRpt?fmtN(memberRpt.repeatCount):"—"}</div></div>
@@ -4954,13 +4954,13 @@ const uDOW=useMemo(()=>DOW_FULL,[]);
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"flex-end"}}>
             <div><div style={S.fl}>{t.cmpPeriodA}</div><div style={{display:"flex",gap:4}}><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.from} onChange={e=>setCmpA(p=>({...p,from:e.target.value}))}/><input type="date" style={{...S.inp,borderColor:"#4ea8de"}} value={cmpA.to} onChange={e=>setCmpA(p=>({...p,to:e.target.value}))}/></div></div>
             <div><div style={S.fl}>{t.cmpPeriodB}</div><div style={{display:"flex",gap:4}}><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.from} onChange={e=>setCmpB(p=>({...p,from:e.target.value}))}/><input type="date" style={{...S.inp,borderColor:TH.gold}} value={cmpB.to} onChange={e=>setCmpB(p=>({...p,to:e.target.value}))}/></div></div>
-            <div style={{display:"flex",gap:4}}>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear(),m=end.getMonth(),d=end.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(end);const days=d-1;const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,1);bEnd.setDate(bEnd.getDate()+days);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const start=new Date(end);start.setDate(end.getDate()-6);const prevEnd=new Date(start);prevEnd.setDate(start.getDate()-1);const prevStart=new Date(prevEnd);prevStart.setDate(prevEnd.getDate()-6);setCmpA({from:tzFmt(start),to:tzFmt(end)});setCmpB({from:tzFmt(prevStart),to:tzFmt(prevEnd)})}}>{t.cmpWeekVsWeek}</button>
-              <button style={{...S.btn,fontSize:10}} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(end);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,end.getMonth(),end.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
-              <button style={{...S.btn,fontSize:10,borderColor:TH.gold,color:TH.gold}} disabled={!cmpA.from} onClick={()=>cmpShiftB("year")}>{t.cmpPrevYear}</button>
-              <button style={{...S.btn,fontSize:10,borderColor:TH.gold,color:TH.gold}} disabled={!cmpA.from} onClick={()=>cmpShiftB("month")}>{t.cmpPrevMonth}</button>
-              <button style={{...S.btn,fontSize:10,borderColor:TH.gold,color:TH.gold}} disabled={!cmpA.from} onClick={()=>cmpShiftB("week")}>{t.cmpPrevWeek}</button>
+            <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px"}} title={t.cmpMonthVsMonthTip} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear(),m=end.getMonth(),d=end.getDate();const a1=`${y}-${String(m+1).padStart(2,"0")}-01`;const a2=tzFmt(end);const days=d-1;const prevY=m===0?y-1:y;const prevM=m===0?12:m;const b1=`${prevY}-${String(prevM).padStart(2,"0")}-01`;const bEnd=new Date(prevY,prevM-1,1);bEnd.setDate(bEnd.getDate()+days);const b2=tzFmt(bEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpMonthVsMonth}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px"}} title={t.cmpWeekVsWeekTip} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const start=new Date(end);start.setDate(end.getDate()-6);const prevEnd=new Date(start);prevEnd.setDate(start.getDate()-1);const prevStart=new Date(prevEnd);prevStart.setDate(prevEnd.getDate()-6);setCmpA({from:tzFmt(start),to:tzFmt(end)});setCmpB({from:tzFmt(prevStart),to:tzFmt(prevEnd)})}}>{t.cmpWeekVsWeek}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px"}} title={t.cmpYearVsYearTip} onClick={()=>{const end=new Date();end.setDate(end.getDate()-DATA_LAG_DAYS);const y=end.getFullYear();const a1=`${y}-01-01`;const a2=tzFmt(end);const b1=`${y-1}-01-01`;const prevEnd=new Date(y-1,end.getMonth(),end.getDate());const b2=tzFmt(prevEnd);setCmpA({from:a1,to:a2});setCmpB({from:b1,to:b2})}}>{t.cmpYearVsYear}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px",borderColor:TH.gold,color:TH.gold}} title={t.cmpPrevYearTip} disabled={!cmpA.from} onClick={()=>cmpShiftB("year")}>{t.cmpPrevYear}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px",borderColor:TH.gold,color:TH.gold}} title={t.cmpPrevMonthTip} disabled={!cmpA.from} onClick={()=>cmpShiftB("month")}>{t.cmpPrevMonth}</button>
+              <button style={{...S.btn,fontSize:9,padding:"3px 7px",borderColor:TH.gold,color:TH.gold}} title={t.cmpPrevWeekTip} disabled={!cmpA.from} onClick={()=>cmpShiftB("week")}>{t.cmpPrevWeek}</button>
             </div>
           </div>
           {tlCompareRpt&&!tlCompareRpt.empty?<div>

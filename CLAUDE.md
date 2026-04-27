@@ -123,9 +123,14 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.30
+Current: 2.31
 
 Recent changes:
+- v2.31: **Member tab disclaimer made highly visible + Compare tab buttons compacted.**
+  1. **Member tab disclaimer** ("予約番 data only goes back to May 2024…") was previously a muted insight-style card that blended into the page. Repromoted to a prominent warning banner: amber `#d97706` border (2px, 6px-thick left edge), warm amber tint background, fontSize 13, fontWeight 600, ⚠ icon prefix at fontSize 20. Uses `TH.textStrong` so the body text is fully legible in both light and dark modes.
+  2. **Compare tab preset buttons compacted** so all 6 fit alongside the Period A/B date pickers on one row at typical viewport widths. fontSize 10 → 9, padding default (~6×14) → 3×7, gap 4 → 3, container gains `flexWrap:"wrap"` for narrow viewports.
+  3. **Labels shortened** to fit: "This Month vs Last Month" → "Month vs Month", "This Week vs Last Week" → "Week vs Week", "This Year vs Last Year" → "Year vs Year", "Previous Year (B from A)" → "Prev Year →B" etc. JA mirrored: "今月 vs 先月" → "月 vs 月", "前年 (BをAから)" → "前年 →B" etc.
+  4. **Tooltips added** (`title` attribute) so the full meaning isn't lost on hover. New i18n keys `cmpMonthVsMonthTip` / `cmpWeekVsWeekTip` / `cmpYearVsYearTip` / `cmpPrevYearTip` / `cmpPrevMonthTip` / `cmpPrevWeekTip` provide bilingual hover descriptions. Both YYB Compare and TL Compare get the same treatment.
 - v2.30: **Compare tab quick-fill ergonomics — director feedback.** Two changes to reduce manual date entry:
   1. **Period A defaults to month-to-date** (1st of current month → today minus `DATA_LAG_DAYS`) when the app loads. Previously `cmpA` initialized to empty strings, requiring users to type both dates every session. Reuses existing `defaultDateFrom()`/`defaultDateTo()` helpers (same pair already powering the global filter default since v2.21). Period B stays empty.
   2. **Three new "B from A" buttons** in both YYB Compare and TL Compare button rows: **Previous Year / Previous Month / Previous Week**. Each one reads the current Period A range and writes Period B as the same range shifted backward by that interval. Styled with gold border/text to visually distinguish them from the existing absolute presets (Month vs Month / Week vs Week / Year vs Year). Disabled when Period A is empty.
