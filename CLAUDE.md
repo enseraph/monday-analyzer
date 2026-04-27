@@ -123,9 +123,17 @@ Status (default: All), Hotel Type, Brand, Region (Kanto/Kansai), Country, Segmen
 - Git config: user=en.seraph, email=en.seraph@users.noreply.github.com
 
 ## Version
-Current: 2.31
+Current: 2.32
 
 Recent changes:
+- v2.32: **Hotel-vs-Apart visual split — new global view toggle.** Mirrors the existing Age view (New vs Old) pattern for hotelType.
+  1. **New global toggle** in the filter bar next to Age view: `[Aggregate | Hotel vs Apart]` (label `t.facTypeView`). Default "aggregate". Auto-disabled and visually greyed when `fHType !== "All"` (filtering to one type would yield a single-series split).
+  2. **`facTypeView` state** parallel to `facAgeView`. **`useEffect` auto-clears** the toggle if the user later sets the Hotel/Apart filter (mirrors the `countryWithOther`/`propertyWithOther` clear-on-deselect pattern).
+  3. **`facTypeSeries` useMemo** parallel to `facAgeSeries` — gates on `tab in {overview,revenue,booking}` + `facTypeView==="hotelVsApart"` + `fHType==="All"` + non-empty `filtered`. Single pass over `filtered`, splits each row by `r.hotelType` ("Hotel" vs "Apart"), returns `{monthlyCount, monthlyRev, dailyCount, dailyRev, dowCount, dowRev}` — same shape as `facAgeSeries`/`perCountrySeries` so charts plug in identically.
+  4. **`tlTypeSeries`** mirrors for TL data — gates on `tlFiltered.length` + `facTypeView==="hotelVsApart"` + `fTlHotelType==="All"`. (Reuses the global `facTypeView` state — single toggle controls both YYB and TL splits, same as Age view.)
+  5. **Chart priority order updated**: property > age > **type** > country > default. Slotted into all 8 YYB charts (Overview Monthly Res/Rev + Daily Res/Rev, Revenue Monthly/Daily Rev + Rev by DOW, Booking Check-in/Checkout DOW) and 7 TL charts (TL Revenue Monthly/Daily Rev + Rev by DOW, TL Overview Monthly Res + Check-in DOW + Monthly Rev, TL Booking Check-in DOW). Mass-edit done via 11 replace_all passes on common substrings (data-prop fallback chains, Bars block, Legend gate) plus 3 manual edits for the chart-type-switching TL lines (BarChart vs ComposedChart/LineChart).
+  6. **Colors**: `HOTEL_COLOR="#7c3aed"` (vivid purple — "tower"), `APART_COLOR="#f97316"` (warm orange — "residential"). Deliberately distinct from Compare A/B (blue/amber), Age cohort (green/slate), Country palette rotation. Module-level constants near `NEW_COHORT_COLOR`/`OLD_COHORT_COLOR`.
+  7. **i18n**: 7 new keys `facTypeView` / `facTypeViewAgg` / `facTypeViewSplit` / `facTypeHint` / `facTypeDisabled` / `facHotelLabel` / `facApartLabel`, EN + JA.
 - v2.31: **Member tab disclaimer made highly visible + Compare tab buttons compacted.**
   1. **Member tab disclaimer** ("予約番 data only goes back to May 2024…") was previously a muted insight-style card that blended into the page. Repromoted to a prominent warning banner: amber `#d97706` border (2px, 6px-thick left edge), warm amber tint background, fontSize 13, fontWeight 600, ⚠ icon prefix at fontSize 20. Uses `TH.textStrong` so the body text is fully legible in both light and dark modes.
   2. **Compare tab preset buttons compacted** so all 6 fit alongside the Period A/B date pickers on one row at typical viewport widths. fontSize 10 → 9, padding default (~6×14) → 3×7, gap 4 → 3, container gains `flexWrap:"wrap"` for narrow viewports.
