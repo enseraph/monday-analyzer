@@ -12,7 +12,7 @@ import { ROOM_INVENTORY, TOTAL_ROOMS, FACILITY_OPENING_DATES, FACILITY_ALIASES, 
 // Sidebar tab icons — SVG line icons that inherit currentColor
 import TAB_ICONS from "./icons.jsx";
 
-const APP_VERSION="2.28";
+const APP_VERSION="2.29";
 // Layout schema version — bump ONLY when tab IDs or grid keys change (adding/removing items). App version bumps don't clear layouts.
 const LAYOUT_SCHEMA_VERSION="12";
 // Data lag: source CSV trails real-time by N days (n8n workflow updates daily, so latest available date = today - 1)
