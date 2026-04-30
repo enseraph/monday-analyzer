@@ -38,6 +38,7 @@ export const ROOM_INVENTORY={
   "Premium Apart MONday 浜松町ステーション":9,"MONday Apart Premium 浜松町":27,"TABI上野":35,
   "GRAND MONday 上野御徒町":50,
   "Premium MONday 浅草 Ⅰ":26,
+  "GRAND MONday Resort 東京ベイ舞浜":140,
 };
 export const TOTAL_ROOMS=Object.values(ROOM_INVENTORY).reduce((a,b)=>a+b,0);
 
@@ -78,6 +79,7 @@ export const FACILITY_OPENING_DATES={
   "GRAND MONday 上野御徒町":"2026-05-01",
   "Premium Apart MONday 浜松町ステーション":"2026-03-27",
   "Premium MONday 浅草 Ⅰ":"2026-06-01",
+  "GRAND MONday Resort 東京ベイ舞浜":"2026-07-18",
 };
 
 // ─── Cohort cutoff — Maihama View I opening date ───
